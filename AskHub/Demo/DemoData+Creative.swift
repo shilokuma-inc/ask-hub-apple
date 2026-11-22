@@ -8,10 +8,10 @@ import UniformTypeIdentifiers
 extension DemoData {
     static let creativeRepository = "demo-studio/habit-ios"
 
-    /// 習慣ログの案 2 を確かめる番（前の案 1 と見比べられる）
+    /// 習慣ログの案 2 を確かめる番（前の案 1 と見比べられる）。レシピ帳は案 1 を承認済みで、2.1.0 を審査に出すときに載せられる
     func creatives() -> [CreativeOverview] {
         let repo = Self.creativeRepository
-        func images(_ revision: Int) -> [CreativeOverview.Image] {
+        func images(_ revision: Int, repo: String = repo) -> [CreativeOverview.Image] {
             ["ja", "en-US"].flatMap { locale in
                 CreativeOverview.Kind.allCases.map { kind in
                     CreativeOverview.Image(
@@ -40,6 +40,17 @@ extension DemoData {
                 ),
                 previous: .init(revision: 1, images: images(1)),
                 updatedAt: ago(minutes: 18)
+            ),
+            CreativeOverview(
+                repositoryID: Self.repositoryID("recipe-apple"),
+                approved: .init(
+                    revision: 1,
+                    images: images(1, repo: Self.repositoryID("recipe-apple")),
+                    approvedAt: ago(minutes: 60 * 24 * 2),
+                    libraryTotal: 4,
+                    libraryReady: 4
+                ),
+                updatedAt: ago(minutes: 60 * 24 * 2)
             )
         ]
     }

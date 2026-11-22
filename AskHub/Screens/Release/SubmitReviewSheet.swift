@@ -14,6 +14,8 @@ struct SubmitReviewSheet: View {
     @State private var appReview: Submission.ReviewInfo?
     /// 前のままにするスクショ
     @State private var screenshotKeep: Set<Submission.ShotKey> = []
+    /// 承認したクリエイティブアセットを載せる。開いたときに、置ける・まだ載せていない案なら選んでおく
+    @State private var placesCreative = false
     /// 案を入れたときの準備の版。開いている間に司令塔が案を書き直したら、送るときに断られる（古い案のまま出さない）
     @State private var loadedRevision: Int?
     @State private var platforms: Set<String> = []
@@ -73,6 +75,9 @@ struct SubmitReviewSheet: View {
                 if let screenshots = submission.screenshots {
                     StoreScreenshotsSection(screenshots: screenshots, keep: $screenshotKeep)
                 }
+                if let creative, let approved = approvedCreative {
+                    CreativePlacementSection(creative: creative, approved: approved, isOn: $placesCreative)
+                }
                 Section {
                     Picker("配信の方式", selection: $kind) {
                         Text("承認後すぐ").tag(Kind.afterApproval)
@@ -113,11 +118,27 @@ struct SubmitReviewSheet: View {
                     loadedRevision = submission.revision
                     appReview = submission.appReview?.draft
                     for draft in submission.listing?.drafts ?? [] { listing[draft.locale] = draft.values }
+                    placesCreative = approvedCreative.map { $0.isPlaceable && $0.placedIn == nil } ?? false
                 }
             }
         }
         .sheetSending(sending)
         .sheetSize(.page)
+    }
+
+    /// リポジトリのクリエイティブアセット
+    private var creative: CreativeOverview? { store.snapshot?.creative(of: submission.repositoryID) }
+
+    /// 承認したクリエイティブアセットの案（iOS の版を出すときだけ。画像は iOS の版に置く）
+    private var approvedCreative: CreativeOverview.Approved? {
+        guard submission.builds.contains(where: { $0.platform == "iOS" }) else { return nil }
+        return creative?.approved
+    }
+
+    /// 載せる案の版（載せる・iOS のビルドを選んだ・置ける案のときだけ）
+    private var creativeChoice: Int? {
+        guard placesCreative, platforms.contains("iOS"), let approved = approvedCreative, approved.isPlaceable else { return nil }
+        return approved.revision
     }
 
     private var kindFooter: String {
@@ -205,10 +226,63 @@ struct SubmitReviewSheet: View {
                 return Submission.ListingTexts(locale: current.locale, values: values)
             },
             appReview: appReview,
-            screenshotKeep: submission.screenshots?.state == .captured ? Array(screenshotKeep) : nil
+            screenshotKeep: submission.screenshots?.state == .captured ? Array(screenshotKeep) : nil,
+            creative: creativeChoice
         )
         let intent = HumanIntent.submitForReview(repositoryID: submission.repositoryID, version: submission.version, request: request)
         if sending.submit(intent, in: store) { onClose() }
+    }
+}
+
+/// 承認したクリエイティブアセット（ヘッダー・検索結果の画像）を、この版に載せるかを選ぶ。基準の言語の画像を、今の App Store の画像と並べる。
+/// 司令塔が iOS の版の、画像のある言語に置いてから審査に出す（`docs/renewal/creative-assets.md`）
+struct CreativePlacementSection: View {
+    let creative: CreativeOverview
+    let approved: CreativeOverview.Approved
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Section {
+            Toggle("案 \(approved.revision) を載せる", isOn: $isOn)
+                .disabled(!approved.isPlaceable)
+                .accessibilityIdentifier("submission-creative")
+            if let locale = approved.images.first?.locale {
+                ForEach(CreativeOverview.Kind.allCases, id: \.self) { kind in
+                    if let image = approved.images.first(where: { $0.locale == locale && $0.kind == kind }) {
+                        comparison(image, live: creative.live.first { $0.locale == locale && $0.kind == kind })
+                    }
+                }
+            }
+        } header: {
+            Text("ヘッダーと検索結果の画像")
+        } footer: {
+            Text(footer)
+        }
+    }
+
+    /// 承認した画像と、今の App Store の画像（あれば）
+    private func comparison(_ image: CreativeOverview.Image, live: CreativeOverview.Image?) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("\(image.kind.title)（\(image.locale)）").appFont(.caption).foregroundStyle(.secondary)
+            HStack(alignment: .top, spacing: 8) {
+                CreativeImageView(image: image)
+                if let live {
+                    VStack(spacing: 4) {
+                        CreativeImageView(image: live)
+                        Text("今の App Store").appFont(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+    }
+
+    private var footer: String {
+        guard approved.isPlaceable else {
+            let progress = "\(approved.libraryReady ?? 0) / \(approved.libraryTotal ?? 0) 枚"
+            return "App Store Connect のライブラリが画像を取り込んでいます（\(progress)）。終わると載せられます"
+        }
+        if let version = approved.placedIn { return "\(version) に載せた案です。載せると、この版にも置き直します" }
+        return "iOS の版の、画像のある言語に置きます。同じ場所にある前の画像は外します。ほかの言語の画像は案の画面で見られます"
     }
 }
 

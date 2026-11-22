@@ -51,7 +51,8 @@ extension StateSnapshotBuilder {
                     images: approved.images.map(image),
                     approvedAt: approved.at.date,
                     libraryTotal: approved.library?.total,
-                    libraryReady: approved.library?.ready
+                    libraryReady: approved.library?.ready,
+                    placedIn: file.placed.first { $0.revision == approved.revision }?.version.rawValue
                 )
             },
             live: (file.live?.images ?? []).compactMap { live in

@@ -70,7 +70,8 @@ extension StateIntentMapper {
                 earliestReleaseDate: try Self.releaseDate(request.releaseType),
                 listing: try Self.listing(request.listing, current: entry.listing),
                 appReview: try Self.appReview(request.appReview, available: entry.hasAppReview),
-                screenshots: try Self.screenshots(request.screenshotKeep, entry: entry)
+                screenshots: try Self.screenshots(request.screenshotKeep, entry: entry),
+                creative: request.creative.map { SubmissionFile.CreativeChoice(revision: $0) }
             )
 
         case let .distributeRelease(repositoryID, version):

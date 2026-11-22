@@ -169,7 +169,7 @@ public struct IntentDraft: Equatable, Sendable {
     }
 
     /// 審査に出す（`revision` は人が見たときの準備の版。ビルド・What's New・掲載文の案が変わっていれば司令塔が断る）。
-    /// `listing` は人が確かめた掲載文の直し（変える言語・欄だけ）
+    /// `listing` は人が確かめた掲載文の直し（変える言語・欄だけ）。`creative` は置く、承認したクリエイティブアセットの案の版
     public static func submitForReview(
         _ target: SubmissionTarget,
         revision: Int,
@@ -179,7 +179,8 @@ public struct IntentDraft: Equatable, Sendable {
         earliestReleaseDate: Timestamp? = nil,
         listing: [ListingText] = [],
         appReview: ReviewInformation? = nil,
-        screenshots: SubmissionFile.ScreenshotDecision? = nil
+        screenshots: SubmissionFile.ScreenshotDecision? = nil,
+        creative: SubmissionFile.CreativeChoice? = nil
     ) -> Self {
         Self(
             kind: SubmitForReviewIntent.kind,
@@ -193,7 +194,8 @@ public struct IntentDraft: Equatable, Sendable {
                 earliestReleaseDate: earliestReleaseDate,
                 listing: listing,
                 appReview: appReview,
-                screenshots: screenshots
+                screenshots: screenshots,
+                creative: creative
             )
         )
     }

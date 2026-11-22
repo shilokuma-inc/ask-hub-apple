@@ -58,7 +58,7 @@ extension DemoClientService {
             startHotfix(repositoryID: repositoryID, version: version, suspend: suspend)
 
         case let .submitForReview(repositoryID, version, request):
-            submitForReview(Submission.id(repositoryID, version), request: request)
+            submitForReview(repositoryID, version: version, request: request)
 
         case let .distributeRelease(repositoryID, version):
             updateSoon(Submission.id(repositoryID, version), sending: .distribute) { submission in
@@ -141,7 +141,13 @@ extension DemoClientService {
         schedule(after: 2) { $0.updateSubmission(id) { $0.branch = "release/\(version)" } }
     }
 
-    private func submitForReview(_ id: Submission.ID, request: Submission.SubmitRequest) {
+    /// 審査に出す。承認したクリエイティブアセットを載せるなら、載せたことにする
+    private func submitForReview(_ repositoryID: TargetRepository.ID, version: String, request: Submission.SubmitRequest) {
+        let id = Submission.id(repositoryID, version)
+        if let index = state.creatives.firstIndex(where: { $0.repositoryID == repositoryID }),
+           let revision = request.creative, state.creatives[index].approved?.revision == revision {
+            state.creatives[index].approved?.placedIn = version
+        }
         state.updateSubmission(id) { submission in
             submission.awaitsSubmission = false
             submission.canAbandon = false
