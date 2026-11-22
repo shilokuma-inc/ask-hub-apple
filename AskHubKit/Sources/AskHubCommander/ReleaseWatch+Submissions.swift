@@ -41,6 +41,7 @@ extension ReleaseWatch {
             }
             var progressed = await performRequests(file, settings: settings)
             if progressed.origin == .askhub { progressed = await prepare(progressed, settings: settings) }
+            if progressed.awaitsRejectionTriage { progressed = await triageRejection(progressed, settings: settings) }
             advanced.append(progressed)
         }
         return advanced
