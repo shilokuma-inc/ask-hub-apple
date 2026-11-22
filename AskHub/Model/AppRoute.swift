@@ -47,6 +47,8 @@ enum AppRoute: Hashable {
     case appStoreSetup(TargetRepository.ID)
     /// 終わったもの（マージした・やめた epic）をすべて。進行中には新しいものだけを出す
     case finishedEpics
+    /// 共通リポジトリ app-kit の版・変更点・広げる・進み具合
+    case appKit
 }
 
 /// 判断のカードを、どの範囲で流すか

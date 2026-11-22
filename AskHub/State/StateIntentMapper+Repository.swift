@@ -27,6 +27,9 @@ extension StateIntentMapper {
         case .registerBundleId, .applyAppStoreSettings, .confirmAppStoreItem, .excludeFromAppStore:
             supportsAppStoreSetupIntent(intent)
 
+        case .rolloutAppKit, .stopAppKitRollout:
+            supportsAppKitIntent(intent)
+
         default:
             false
         }
@@ -83,6 +86,9 @@ extension StateIntentMapper {
 
         case .applyProtection, .approveSetup, .createRepository:
             return try administrationDraft(intent)
+
+        case .rolloutAppKit, .stopAppKitRollout:
+            return try appKitDraft(intent)
 
         default:
             return try cleanupDraft(intent)

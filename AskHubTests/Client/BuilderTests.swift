@@ -20,7 +20,8 @@ struct BuilderTests {
         #expect(blocking == [
             .questions, .goal, .humanTask, .blocker, .macOffline, .releaseNotes, .submissionReady, .submissionRejected, .appStoreSetup
         ])
-        #expect(whenFree == [.finalReview, .verification, .cleanup, .token, .claudeVersion, .repositorySetup])
+        // 積読リストの app-kit のずれ
+        #expect(whenFree == [.finalReview, .verification, .cleanup, .token, .claudeVersion, .repositorySetup, .appKit])
     }
 
     /// 急ぎを先に新しい順に並べる

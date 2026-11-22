@@ -40,7 +40,11 @@ extension StateSnapshotBuilder {
             case .closed: .closed
             case .open, .notNeeded: .open
             }
-            return .init(number: number, head: head, state: state, changes: workflows.changes.map(Self.label))
+            let appKit = workflows.appKit.map { adoption in
+                let renamed = (adoption.renamedChecks ?? []).map { "\($0.from) → \($0.to)" }
+                return SetupAppKit(version: adoption.version.rawValue, renamedChecks: renamed)
+            }
+            return .init(number: number, head: head, state: state, changes: workflows.changes.map(Self.label), appKit: appKit)
         }
         let discussions: RepositorySetupStatus.Discussions? = setup.discussions.map { state in
             switch state {
@@ -88,8 +92,10 @@ extension StateSnapshotBuilder {
         return switch change.kind {
         case .removeLegacy: "\(name) を外す"
         case .removePathFilters: "\(name) の paths を外す"
-        case .adoptAppKit: "\(name) を app-kit にする"
-        case .removeReplaced: "\(name) を外す（app-kit に置き換わる）"
+        case .adoptAppKit: "\(name) を app-kit の中身にする"
+        case .removeReplaced:
+            "\(name) を外す（app-kit に置き換わる\(change.lines.map { "・\($0) 行" } ?? "")）"
+                + (change.steps.map { "。app-kit に無い手順: " + $0.joined(separator: "・") } ?? "")
         }
     }
 }

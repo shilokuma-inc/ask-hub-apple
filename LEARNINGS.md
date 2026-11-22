@@ -219,6 +219,7 @@
   中身のパスが重ならなければ、`separate-directories: false`（既定）で 1 つのフォルダに重なる（2026-11-23、#1233）
 - ジョブの `defaults.run.working-directory` は checkout の前の `run` の手順にも効き、そのディレクトリがまだ無いと「An error occurred trying to start process '/usr/bin/bash' with working directory …」で失敗する。
   checkout の前の手順には `working-directory: .` を付ける（app-kit の撮影の plan で、`working-directory` にサブディレクトリを渡したときに起きた。2026-11-23、app-kit#14）
+- public のリポジトリは、コミットを指定した浅い fetch（`git init --bare` の後に `git fetch --depth 1 --no-tags <URL> <40 桁の sha>`）を受け付け、`git show <sha>:<path>`・`git ls-tree`・2 つの浅いコミットのあいだの `git diff --name-only` が読める。タグの一覧は `git ls-remote --tags <URL>` で読め、注釈つきのタグは `refs/tags/v1.0.0`（タグのオブジェクト）と `refs/tags/v1.0.0^{}`（指すコミット）の 2 行で返る。どれも REST の上限に数えない（2026-11-22、app-kit を読む `GitAppKitSource`）
 
 ## ビルド・テスト
 
@@ -661,6 +662,8 @@
   `case 400, 404, 409, 422:` の中で `guard` する（App Store Connect の書き込みの失敗の分け方。2026-11-18、#1140）
 - この repo の SwiftLint は、列挙の関連値を 5 個未満にする（`enum_case_associated_values_count`）。`HumanIntent` に中身の多い操作を足すときは、
   中身を構造体にまとめて 1 つの関連値にする（`Submission.SubmitRequest`。2026-11-18、#1142）
+- SwiftLint の `nesting`（型の入れ子は 1 段まで）は、入れ子の型の中の `typealias` も 1 段と数える。`struct A { struct B { enum State } }` を避けるには、`enum` を外に出して `var state: AState` と書く（`typealias State = AState` を中に置いても違反になる）
+- `JSONEncoder` は既定で `/` を `\/` に書き出す。人が読む JSON（`.github/app-kit.json` など）を文字で組み立てるときは `outputFormatting = .withoutEscapingSlashes` にする
 
 ## シェルスクリプト
 

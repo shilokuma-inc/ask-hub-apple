@@ -91,12 +91,12 @@
       }
     },
     "appKitVersion": {
-      "description": "共通リポジトリ app-kit の版（タグ）。v<major>.<minor>.<patch> で、数は先頭に 0 を付けず 4 桁まで",
+      "description": "共通リポジトリ app-kit の版（タグ）。v<major>.<minor>.<patch> で、数は先頭に 0 を付けず 4 桁まで。$ が末尾の改行・CR・U+2028 などの前でも合う処理系があるので、版の文字（v・数字・.）のほかを not で弾く",
       "type": "string",
       "pattern": "^v(0|[1-9][0-9]{0,3})\\.(0|[1-9][0-9]{0,3})\\.(0|[1-9][0-9]{0,3})$",
       "maxLength": 15,
       "not": {
-        "pattern": "\\n"
+        "pattern": "[^v0-9.]"
       }
     },
     "commitSha": {

@@ -34,6 +34,8 @@ nonisolated enum IntentTarget: Hashable {
     case submission(repositoryID: TargetRepository.ID, version: String)
     /// 新しいアプリを App Store に載せる準備（Bundle ID の登録・決まった値・終わった・出さない）
     case appStore(TargetRepository.ID)
+    /// app-kit の版を広げる・やめる
+    case appKit
 
     /// 対象の epic。epic に属さない対象（リポジトリ・Mac）は nil
     var epicID: Epic.ID? {
@@ -42,7 +44,7 @@ nonisolated enum IntentTarget: Hashable {
              let .blocker(epicID), let .epicControl(epicID), let .humanTask(epicID, _), let .verification(epicID, _), let .request(epicID):
             epicID
 
-        case .repository, .cleanup, .release, .submission, .appStore:
+        case .repository, .cleanup, .release, .submission, .appStore, .appKit:
             nil
         }
     }
@@ -91,6 +93,9 @@ extension HumanIntent {
 
         case .createRepository(let request):
             [.repository(request.repositoryID)]
+
+        case .rolloutAppKit, .stopAppKitRollout:
+            [.appKit]
 
         case let .publishRelease(repositoryID, version, _, _), let .updatePromotionalText(repositoryID, version, _):
             [.release(repositoryID: repositoryID, version: version)]

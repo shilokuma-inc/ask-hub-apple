@@ -47,9 +47,10 @@ struct StateIntentMapper {
 
         case .removeRepository, .configureRepository, .applyProtection, .approveSetup, .cleanUp, .findCleanupCandidates, .startRelease,
              .startHotfix, .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease, .retakeScreenshots, .reportRejection,
-             .resolveRejection, .registerBundleId, .applyAppStoreSettings, .confirmAppStoreItem, .excludeFromAppStore:
+             .resolveRejection, .registerBundleId, .applyAppStoreSettings, .confirmAppStoreItem, .excludeFromAppStore, .rolloutAppKit,
+             .stopAppKitRollout:
             // リリースと App Store の準備の操作も、リポジトリに属する操作として判定する（`supportsSubmissionIntent`・`supportsAppStoreSetupIntent`）。
-            // 片付けは Mac ごと（`supportsRepositoryIntent` の中で分ける）
+            // 片付けは Mac ごと、app-kit の版は共通リポジトリ（`supportsRepositoryIntent` の中で分ける）
             supportsRepositoryIntent(intent)
         }
     }
@@ -101,7 +102,8 @@ struct StateIntentMapper {
             return try epicDraft(intent)
 
         case .request, .addRepository, .createRepository, .removeRepository, .configureRepository, .applyProtection, .approveSetup,
-             .cleanUp, .findCleanupCandidates:
+             .cleanUp, .findCleanupCandidates, .rolloutAppKit, .stopAppKitRollout:
+            // app-kit の版は、リポジトリに属さない共通リポジトリの操作（`repositoryDraft` の中で分ける）
             return try repositoryDraft(intent)
 
         case .resolveBlocker, .skipTask:
