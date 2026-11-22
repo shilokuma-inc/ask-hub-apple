@@ -2378,6 +2378,23 @@
       },
       "schemaValid": false,
       "read": "malformed"
+    },
+    {
+      "name": "app-kit-version-trailing-newline",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "appKit": {
+          "ref": "0123456789abcdef0123456789abcdef01234567",
+          "version": "v1.0.0\n"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
     }
   ]
 }
