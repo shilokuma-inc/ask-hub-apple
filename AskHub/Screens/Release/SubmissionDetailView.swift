@@ -12,8 +12,10 @@ struct SubmissionDetailView: View {
     @State private var isRetaking = false
     /// 「このリリースを直す」依頼のシート
     @State private var fixDraft: RequestDraft?
-    /// 撮影では、起動引数でこのリリースを直す依頼のシートを開いておく
-    @State private var opensFixOnAppear = Self.initialFix
+    /// リジェクトの理由を貼るシート
+    @State private var isReportingRejection = false
+    /// 撮影では、起動引数でこのリリースを直す依頼・リジェクトの理由を貼るシートを開いておく（画面が出てから開く）
+    @State private var initialSheet = Self.initialDemoSheet
 
     /// 撮影では、起動引数で審査に出すシートを開いておく
     private static var initialSubmitting: Bool {
@@ -24,12 +26,35 @@ struct SubmissionDetailView: View {
         #endif
     }
 
-    private static var initialFix: Bool {
+    private static var initialDemoSheet: DemoSheet? {
         #if DEBUG
-        DemoLaunch.initialSheet() == .fixRelease
+        switch DemoLaunch.initialSheet() {
+        case .fixRelease: .fixRelease
+        case .rejectionReport: .rejectionReport
+        default: nil
+        }
         #else
-        false
+        nil
         #endif
+    }
+
+    /// 撮影で最初から開くシート
+    private enum DemoSheet {
+        case fixRelease
+        case rejectionReport
+    }
+
+    private func openInitialSheet(_ submission: Submission) {
+        guard let sheet = initialSheet else { return }
+        initialSheet = nil
+        switch sheet {
+        case .fixRelease where submission.acceptsFixes:
+            fixDraft = RequestDraft(repositoryID: submission.repositoryID, summary: "", body: "", release: submission.version)
+        case .rejectionReport where submission.canReportRejection:
+            isReportingRejection = true
+        default:
+            break
+        }
     }
 
     /// 取り消しにくい操作の確かめ
@@ -43,7 +68,15 @@ struct SubmissionDetailView: View {
 
     var body: some View {
         if let submission = store.snapshot?.submission(Submission.id(repositoryID, version)) {
+            // List の Section に付けたシートは行ごとに付いて開かないので、List の外に付ける
             content(submission)
+                .sheet(item: $fixDraft) { draft in
+                    NewRequestSheet(draft: draft)
+                }
+                .sheet(isPresented: $isReportingRejection) {
+                    RejectionReportSheet(submission: submission) { isReportingRejection = false }
+                }
+                .onAppear { openInitialSheet(submission) }
         } else {
             ContentUnavailableView("このリリースは見つかりません", systemImage: "shippingbox")
         }
@@ -155,7 +188,7 @@ struct SubmissionDetailView: View {
     /// 審査で断られた版の対処（AskHub で出した版だけ。直し方を選んだ後も、出し直すまで出す）
     @ViewBuilder private func rejection(_ submission: Submission) -> some View {
         if submission.startedInAskHub, !submission.isEnded, submission.isRejected || submission.rejection?.choice != nil {
-            RejectionSection(submission: submission) { fixDraft = $0 }
+            RejectionSection(submission: submission) { isReportingRejection = true } onRequestFix: { fixDraft = $0 }
         }
     }
 
@@ -181,14 +214,6 @@ struct SubmissionDetailView: View {
                 if submission.acceptsFixes {
                     Text("TestFlight で見つかった不具合などを、release/\(submission.version) に直しを入れる依頼にします。配信した後に develop にも取り込みます")
                 }
-            }
-            .sheet(item: $fixDraft) { draft in
-                NewRequestSheet(draft: draft)
-            }
-            .onAppear {
-                guard opensFixOnAppear, submission.acceptsFixes else { return }
-                opensFixOnAppear = false
-                fixDraft = RequestDraft(repositoryID: submission.repositoryID, summary: "", body: "", release: submission.version)
             }
         }
     }

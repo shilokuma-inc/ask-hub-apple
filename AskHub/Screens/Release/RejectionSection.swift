@@ -5,21 +5,13 @@ import SwiftUI
 /// コードを直すなら「このリリースを直す」依頼の下書きを開き、メタデータ・返信なら、確かめて「審査に出し直す」
 struct RejectionSection: View {
     let submission: Submission
+    /// 理由を貼るシートを開く（シートは List の外の画面が持つ。Section に付けると行ごとに付いて開かない）
+    let onReport: () -> Void
     /// コードを直すときに開く依頼の下書き（貼った画像を付けて開く）
     let onRequestFix: (RequestDraft) -> Void
 
     @Environment(ClientStore.self) private var store
-    @State private var isReporting = Self.initialReporting
     @State private var isPreparingFix = false
-
-    /// 撮影では、起動引数で理由を貼るシートを開いておく
-    private static var initialReporting: Bool {
-        #if DEBUG
-        DemoLaunch.initialSheet() == .rejectionReport
-        #else
-        false
-        #endif
-    }
 
     var body: some View {
         CardSection {
@@ -44,9 +36,6 @@ struct RejectionSection: View {
         } footer: {
             Text(footer)
         }
-        .sheet(isPresented: $isReporting) {
-            RejectionReportSheet(submission: submission) { isReporting = false }
-        }
     }
 
     private var footer: String {
@@ -55,6 +44,9 @@ struct RejectionSection: View {
         }
         if submission.rejection?.choice != nil {
             return "直したら、上の「確かめて審査に出す…」で出し直します（App Store Connect で断られたままの提出を出し直します）"
+        }
+        if submission.awaitsRejectionChoice {
+            return "直し方を選んでください。コードを直すなら「このリリースを直す」依頼の下書きを開きます。メタデータ・返信なら、確かめて審査に出し直します"
         }
         return "App Store Connect のアプリで審査の文を見て、文か画面の画像を貼ってください。Claude が直し方の案を書き、最後にあなたが選びます"
     }
@@ -127,7 +119,7 @@ struct RejectionSection: View {
         }
         if submission.canReportRejection, idle,
            store.supports(.reportRejection(repositoryID: id, version: version, text: "理由")) {
-            Button(submission.rejection == nil ? "理由を貼る…" : "理由を貼り直す…", systemImage: "doc.on.clipboard") { isReporting = true }
+            Button(submission.rejection == nil ? "理由を貼る…" : "理由を貼り直す…", systemImage: "doc.on.clipboard") { onReport() }
                 .accessibilityIdentifier("rejection.report")
         }
     }
