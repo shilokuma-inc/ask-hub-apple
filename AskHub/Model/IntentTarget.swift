@@ -36,6 +36,8 @@ nonisolated enum IntentTarget: Hashable {
     case appStore(TargetRepository.ID)
     /// app-kit の版を広げる・やめる
     case appKit
+    /// クリエイティブアセットの案を頼む・承認する
+    case creative(TargetRepository.ID)
 
     /// 対象の epic。epic に属さない対象（リポジトリ・Mac）は nil
     var epicID: Epic.ID? {
@@ -44,7 +46,7 @@ nonisolated enum IntentTarget: Hashable {
              let .blocker(epicID), let .epicControl(epicID), let .humanTask(epicID, _), let .verification(epicID, _), let .request(epicID):
             epicID
 
-        case .repository, .cleanup, .release, .submission, .appStore, .appKit:
+        case .repository, .cleanup, .release, .submission, .appStore, .appKit, .creative:
             nil
         }
     }
@@ -96,6 +98,9 @@ extension HumanIntent {
 
         case .rolloutAppKit, .stopAppKitRollout:
             [.appKit]
+
+        case let .draftCreativeAssets(repositoryID, _, _), let .approveCreativeAssets(repositoryID, _):
+            [.creative(repositoryID)]
 
         case let .publishRelease(repositoryID, version, _, _), let .updatePromotionalText(repositoryID, version, _):
             [.release(repositoryID: repositoryID, version: version)]

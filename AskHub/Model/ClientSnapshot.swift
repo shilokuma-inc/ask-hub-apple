@@ -26,6 +26,8 @@ struct ClientSnapshot: Hashable {
     var appStoreSetups: [AppStoreSetup] = []
     /// 共通リポジトリ app-kit の様子（`app-kit.json`）。司令塔がまだ書いていなければ nil
     var appKit: AppKitOverview?
+    /// クリエイティブアセット（App Store のヘッダー・検索結果の画像）の案と反映（リポジトリの順。頼んだリポジトリだけ）
+    var creatives: [CreativeOverview] = []
 }
 
 /// 送った人の意図の処理の結果

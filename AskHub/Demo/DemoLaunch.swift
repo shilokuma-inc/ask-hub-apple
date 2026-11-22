@@ -90,7 +90,8 @@ enum DemoLaunch {
         "mac": (.macs, AppRoute.mac),
         "cleanup": (.macs, AppRoute.cleanup),
         "repository": (.repositories, AppRoute.repository),
-        "appStore": (.repositories, AppRoute.appStoreSetup)
+        "appStore": (.repositories, AppRoute.appStoreSetup),
+        "creative": (.repositories, AppRoute.creative)
     ]
 
     private static func deck(_ parts: [String]) -> DeckScope? {

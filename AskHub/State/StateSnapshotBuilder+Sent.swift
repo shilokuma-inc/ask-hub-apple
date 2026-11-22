@@ -431,7 +431,7 @@ extension StateSnapshotBuilder {
 
         default:
             return finalLabel(envelope) ?? pauseLabel(envelope) ?? releaseLabel(envelope) ?? Self.repositoryLabel(envelope)
-                ?? Self.appStoreSetupLabel(envelope) ?? envelope.kind
+                ?? Self.appStoreSetupLabel(envelope) ?? Self.creativeLabel(envelope) ?? envelope.kind
         }
     }
 

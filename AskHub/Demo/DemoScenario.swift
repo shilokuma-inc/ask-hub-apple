@@ -143,7 +143,8 @@ struct DemoData {
             releases: releases(),
             submissions: submissions(),
             appStoreSetups: appStoreSetups(),
-            appKit: appKit()
+            appKit: appKit(),
+            creatives: creatives()
         )
     }
 

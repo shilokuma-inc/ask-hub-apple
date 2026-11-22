@@ -49,6 +49,8 @@ enum AppRoute: Hashable {
     case finishedEpics
     /// 共通リポジトリ app-kit の版・変更点・広げる・進み具合
     case appKit
+    /// クリエイティブアセット（App Store のヘッダー・検索結果の画像）の案を確かめる
+    case creative(TargetRepository.ID)
 }
 
 /// 判断のカードを、どの範囲で流すか

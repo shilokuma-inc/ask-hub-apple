@@ -57,6 +57,8 @@ struct ScreenshotScenesTests {
             return snapshot.submission(Submission.id(repositoryID, version)) == nil ? "リリース \(repositoryID) \(version) が無い" : nil
         case .appStoreSetup(let id):
             return snapshot.appStoreSetup(of: id) == nil ? "App Store の準備 \(id) が無い" : nil
+        case .creative(let id):
+            return snapshot.creative(of: id) == nil ? "クリエイティブアセットの案 \(id) が無い" : nil
         case .deck(.all), .deck(.allVerifications), .finishedEpics, .appKit:
             return listProblem(of: route, in: snapshot)
         }

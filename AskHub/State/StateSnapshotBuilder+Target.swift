@@ -22,11 +22,10 @@ extension StateSnapshotBuilder {
         case RequestIntent.kind:
             return nil
 
-        case AddRepositoryIntent.kind, CreateRepositoryIntent.kind, RemoveRepositoryIntent.kind, ConfigureRepositoryIntent.kind:
-            return repo.map { .repository(repository($0).id) }
-
-        case RegisterBundleIdIntent.kind, ApplyAppStoreSettingsIntent.kind, ConfirmAppStoreItemIntent.kind, ExcludeFromAppStoreIntent.kind:
-            return repo.map { .appStore(repository($0).id) }
+        case AddRepositoryIntent.kind, CreateRepositoryIntent.kind, RemoveRepositoryIntent.kind, ConfigureRepositoryIntent.kind,
+             RegisterBundleIdIntent.kind, ApplyAppStoreSettingsIntent.kind, ConfirmAppStoreItemIntent.kind, ExcludeFromAppStoreIntent.kind,
+             DraftCreativeAssetsIntent.kind, ApproveCreativeAssetsIntent.kind:
+            return repo.map { repositoryTarget(kind: kind, id: repository($0).id) }
 
         case SubmitForReviewIntent.kind, DistributeReleaseIntent.kind, WithdrawSubmissionIntent.kind, AbandonReleaseIntent.kind,
              RetakeScreenshotsIntent.kind, ReportRejectionIntent.kind, ResolveRejectionIntent.kind:
@@ -51,6 +50,18 @@ extension StateSnapshotBuilder {
                 return item
             }
             return epicTarget(kind: kind, epicID: epicID)
+        }
+    }
+
+    /// リポジトリに働きかける意図の対象（対象に加える・外すなど、App Store の準備、クリエイティブアセット）
+    private static func repositoryTarget(kind: String, id: TargetRepository.ID) -> IntentTarget {
+        switch kind {
+        case RegisterBundleIdIntent.kind, ApplyAppStoreSettingsIntent.kind, ConfirmAppStoreItemIntent.kind, ExcludeFromAppStoreIntent.kind:
+            .appStore(id)
+        case DraftCreativeAssetsIntent.kind, ApproveCreativeAssetsIntent.kind:
+            .creative(id)
+        default:
+            .repository(id)
         }
     }
 

@@ -114,6 +114,7 @@ extension InboxItem.Kind {
         case .submissionRejected: "xmark.octagon.fill"
         case .appStoreSetup: "checklist"
         case .appKit: "shippingbox.and.arrow.backward.fill"
+        case .creative: "photo.on.rectangle.angled"
         }
     }
 
@@ -139,6 +140,7 @@ extension InboxItem.Kind {
         case .submissionProblem, .submissionRejected: Theme.Tone.rose
         case .appStoreSetup: Theme.Tone.sky
         case .appKit: Theme.Tone.lavender
+        case .creative: Theme.Tone.peach
         }
     }
 }
