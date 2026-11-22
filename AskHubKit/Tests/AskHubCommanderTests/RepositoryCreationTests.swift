@@ -32,10 +32,12 @@ struct RepositoryCreationTests {
             uses: ./.github/workflows/_build.yml
 
         """
+    static let project = "// !$*UTF8*$!\n/* IOSTemplateApp.app */\n"
     static let readme = "# IOSTemplateApp\n\n[![Build](https://github.com/shilokuma-inc/template-app-ios/actions)]\n"
 
     /// テンプレートのファイル（sha は中身ごとに決めた 40 桁）
     static let files = [
+        TreeFile(path: "IOSTemplateApp.xcodeproj/project.pbxproj", mode: "100644", type: "blob", sha: sha("3")),
         TreeFile(path: "scripts/rename.sh", mode: "100755", type: "blob", sha: sha("a")),
         TreeFile(path: "Configs/Project.xcconfig", mode: "100644", type: "blob", sha: sha("b")),
         TreeFile(path: "IOSTemplateApp/ContentView.swift", mode: "100644", type: "blob", sha: sha("d")),
@@ -82,8 +84,8 @@ struct RepositoryCreationTests {
         return #"{"sha":"\#(head)","truncated":false,"tree":[\#(([folder] + entries).joined(separator: ","))]}"#
     }
 
-    /// 読む blob の中身（sha の順に b0, b1, …）。画像は読まない
-    static var blobs: String {
+    /// GraphQL で読む blob の中身（sha の順に b0, b1, …）
+    static func blobs(_ texts: [String]) -> String {
         func text(_ value: String) -> String {
             let escaped = value
                 .replacingOccurrences(of: "\\", with: "\\\\")
@@ -91,9 +93,14 @@ struct RepositoryCreationTests {
                 .replacingOccurrences(of: "\n", with: "\\n")
             return #"{"text":"\#(escaped)","isBinary":false,"isTruncated":false}"#
         }
-        let nodes = [script, config, view, readme].enumerated().map { #""b\#($0)":\#(text($1))"# }
+        let nodes = texts.enumerated().map { #""b\#($0)":\#(text($1))"# }
         return #"{"data":{"repository":{\#(nodes.joined(separator: ","))}}}"#
     }
+
+    /// 先に読む rename.sh と xcconfig
+    static var settingBlobs: String { blobs([script, config]) }
+    /// 書き換えるために読む全部のテキスト（画像は読まない）
+    static var allBlobs: String { blobs([project, script, config, view, readme]) }
 
     // MARK: - 名前の書き換え
 
@@ -102,10 +109,12 @@ struct RepositoryCreationTests {
         #expect(old.name == "IOSTemplateApp")
         #expect(old.repo == "shilokuma-inc/template-app-ios")
         let texts: [String: String?] = [
-            Self.sha("a"): Self.script, Self.sha("b"): Self.config, Self.sha("d"): Self.view, Self.sha("f"): Self.readme
+            Self.sha("3"): Self.project, Self.sha("a"): Self.script, Self.sha("b"): Self.config,
+            Self.sha("d"): Self.view, Self.sha("f"): Self.readme
         ]
         let names = TemplateRename.Names(appName: "CreateCheck", repo: Self.repo.rawValue, bundleId: "jp.shilokuma.create-check")
-        let plan = try #require(TemplateRename.plan(files: Self.files, texts: texts, old: old, new: names))
+        #expect(TemplateRename.progress(of: Self.files, oldName: old.name, appName: "CreateCheck") == .template)
+        let plan = Array(TemplateRename.plan(files: Self.files, texts: texts, old: old, new: names).dropFirst())
         #expect(plan.map(\.path) == [
             "scripts/rename.sh",
             "Configs/Project.xcconfig",
@@ -121,9 +130,19 @@ struct RepositoryCreationTests {
         #expect(plan[1].content == "// CreateCheck\nDEVELOPMENT_TEAM = XU74X3434S\nAPP_BUNDLE_IDENTIFIER = jp.shilokuma.create-check\n")
         #expect(plan[2].content == "import SwiftUI\n\nstruct ContentView: View {}\n// CreateCheck\n")
         #expect(plan[4].content?.contains("github.com/shilokuma-inc/askhub-create-check/actions") == true)
-        // 書き換え済み（元の名前のパスが無い）なら、何もしない
-        #expect(TemplateRename.plan(files: plan, texts: texts, old: old, new: names) == nil)
-        #expect(!TemplateRename.needsText(Self.files[3]))
+        #expect(!TemplateRename.needsText(Self.files[4]))
+    }
+
+    /// 書き換えの様子は、部分一致ではなくプロジェクトのファイルで見る（元の名前を含むアプリ名でも二重に書き換えない）
+    @Test func renameProgressUsesProjectFile() {
+        let names = TemplateRename.Names(appName: "IOSTemplateAppPlus", repo: Self.repo.rawValue, bundleId: "jp.shilokuma.Plus")
+        let texts: [String: String?] = [Self.sha("3"): Self.project]
+        let renamed = TemplateRename.plan(files: Self.files, texts: texts, old: ("IOSTemplateApp", "x/y"), new: names)
+        #expect(renamed[0].path == "IOSTemplateAppPlus.xcodeproj/project.pbxproj")
+        #expect(TemplateRename.progress(of: renamed, oldName: "IOSTemplateApp", appName: "IOSTemplateAppPlus") == .renamed)
+        // 別のアプリ名に書き換えてあるもの・テンプレートの形でないもの
+        #expect(TemplateRename.progress(of: renamed, oldName: "IOSTemplateApp", appName: "Other") == nil)
+        #expect(TemplateRename.bundleId(in: Self.config) == "jp.shilokuma.IOSTemplateApp")
     }
 
     // MARK: - 作る
@@ -137,7 +156,8 @@ struct RepositoryCreationTests {
             .json(404, #"{"message":"Not Found"}"#),
             .json(200, #"{"object":{"sha":"\#(Self.head)","type":"commit"}}"#),
             .json(200, Self.tree),
-            .json(200, Self.blobs),
+            .json(200, Self.settingBlobs),
+            .json(200, Self.allBlobs),
             .json(201, #"{"sha":"\#(Self.sha("7"))"}"#),
             .json(201, #"{"sha":"\#(Self.commit)"}"#),
             .json(200, "{}"),
@@ -152,12 +172,13 @@ struct RepositoryCreationTests {
         ])
         #expect(try await handler(transport).handle(envelope(), in: context(store)) == .accept)
         let requests = transport.requests.map { "\($0.httpMethod ?? "") \($0.url?.path ?? "")" }
-        #expect(Array(requests.prefix(9)) == [
+        #expect(Array(requests.prefix(10)) == [
             "GET /repos/shilokuma-inc/askhub-create-check",
             "POST /repos/shilokuma-inc/template-app-ios/generate",
             "GET /repos/shilokuma-inc/askhub-create-check/git/ref/heads/develop",
             "GET /repos/shilokuma-inc/askhub-create-check/git/ref/heads/develop",
             "GET /repos/shilokuma-inc/askhub-create-check/git/trees/\(Self.head)",
+            "POST /graphql",
             "POST /graphql",
             "POST /repos/shilokuma-inc/askhub-create-check/git/trees",
             "POST /repos/shilokuma-inc/askhub-create-check/git/commits",
@@ -237,6 +258,7 @@ struct RepositoryCreationTests {
             intent: IntentReference(keyId: KeyID(rawValue: String(repeating: "k", count: 43))!, nonce: ULID.generate(at: Self.now)),
             at: Timestamp(Self.now)
         )
+        file.setup = RepositorySetup(updatedAt: Timestamp(Self.now), discussions: .ready, workflows: .init(state: .notNeeded))
         await store.put(StatePath.repository(Self.repo), data: try StateFileCoder.encode(file))
         let transport = StubTransport([])
         #expect(try await handler(transport).handle(envelope(), in: context(store)) == .accept)

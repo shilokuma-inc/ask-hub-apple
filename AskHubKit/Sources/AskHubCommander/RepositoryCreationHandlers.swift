@@ -32,18 +32,9 @@ public struct CreateRepositoryHandler: IntentHandler {
         } catch {
             return .reject("作る意図の形が違う（\(error.detail)）")
         }
-        let path = StatePath.repository(create.repo)
-        let existing = try await context.read(RepositoryFile.self, at: path)
-        if let existing {
-            // 前に作った（やり直し）なら続きから。対象に加えただけのリポジトリ・別の中身で作ったものは、作り直さない
-            guard let created = existing.created else { return .reject("\(create.repo) はもう対象のリポジトリにある（テンプレートから作ったものでない）") }
-            guard created.template == create.template, created.appName == create.appName, created.bundleId == create.bundleId,
-                  created.visibility == create.visibility else {
-                return .reject("\(create.repo) は前に別の中身（\(created.template.title)・\(created.appName)）で作った。別の名前で作り直す")
-            }
-            if created.renameCommit != nil, existing.build != nil { return .accept }
-        }
-        guard let admin else { return .reject("この司令塔は管理用のトークンを使えない（常時オンの Mac の askhub-commander で動かす）") }
+        let existing = try await context.read(RepositoryFile.self, at: StatePath.repository(create.repo))
+        if let existing { return try await retry(create, existing: existing, in: context) }
+        guard let admin else { return .reject(Self.noAdmin) }
         let github: GitHubPullRequests
         switch await admin.pullRequests(for: create.repo, now: context.now()) {
         case let .success(made): github = made
@@ -58,6 +49,28 @@ public struct CreateRepositoryHandler: IntentHandler {
         }
         try await record(create, renameCommit: renameCommit, existing: existing, in: context)
         // 作ったリポジトリにも、対象に加えるときと同じ準備を流す（準備が止まっても、作ったのは受け付ける）
+        try await RepositorySetupStep(admin: admin).run(for: create.repo, in: context)
+        return .accept
+    }
+
+    static let noAdmin = "この司令塔は管理用のトークンを使えない（常時オンの Mac の askhub-commander で動かす）"
+
+    /// 前に作った（やり直し）。作って名前を書き換えたことは記録済み（記録は書き換えを確かめた後に書く）なので、作るところはやり直さない。
+    /// 準備まで済んでいれば GitHub に送らずに受け付け、途中で止まっていれば（上限など）準備だけ流し直す。
+    /// 対象に加えただけのリポジトリ・別の中身で作ったものは断る
+    private func retry(
+        _ create: CreateRepositoryIntent,
+        existing: RepositoryFile,
+        in context: CommanderContext
+    ) async throws(CommanderError) -> IntentDecision {
+        guard let created = existing.created else { return .reject("\(create.repo) はもう対象のリポジトリにある（テンプレートから作ったものでない）") }
+        guard created.template == create.template, created.appName == create.appName, created.bundleId == create.bundleId,
+              created.visibility == create.visibility else {
+            return .reject("\(create.repo) は前に別の中身（\(created.template.title)・\(created.appName)）で作った。別の名前で作り直す")
+        }
+        if let setup = existing.setup, setup.problems == nil, existing.build != nil, !existing.isRemoved { return .accept }
+        guard let admin else { return .reject(Self.noAdmin) }
+        try await record(create, renameCommit: nil, existing: existing, in: context)
         try await RepositorySetupStep(admin: admin).run(for: create.repo, in: context)
         return .accept
     }
@@ -136,18 +149,47 @@ struct RepositoryCreationRunner {
         guard let script = files.first(where: { $0.path == TemplateRename.scriptPath }) else {
             throw .template("テンプレートに \(TemplateRename.scriptPath) が無いので、名前を書き換えられない")
         }
+        let config = files.first { $0.path == TemplateRename.configPath }
+        let first = [script.sha] + (config.map { [$0.sha] } ?? [])
+        let settings = try await step("作ったリポジトリの設定を読めない") { () throws(PullRequestError) in
+            try await github.blobTexts(first)
+        }
+        guard let old = settings[script.sha].flatMap({ $0 }).flatMap(TemplateRename.oldNames) else {
+            throw .template("\(TemplateRename.scriptPath) から元の名前（OLD_NAME・OLD_REPO）を読めない")
+        }
+        guard create.appName != old.name else { throw .template("アプリ名がテンプレートの名前（\(old.name)）と同じ。別のアプリ名にする") }
+        switch TemplateRename.progress(of: files, oldName: old.name, appName: create.appName) {
+        case nil:
+            throw .alreadyExists("\(create.repo) に \(old.name).xcodeproj も \(create.appName).xcodeproj も無い（テンプレートから作ったままの形でない）")
+        case .renamed:
+            // 前に同じアプリ名に書き換えた（記録を書く前に止まった）。Bundle ID も同じときだけ続ける
+            let current = config.flatMap { settings[$0.sha].flatMap { $0 } }.flatMap(TemplateRename.bundleId)
+            guard current == create.bundleId else {
+                throw .alreadyExists("\(create.repo) は前に別の Bundle ID（\(current ?? "不明")）で書き換えてある。別の名前で作り直す")
+            }
+            return nil
+        case .template:
+            return try await rename(files: files, script: script, old: old, base: (branch, head), create: create)
+        }
+    }
+
+    /// テンプレートのままのファイルを、選んだアプリ名・Bundle ID に書き換えたコミットを `branch` に入れる
+    private func rename(
+        files: [TreeFile],
+        script: TreeFile,
+        old: (name: String, repo: String),
+        base: (branch: String, head: String),
+        create: CreateRepositoryIntent
+    ) async throws(RepositoryCreationError) -> String {
         let shas = [script.sha] + files.filter(TemplateRename.needsText).map(\.sha)
         let texts = try await step("作ったリポジトリのファイルの中身を読めない") { () throws(PullRequestError) in
             try await github.blobTexts(shas)
         }
-        guard let old = texts[script.sha].flatMap({ $0 }).flatMap(TemplateRename.oldNames) else {
-            throw .template("\(TemplateRename.scriptPath) から元の名前（OLD_NAME・OLD_REPO）を読めない")
-        }
         let names = TemplateRename.Names(appName: create.appName, repo: create.repo.rawValue, bundleId: create.bundleId)
-        guard let plan = TemplateRename.plan(files: files, texts: texts, old: old, new: names) else { return nil }
+        let plan = TemplateRename.plan(files: files, texts: texts, old: old, new: names)
         let message = "[chore] テンプレートから \(create.appName) を作る（アプリ名と Bundle ID を書き換える）"
-        return try await step("名前を書き換えたコミットを \(branch) に入れられない") { () throws(PullRequestError) in
-            try await github.commitFiles(plan, parent: head, branch: branch, message: message)
+        return try await step("名前を書き換えたコミットを \(base.branch) に入れられない") { () throws(PullRequestError) in
+            try await github.commitFiles(plan, parent: base.head, branch: base.branch, message: message)
         }
     }
 

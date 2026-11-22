@@ -39,10 +39,38 @@ enum TemplateRename {
         var bundleId: String
     }
 
-    /// 書き換えた後のファイルの一覧（全部）。パスに元の名前を含むファイルが無ければ、書き換え済みとして nil
-    static func plan(files: [TreeFile], texts: [String: String?], old: (name: String, repo: String), new: Names) -> [TreeFile]? {
-        guard files.contains(where: { $0.path.contains(old.name) }) else { return nil }
-        return files.map { file in
+    /// 名前の書き換えの様子。部分一致で見ると、元の名前を含むアプリ名（`IOSTemplateAppPlus`）で二重に書き換えてしまうので、
+    /// プロジェクトのファイルがどちらの名前にあるかで見る
+    enum Progress: Equatable {
+        /// テンプレートのまま（元の名前のプロジェクトがある）
+        case template
+        /// 選んだアプリ名に書き換えてある
+        case renamed
+    }
+
+    /// プロジェクトのファイル（`<名前>.xcodeproj/project.pbxproj`）
+    static func projectFile(_ name: String) -> String {
+        "\(name).xcodeproj/project.pbxproj"
+    }
+
+    /// 書き換えの様子。どちらの名前のプロジェクトも無ければ nil（テンプレートから作ったままの形でない）
+    static func progress(of files: [TreeFile], oldName: String, appName: String) -> Progress? {
+        let paths = Set(files.map(\.path))
+        if paths.contains(projectFile(oldName)) { return .template }
+        if paths.contains(projectFile(appName)) { return .renamed }
+        return nil
+    }
+
+    /// `Configs/Project.xcconfig` の `APP_BUNDLE_IDENTIFIER`。無ければ nil
+    static func bundleId(in config: String) -> String? {
+        let prefix = "APP_BUNDLE_IDENTIFIER = "
+        let line = config.split(separator: "\n").first { $0.hasPrefix(prefix) }
+        return line.map { String($0.dropFirst(prefix.count)).trimmingCharacters(in: .whitespaces) }
+    }
+
+    /// 書き換えた後のファイルの一覧（全部）。テンプレートのまま（`progress` が `template`）のときだけ呼ぶ
+    static func plan(files: [TreeFile], texts: [String: String?], old: (name: String, repo: String), new: Names) -> [TreeFile] {
+        files.map { file in
             var renamed = file
             renamed.path = file.path.replacingOccurrences(of: old.name, with: new.appName)
             guard file.type == "blob", file.path != scriptPath, let text = texts[file.sha].flatMap({ $0 }) else { return renamed }

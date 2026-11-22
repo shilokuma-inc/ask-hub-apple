@@ -216,7 +216,7 @@ struct StateSnapshotBuilder {
     // MARK: リポジトリ
 
     private func repository(_ file: RepositoryFile, epics: [Epic], index: inout StateIndex) -> TargetRepository {
-        var repository = Self.repository(file.repo)
+        var repository = Self.repository(file)
         index.repositories[repository.id] = file.repo
         repository.icon = Self.appIcon(of: file)
         repository.build = file.build.map(Self.buildSettings)
@@ -229,7 +229,7 @@ struct StateSnapshotBuilder {
 
     /// 対象から外したリポジトリ。送るときは元の owner/name の書き方を使う
     private func removedRepository(_ file: RepositoryFile, index: inout StateIndex) -> TargetRepository {
-        var repository = Self.repository(file.repo)
+        var repository = Self.repository(file)
         index.removedRepositories[repository.id] = file.repo
         repository.icon = Self.appIcon(of: file)
         return repository
@@ -239,6 +239,13 @@ struct StateSnapshotBuilder {
     static func appIcon(of file: RepositoryFile) -> RepositoryIcon {
         guard let icon = file.icon else { return .monogram }
         return .stored(path: StatePath.appIcon(file.repo), version: icon.image)
+    }
+
+    /// 状態リポジトリの対象のリポジトリ。テンプレートから作ったものは、作るときに選んだアプリ名で出す
+    static func repository(_ file: RepositoryFile) -> TargetRepository {
+        var repository = repository(file.repo)
+        if let appName = file.created?.appName { repository.appName = appName }
+        return repository
     }
 
     static func repository(_ repo: RepositoryFullName) -> TargetRepository {
