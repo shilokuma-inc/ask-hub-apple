@@ -172,6 +172,8 @@ public protocol AppStoreConnectSubmitting: AppStoreConnectReading, AppStoreConne
     func addToReviewSubmission(_ submissionID: String, versionID: String) async throws(AppStoreConnectError)
     /// 提出する（`submitted: true`）
     func submitReviewSubmission(_ submissionID: String) async throws(AppStoreConnectError)
+    /// 断られたままの提出（`UNRESOLVED_ISSUES`）の、断られた項目（`REJECTED`）を直したことにする（`resolved: true`）。直した項目の数を返す
+    func resolveRejectedItems(of submissionID: String) async throws(AppStoreConnectError) -> Int
     /// 取り下げる（`canceled: true`）
     func cancelReviewSubmission(_ submissionID: String) async throws(AppStoreConnectError)
     /// 承認された（Pending Developer Release の）版を配信する。取り消せない
@@ -392,6 +394,19 @@ extension AppStoreConnectClient: AppStoreConnectSubmitting {
 
     public func cancelReviewSubmission(_ submissionID: String) async throws(AppStoreConnectError) {
         try await patchReviewSubmission(submissionID, attributes: ["canceled": true])
+    }
+
+    public func resolveRejectedItems(of submissionID: String) async throws(AppStoreConnectError) -> Int {
+        try Self.checkID(submissionID)
+        let query = [URLQueryItem(name: "limit", value: "50")]
+        let path = "v1/reviewSubmissions/\(submissionID)/items"
+        let response = try await get(path, query: query, as: AppStoreConnectSubmissionItemsResponse.self)
+        let rejected = response.data.filter { Self.isID($0.id) && $0.attributes?.state == "REJECTED" }
+        for item in rejected {
+            let body = try Self.document("reviewSubmissionItems", id: item.id, attributes: ["resolved": true])
+            _ = try await send("PATCH", "v1/reviewSubmissionItems/\(item.id)", body: body)
+        }
+        return rejected.count
     }
 
     public func requestRelease(of versionID: String) async throws(AppStoreConnectError) {

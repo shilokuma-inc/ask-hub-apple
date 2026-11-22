@@ -56,6 +56,7 @@ extension AskHubCommanderMain {
             protection: protectionWatch(secrets: secrets, context: context, transport: transport),
             candidates: candidatesWatch(runtime: runtime, context: context, transport: transport),
             admin: runtime.adminTokens.map { AdminGitHub(tokens: $0, transport: transport) },
+            appKit: GitAppKitSource(setup: .init(directory: runtime.paths.appKit), runner: ProcessCommandRunner()),
             cleanup: runtime.cleanupService(context: context, log: log)
         )
         let pid = ProcessInfo.processInfo.processIdentifier
@@ -132,6 +133,10 @@ extension AskHubCommanderMain {
                 sources: runtime.workspace
             ),
             listing: ClaudeListingDrafter(
+                client: ClaudeClient(setup: runtime.claude, runner: ProcessCommandRunner()),
+                sources: runtime.workspace
+            ),
+            rejections: ClaudeRejectionTriager(
                 client: ClaudeClient(setup: runtime.claude, runner: ProcessCommandRunner()),
                 sources: runtime.workspace
             ),

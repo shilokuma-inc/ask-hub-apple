@@ -13,6 +13,10 @@ struct Submission: Identifiable, Hashable {
     var branch: String?
     /// release ブランチを作った（見つけた）時刻。まだ作っていなければ nil
     var branchCreatedAt: Date?
+    /// hotfix なら、直す配信中の版（release ブランチはそのタグから作る）
+    var hotfixFrom: String?
+    /// hotfix の間一時停止しているなら、その hotfix の版
+    var suspendedBy: String?
     /// develop の版を次に上げる PR
     var nextVersion: Release.NextVersion?
     /// release ブランチから上げたビルド
@@ -49,6 +53,16 @@ struct Submission: Identifiable, Hashable {
     var canRetakeScreenshots = false
     /// 審査に出すのを受け付けて、司令塔が App Store Connect に出し終えていない
     var isSubmitting = false
+    /// 審査で断られたときの対処（いちばん新しいもの）。断られていなければ nil
+    var rejection: Rejection?
+    /// 人がリジェクトの理由を貼るのを待っている
+    var awaitsRejectionReport = false
+    /// リジェクトの理由を貼れる（直し方を選ぶ前なら貼り直せる）
+    var canReportRejection = false
+    /// 人がリジェクトの直し方を選ぶのを待っている
+    var awaitsRejectionChoice = false
+    /// コードを直すを選び、直した後に上げたビルドを待っている
+    var awaitsFixedBuild = false
     /// この端末から送り、司令塔がまだ処理していない操作
     var sending: Action?
     /// この端末から送った操作を、司令塔が最後に断った理由
@@ -243,6 +257,8 @@ struct Submission: Identifiable, Hashable {
         case withdraw
         case abandon
         case retake
+        case reportRejection
+        case resolveRejection
 
         var label: String {
             switch self {
@@ -252,6 +268,8 @@ struct Submission: Identifiable, Hashable {
             case .withdraw: "審査の取り下げ"
             case .abandon: "やめる"
             case .retake: "スクショの撮り直し"
+            case .reportRejection: "リジェクトの理由"
+            case .resolveRejection: "リジェクトの直し方"
             }
         }
     }
@@ -261,7 +279,7 @@ struct Submission: Identifiable, Hashable {
 
     var isEnded: Bool { end != nil }
 
-    /// 審査で断られたプラットフォームがある（対処は App Store Connect で理由を確かめてから。段階 5 の 4 で AskHub から直せるようにする）
+    /// 審査で断られたプラットフォームがある（理由を貼ると、Claude が直し方の案を書く）
     var isRejected: Bool { review.contains { $0.state == .rejected } }
 
     /// 例: iOS (45)・macOS (46)
@@ -300,6 +318,7 @@ extension Submission {
         case nil: break
         }
         if let sending { return "\(sending.label)を送りました。受け付けるのを待っています" }
+        if let suspendedBy { return "hotfix \(suspendedBy) の間、一時停止しています（配信して取り込んだら、準備を作り直して再開します）" }
         if let step = steps.first(where: { $0.state == .problem || $0.state == .waitingHuman }) {
             return "\(step.title): \(step.detail)"
         }
@@ -313,12 +332,15 @@ extension Submission {
 
     private var branchStatus: StepStatus {
         let title = Step.branch.label
-        if let branch { return StepStatus(id: "branch", title: title, detail: "\(branch) を作りました", state: .done) }
+        if let branch {
+            let source = hotfixFrom.map { "v\($0) から " } ?? ""
+            return StepStatus(id: "branch", title: title, detail: "\(source)\(branch) を作りました", state: .done)
+        }
         if sending == .start {
             return StepStatus(id: "branch", title: title, detail: "リリースを始めるのを送りました", state: .working)
         }
         return problemStatus(.branch, id: "branch", title: title)
-            ?? StepStatus(id: "branch", title: title, detail: "develop の先頭から作ります", state: .working)
+            ?? StepStatus(id: "branch", title: title, detail: hotfixFrom.map { "v\($0) のタグから作ります" } ?? "develop の先頭から作ります", state: .working)
     }
 
     private var nextVersionStatus: StepStatus {
@@ -332,7 +354,8 @@ extension Submission {
             let pull = nextVersion.pullRequest.map { "PR #\($0) の" } ?? ""
             return StepStatus(id: "nextVersion", title: title, detail: "\(nextVersion.version) に上げる\(pull)チェックを待っています", state: .working)
         case .merged:
-            return StepStatus(id: "nextVersion", title: title, detail: "develop を \(nextVersion.version) に上げました", state: .done)
+            let target = hotfixFrom == nil ? "develop" : branch ?? "release ブランチ"
+            return StepStatus(id: "nextVersion", title: title, detail: "\(target) を \(nextVersion.version) に上げました", state: .done)
         case .skipped:
             return StepStatus(id: "nextVersion", title: title, detail: "develop はもう \(nextVersion.version) です", state: .done)
         }

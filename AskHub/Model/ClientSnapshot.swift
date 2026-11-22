@@ -105,6 +105,22 @@ extension ClientSnapshot {
         submissions.first { $0.id == id }
     }
 
+    /// hotfix の版（配信した版のうち最も新しいものの次のパッチ）。`version` が最も新しい配信した版でなければ nil
+    func hotfixVersion(of repositoryID: TargetRepository.ID, from version: String) -> String? {
+        guard let latest = releases(of: repositoryID).max(by: { Self.isOlder($0.version, $1.version) }), latest.version == version else {
+            return nil
+        }
+        var parts = version.split(separator: ".").compactMap { Int($0) }
+        while parts.count < 3 { parts.append(0) }
+        parts[2] += 1
+        return parts.prefix(3).map(String.init).joined(separator: ".")
+    }
+
+    /// 終わっていないリリース（hotfix を始めるときに一時停止する版）。無ければ nil
+    func openRelease(of repositoryID: TargetRepository.ID) -> Submission? {
+        submissions(of: repositoryID).first { !$0.isEnded }
+    }
+
     /// 「このリリースを直す」依頼を出せる、進行中のリリース（AskHub で始めて release ブランチを作った、終わっていない版）。無ければ nil
     func fixableRelease(of repositoryID: TargetRepository.ID) -> Submission? {
         submissions(of: repositoryID).filter(\.acceptsFixes).max { Self.isOlder($0.version, $1.version) }

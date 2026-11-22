@@ -48,7 +48,8 @@ extension DemoClientService {
         case .publishRelease, .updatePromotionalText:
             applyReleaseIntent(intent)
 
-        case .startRelease, .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease, .retakeScreenshots:
+        case .startRelease, .startHotfix, .submitForReview, .distributeRelease, .withdrawSubmission, .abandonRelease, .retakeScreenshots,
+             .reportRejection, .resolveRejection:
             applySubmissionIntent(intent)
 
         case .registerBundleId, .applyAppStoreSettings, .confirmAppStoreItem, .excludeFromAppStore:

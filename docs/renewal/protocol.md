@@ -47,6 +47,7 @@ repos/<owner>/<repo>/app-store.json                新しいアプリを App Sto
 macs/<mac>.json                                    ワーカーの生きている印（その Mac のワーカー）
 commander.json                                     司令塔の生きている印（司令塔）
 repo-candidates.json                               「対象に加える」の候補（司令塔）
+app-kit.json                                       共通リポジトリ app-kit の版と、版を広げる進み具合（司令塔）
 notifications.json                                 進行を止めるもの・止めないもの（実機確認）を知らせた記録（司令塔）
 devices/<device>.json                              通知の宛先（その端末のクライアント）
 keys/<seq>.json                                    公開鍵の追記の記録（クライアント。署名つき）
@@ -90,7 +91,7 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
   "repo": "shilokuma-inc/prime-pick-ios",
   "platform": "apple",
   "maxConcurrentEpics": 1,
-  "appKit": { "ref": "<共通リポジトリのコミット>" },
+  "appKit": { "ref": "<app-kit のコミット>", "version": "v1.0.0", "installedAt": "2026-11-23T10:00:00Z" },
   "protection": {
     "appliedAt": "2026-11-13T10:00:00Z",
     "requiredChecks": ["build / build"],
@@ -132,7 +133,10 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
 - `build.storeScreenshots` は App Store のスクショの撮り方（[release.md](release.md) の「スクショ」・[store-screenshots.md](store-screenshots.md)）。無ければ撮らない。`capture` で撮り方を分ける（無ければ `uiTest`。書き出すときはいつも書く）。`uiTest` は常時オンの Mac の司令塔が UI テストで撮る形で、ほかの欄は次のとおり。`test` は流す UI テスト（`-only-testing:` の値）、`environment` はテストに渡す決まった環境変数、`languageVariable`・`regionVariable` は言語・地域を渡す環境変数の名前（xcodebuild には `TEST_RUNNER_` を付けて渡す）、`languages` は App Store Connect の言語ごとのアプリの言語と地域（ここに無い言語は撮らない。`language` は、前に配信した版から文言が変わった言語（`.lproj`・String Catalog の言語）と結ぶのにも使う）、`baseLocale` は毎回撮る基準の言語（ほかの言語は、基準の言語で差が出たときか、文言が変わったときだけ撮る）、`displayTypes` は App Store Connect の表示サイズごとの撮る機種（上から順に、ある機種を使う）。表示サイズは App Asset Library の配置グループ（`IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE` など）で、値の一覧は App Store Connect のリファレンスデータにしか無いので、配信中の版にあって撮り方に無い表示サイズが記録の `skipped` に配置グループのまま出たら、その値で足す。テストが添付した画像（`XCTAttachment`）を添付した順に、1 枚目・2 枚目… とする
 - `build.storeScreenshots` の `capture` が `actions` なら、リポジトリの撮影のワークフロー（GitHub Actions）で撮る（[store-screenshots.md](store-screenshots.md)）。欄は `workflow`（`.github/workflows/` の下のファイル名。`app-store-screenshots.yml`）・`artifacts`（App Asset Library の配置グループごとの、artifact の表示サイズの名前。artifact は `screenshots-<名前>` で、中身は `<言語>/<名前>.png`。ワークフローの入力 `display_types` にも渡す）・`languages`（App Store Connect の言語ごとの、artifact のフォルダの言語 `language`。`region` は持たない）・`baseLocale`。例: `{ "capture": "actions", "workflow": "app-store-screenshots.yml", "artifacts": { "IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE": "APP_IPHONE_67" }, "languages": { "ja": { "language": "ja" }, "en-US": { "language": "en" } }, "baseLocale": "ja" }`
 - `maxConcurrentEpics` は 1 以上
-- `appKit` は、共通リポジトリのワークフローを入れる前は `null`。版のタグ・開いている PR・ずれなどの欄は、[app-kit.md](app-kit.md) の「状態リポジトリに書くもの」に沿って実装の PR で足す
+- `appKit`: 呼ぶ共通リポジトリ app-kit の版（[app-kit.md](app-kit.md)。Swift は `RepositoryFile.AppKit`）。入れる前は `null`。司令塔が、入れ替え（準備の PR）・版の上げの PR をマージしたときに書き、写すファイルのずれを点検して `drift` を書く
+  - `ref`: 呼ぶ版のコミット（40 桁。呼ぶ側の `uses:` の `@` の後ろと `app-kit-ref`）。`version`: 版のタグ（`v1.0.0`。タグの無いコミットを呼んでいれば `null`）。`installedAt`: 入れた時刻
+  - `drift`: 写すファイルが版の中身と違う・呼ぶ版が `ref` と違う・`.github/app-kit.json` の `project`・`scheme` がビルドの設定と合わない、などのずれ（`protection.drift` と同じ形）。ずれていなければ書かない
+  - 開いている版の上げの PR は、テンプレートと 1 か所にまとめるため、`app-kit.json` の `rollout.targets` に持つ（入れ替えの PR は `setup.workflows`）
 - 対象から外した（`removeRepository`）リポジトリの `repo.json` は消さず、外した印（外した時刻と意図。欄の名前と形は段階 4 の 4 で決めて、ここに書く）を付けて残す。印のあるリポジトリへの依頼・開始・ビルドの設定は断り、もう一度 `addRepository` すると印を外す（[operations.md](operations.md) の「対象から外す」）
 - `protection`: ブランチの保護（ルールセット `askhub-protect`。[operations.md](operations.md) の「保護の設定」）。司令塔が保護の設定（`applyProtection`）を処理して書き、掛けた後のずれを点検して `drift` を書く。まだ掛けていなければ `appliedAt` が無い
   - `requiredChecks`: 必須にしたチェックの名前（`applyProtection` の `requiredChecks`）。`rulesetId`: 掛けたルールセットの id
@@ -141,7 +145,10 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
 - `setup`: 対象に加えるときの GitHub 側の準備の結果（[operations.md](operations.md) の「対象に加えるときの GitHub 側の準備」）。司令塔が `addRepository` を処理したとき（加え直したときも）に、管理用のトークンで流して書く。まだ流していなければ `null`
   - `updatedAt`: 流した時刻。`problems`: 準備を止めた・できなかった理由（人が読む文。管理用のトークンが無い など）。無ければ `null`
   - `discussions`: `ready`（Discussions が有効でカテゴリ「Ideas」がある）・`missingCategory`（「Ideas」が無い。人が作る）・`unknown`（有効にできない・確かめられない）
-  - `workflows`: ワークフローを直す決まった手順の PR（`{ "state": "notNeeded" | "open" | "merged" | "closed", "pullRequest", "head", "changes": [{ "kind": "removeLegacy" | "removePathFilters", "path" }] }`）。`open` の PR は、人の `approveSetupPullRequest` でマージする
+  - `workflows`: ワークフローを直す決まった手順の PR（`{ "state": "notNeeded" | "open" | "merged" | "closed", "pullRequest", "head", "changes": [{ "kind", "path", "lines", "steps" }], "appKit" }`）。`open` の PR は、人の `approveSetupPullRequest` でマージする
+    - `changes[].kind`: `removeLegacy`（今の仕組みのワークフローを外す）・`removePathFilters`（待つチェックのワークフローの `paths`・`paths-ignore` を外す）・`adoptAppKit`（app-kit の写すファイルを版の中身にする・`.github/app-kit.json` を足す）・`removeReplaced`（app-kit に置き換わるファイルを外す）
+    - `changes[].lines`: 外すファイルの行の数。`changes[].steps`: 外すワークフローにしか無い手順の名前（app-kit の再利用ワークフローに同じ名前の手順が無いもの）。人が、消える手順を承認の前に確かめる
+    - `appKit`: app-kit に入れ替える PR の、入れる版（`version`・`ref`）と、名前が変わる待つチェック（`renamedChecks`: `[{ "from", "to" }]`）。`changes` に `adoptAppKit` があるときだけ書く。承認されたら、司令塔がマージの前にルールセットの必須のチェックとビルドの設定の `childChecks`・`finalChecks` を新しい名前に替え、マージしたら `repo.json` の `appKit` を書く
 - `build` は、ビルドの設定（段階 3）。人が設定を入れる意図（`configureRepository`）で書く（入れ方は [operations.md](operations.md) の「ビルドの設定の入れ方」）。形は `protocol/schemas/repository-build.schema.json`（Swift は `RepositoryFile.Build`）
   - `baseBranch`: 作業ブランチの元で、最終 PR の向き先。無ければ develop
   - `xcode`: ビルドとテストの設定（Swift は `AskHubProtocol` の `BuildSettings`）。`project`（`.xcodeproj` か `.xcworkspace` の、リポジトリの直下からの相対パス）・`generate`（ビルドの前にプロジェクトを作る道具。`"xcodegen"` なら、ワーカーが作業場所の直下で `xcodegen generate` を流す。無ければリポジトリにあるプロジェクトをそのまま使う）・`scheme`・`destinations`（`{ "platform": "iOS" | "visionOS", "deviceType", "osVersion" }` か `{ "platform": "macOS" }`。並べた順に流す）・`testLight`・`testFull`（`testPlan`・`onlyTesting`・`skipTesting`。無ければ全部）。`xcodebuild` の引数とパスに使うので、`-` で始まる値・制御文字・リポジトリの外を指すパスを受け付けない
@@ -467,6 +474,8 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
   "version": "1.4.0",
   "origin": "askhub",
   "start": { "approval": { "keyId": "…", "nonce": "…" }, "at": "…" },
+  "hotfix": null,
+  "suspension": null,
   "branch": { "name": "release/1.4.0", "commit": "<develop の先頭>", "created": true, "at": "…" },
   "nextVersion": { "version": "1.5.0", "state": "open", "pullRequest": 210, "at": "…" },
   "builds": [{ "platform": "iOS", "build": "45", "uploadedAt": "…" }],
@@ -478,6 +487,7 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
   "review": [{ "platform": "iOS", "state": "pendingDeveloperRelease", "since": "…", "submittedAt": "…" }],
   "distribution": { "approval": { … }, "at": "…", "doneAt": null },
   "withdrawal": null,
+  "rejections": null,
   "end": null,
   "integration": null,
   "appStoreVersions": [{ "platform": "iOS", "id": "<App Store Connect の版の id>", "build": "45", "whatsNew": true, "at": "…" }],
@@ -498,6 +508,9 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
 - `submit` は人が「審査に出す」を押した中身（出すビルド・人が確かめた What's New・配信の方式 `releaseType`・`scheduled` のときの `earliestReleaseDate`・人が確かめた掲載文の直し `listing`。`listing` は変える言語・欄だけで、無い欄は App Store Connect の文を残す。人が確かめた App Review の情報の直し `appReview`・人が確かめたスクショ `screenshots`）。司令塔が App Store Connect に出し終えると、そのプラットフォームの `review` に `submittedAt`（`submit.at` より後）が付く。取り下げを終えたら `submit` を消す（出し直せる）
 - `review` はプラットフォームごとの審査の状態（App Store Connect の `appVersionState` を `prepareForSubmission`・`waitingForReview`・`inReview`・`pendingDeveloperRelease`・`processingForDistribution`・`readyForDistribution`・`rejected`・`metadataRejected`・`developerRejected` などの camelCase にしたもの）。`since` は今の状態を読んだ時刻
 - `distribution`・`withdrawal` は人が押した「配信する」（`distributeRelease`）・「審査の取り下げ」（`withdrawSubmission`）。司令塔が App Store Connect に送ったら `doneAt` が付く
+- `hotfix` は配信中の版だけを直す hotfix の印（`from` は直す配信中の版、`suspended` は一時停止した進行中のリリースの版）。release ブランチは `from` のタグから作り、版を上げる PR（`nextVersion`）は develop ではなく release ブランチに出す（ブランチは `askhub/hotfix-version-<版>`）。What's New と掲載文の案は、直しを入れたビルドが上がってから、release ブランチの今の先頭で書く（ビルドが変わるたびに What's New を書き直す）。配信した後は main・develop・一時停止したリリースの release ブランチに取り込み、main 以外へは版の行を `from` に戻したブランチ（`askhub/hotfix-<版>-into-<取り込む先>`）から取り込む
+- `suspension` は hotfix の間の一時停止（`by` は hotfix の版、`approval` は hotfix を始めた人の意図、`resumedAt` は再開した時刻）。一時停止の間は準備を進めず、審査に出せない（審査中だったなら、hotfix を始めたときに取り下げを頼む）。hotfix が配信してこの release ブランチに取り込み終えた（かやめた）ら、release ブランチの今の先頭と時刻を `branch` に書き直し、ビルド・What's New・掲載文の案・App Store Connect の版の枠を作り直して再開する
+- `rejections` は審査で断られたときの対処（断られた「審査に出す」ごとに 1 つ。最後が今の対処。AskHub で始めた記録だけ）。`submittedAt` は断られた提出の `submit.at`、`platforms` は断られたプラットフォーム、`report` は人が貼った理由（`text`・`attachments`（依頼の添付と同じ形。中身は `attachments/<device>/<nonce>/<n>`）・`approval`・`at`）、`triage` は常時オンの Mac の Claude の直し方の案（`remedy`（`code`・`metadata`・`reply`）・`summary`・`plan`・`request`（このリリースを直す依頼の下書き）・`listing` と `appReview`（`current` は断られた版の今の文、`drafts`・`draft` は直す案）・`whatsNew`（直す What's New）・`reply`（App Review への返信の下書き）・`draftedAt`）、`failure` は案を書けなかった理由、`choice` は人が選んだ直し方（`remedy`・`approval`・`at`）。直し方を選んだら `submit` を消し、`whatsNew` の下書きを前に確かめた文（メタデータを直すなら案で置き換えたもの）に、`listing`・`appReview` を断られた版の今の文（メタデータを直すなら案付き）にして `revision` を上げる。コードを直すを選んだ後は、選んだ後に上げたビルドが見つかるまで `awaitsSubmission` にしない（`awaitsFixedBuild`）。[release.md](release.md) の「リジェクト」
 - `end` は終わりの印。`distributed`（配信を見つけた。後作業は `releases/<版>.json`）・`abandoned`（人がやめた。`approval` を持つ）・`superseded`（もっと新しい版を配信した）
 - `integration` は、配信した後に release ブランチを取り込んだ様子（取り込む先ごとに `base`・`state`・`pullRequest`・`at`）。取り込む先は base の develop と main。`state` は `open`（PR を開いている）・`merged`・`skipped`（取り込むコミットが無かった）・`created`（main が無かったので release ブランチの先頭から作った）。`end` が `distributed` の記録も、すべての取り込む先が終わるまで司令塔が進める
 - `appStoreVersions` は App Store Connect の版の枠（プラットフォームごと。`id` は版の id、`build` は枠に選んだビルドの番号、`whatsNew` は下書きを各言語に書いたか）。`startRelease` を受け付けたときに空の並びで作り、司令塔が作った・見つけた編集できる版を足す。`null` の記録（この仕組みの前に始めた版）には枠を作らない。やめた版は、まだ審査に出していない枠を消し、`removal`（`deleted`・`kept`）に結果を書く。`kept` なら `removalNote` に理由（人が App Store Connect で確かめる）
@@ -730,6 +743,44 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
 - 対象かどうかは書かない。クライアントが `repos/` と照らし合わせて、まだ対象でないもの（外したリポジトリと、加えると送ったものも除く）だけを、持ち主ごとに検索できる形で出す。加えるときは、ここに書かれた `owner/name` の書き方（GitHub の `full_name` の大文字小文字のまま）で送る
 - 互換の番号は上げない。前の版の司令塔は書かないので、クライアントは候補を出さず、owner/name を手で入れる形だけになる
 
+### app-kit.json（共通リポジトリ app-kit の版と、版を広げる進み具合）
+
+司令塔が、app-kit のタグを `git ls-remote --tags` で読んで版と変更点を書き、人の「広げる」（`rolloutAppKit`）を受けたら、試しの 1 本 → 残りの対象 → 入れ替え済みのテンプレートの順に、写すファイルを置き換える PR を出して進み具合を書く（[app-kit.md](app-kit.md) の「版を広げる」）。
+形は `protocol/schemas/state/app-kit.schema.json`（Swift は `AppKitFile`）。
+
+```json
+{
+  "v": 1,
+  "checkedAt": "2026-11-25T10:00:00Z",
+  "releases": [
+    { "version": "v1.1.0", "ref": "<コミット>", "changes": "- visionOS のスクショを撮れるようにした", "foundAt": "2026-11-25T10:00:00Z" },
+    { "version": "v1.0.0", "ref": "<コミット>", "changes": "最初の版。", "foundAt": "2026-11-22T15:00:00Z" }
+  ],
+  "adoption": { "version": "v1.0.0", "ref": "<コミット>" },
+  "rollout": {
+    "version": "v1.1.0", "ref": "<コミット>", "origin": { "keyId": "…", "nonce": "…" }, "state": "running",
+    "pilot": "tm-family/shinkeisuijaku-app-ios",
+    "targets": [
+      { "repo": "tm-family/shinkeisuijaku-app-ios", "kind": "repository", "state": "done", "pullRequest": 90, "head": "<コミット>", "updatedAt": "2026-11-25T11:00:00Z" },
+      { "repo": "tm-family/kobosu-app-ios", "kind": "repository", "state": "open", "pullRequest": 51, "head": "<コミット>", "updatedAt": "2026-11-25T11:05:00Z" }
+    ],
+    "startedAt": "2026-11-25T10:30:00Z", "updatedAt": "2026-11-25T11:05:00Z"
+  },
+  "templates": [
+    { "repo": "shilokuma-inc/template-app-ios", "appKit": { "ref": "<コミット>", "version": "v1.0.0", "installedAt": "2026-11-23T09:00:00Z" } },
+    { "repo": "shilokuma-vision/template-app-visionos", "appKit": null }
+  ]
+}
+```
+
+- `checkedAt`: 最後にタグを読んだ時刻（中身が変わったときだけ書き直す）。`problem`: 最後に読もうとして読めなかった理由。読めなかったときは、前に読めた版を残す
+- `releases`: 見つけた版（新しい順・30 個まで）。`ref` はタグが指すコミット、`changes` はそのタグの `CHANGELOG.md` の版の節（見出しの行は除く。10,000 文字で切る）
+- `adoption`: 対象に加えるとき・準備をやり直すときに入れる版。最後に広げ終わった版で、まだ広げていなければ、最初にタグを読んだときの一番新しい版
+- `rollout`: 広げている・最後に広げた版（`version`・`ref`・広げる人の意図 `origin`・試しの 1 本 `pilot`・`startedAt`・`updatedAt`）
+  - `state`: `running`（広げている）・`failed`（失敗して止めた。理由は `problem`。人が同じ版の `rolloutAppKit` でもう一度試すか、`stopAppKitRollout` でやめる）・`finished`（広げ終わった）・`stopped`（人がやめた）
+  - `targets`: PR を出した・出さなかった相手（出した順）。`kind` は `repository`（`repos/`）か `template`。`state` は `open`（PR を出して必須のチェックを待っている）・`verifying`（マージして develop の Build を待っている。試しの 1 本）・`done`（入れた。写すファイルがもう版の中身と同じで PR が要らなかったときも）・`failed`（止めた。PR は開いたまま）・`skipped`（出さなかった。major が違う・まだ入れ替えていない・準備の PR が開いている など）・`stopped`（人がやめたので PR を閉じた）。`failed`・`skipped` には `problem` を、`open`・`verifying` には `pullRequest`・`head` を、`verifying` には `mergeCommit`（マージしたコミット。その develop の Build を待つ）を必ず書く。`updatedAt` は様子が変わった時刻で、PR を出してからチェックが出るまでの時間もこれから測る
+- `templates`: テンプレート（`AppKitPolicy.templates`。テンプレートからの新規作成の一覧と同じ）に入っている版とずれ（`repo.json` の `appKit` と同じ形）。テンプレートは `repos/` に無いので、ここに持つ。初めての入れ替えは人が手で行い（2026-11-22 にユーザーが決めた）、司令塔は入れ替え済み（`appKit` がある）のテンプレートにだけ版を広げる
+
 ### devices/<device>.json（通知の宛先）
 
 ```json
@@ -864,14 +915,18 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `configureRepository` | リポジトリ（封筒の `repo`。対象に加えた後） | — | `build`（`repo.json` の `build` と同じ形。`payloads/configureRepository.schema.json`）。送るたびに `build` をまるごと置き換える。`build` の中の知らない欄も含めて、知らない欄があれば読まない |
 | `removeRepository` | リポジトリ（封筒の `repo`） | — | 空（`payloads/removeRepository.schema.json`）。終わっていない（`merged`・`abandoned` 以外の）epic があれば断る（理由に epic を出す。読めない epic があるときも、終わっているかを確かめられないので断る）。外したら `repo.json` に `removedAt` を付け、ファイルは消さない。GitHub 側（ルールセット・Discussions・ワークフロー）には触れない |
 | `applyProtection` | リポジトリ（封筒の `repo`。対象に加えた後） | — | `requiredChecks`（必須にするチェックの名前。1〜20 個・重ならない・空白だけの名前と制御文字（改行など）を含む名前は受け付けない。スキーマでは表せないので読む側が断る。`payloads/applyProtection.schema.json`）。司令塔が管理用のトークンで、ルールセット `askhub-protect` を掛けてから重なる保護を外し、`repo.json` の `protection` を書く。管理用のトークンが無い・private のリポジトリなどは理由を付けて断る |
+| `rolloutAppKit` | app-kit の版（`{ "type": "appKitRelease", "id": "<版のタグ>" }`。封筒の `repo` は書かない） | 人が見たときの版のコミット（`app-kit.json` の `releases[].ref`） | 空（`payloads/rolloutAppKit.schema.json`）。版ごとに 1 回。タグが今もこのコミットを指すときだけ受け付ける。`failed` の版に同じ版で送ると止めたところからやり直し、広げ終わった版に送ると、ずれたリポジトリに置き換える PR を出し直す |
+| `stopAppKitRollout` | —（`rolloutAppKit` と同じ） | —（同上） | 空（`payloads/stopAppKitRollout.schema.json`）。その版で開いている PR を閉じ、残りには出さない（マージ済みのものは戻さない。戻すときは前の版を広げる） |
 | `approveSetupPullRequest` | 準備の PR（`{ "type": "setupPullRequest", "id": "<PR の番号>" }`。封筒の `repo` が対象のリポジトリ） | 人が見たときの PR の head のコミット（`repo.json` の `setup.workflows.head`） | 空（`payloads/approveSetupPullRequest.schema.json`）。司令塔が出した開いた準備の PR で、head が変わっていないときだけ、管理用のトークンで merge commit にする |
 | `updatePromotionalText` | 配信した版（`{ "type": "release", "id": "<版>" }`） | なし | `texts`（書く文。`[{ "locale", "text" }]`。変える言語だけ。1 つ以上。170 文字まで。空の文字列は空にする。`payloads/updatePromotionalText.schema.json`）。配信中の版（記録のうち最も新しい版）で、司令塔が今の文を読んだもの・今の文にある言語だけ受け付ける。審査に出さずに、司令塔がすぐ App Store Connect に書く |
 | `publishGitHubRelease` | 配信した版（`{ "type": "release", "id": "<版>" }`） | 人が見たときのリリース文の版（`releases/<版>.json` の `notes.version`） | `notes`（公開する本文。下書きのままでも、直したものでもよい。20,000 文字まで。`payloads/publishGitHubRelease.schema.json`）。リリース文の下書きがあり、まだ公開していない版だけ受け付ける |
-| `startRelease` | リポジトリ（封筒の `repo`） | — | `version`（始める版。`payloads/startRelease.schema.json`）。対象のリポジトリで、終わっていないリリース（`submissions/` の `end` の無い記録）が無く、配信した版（`releases/`）より大きいときだけ受け付ける。やめた版は始め直せる |
+| `startRelease` | リポジトリ（封筒の `repo`） | — | `version`（始める版。`payloads/startRelease.schema.json`）。対象のリポジトリで、終わっていないリリース（`submissions/` の `end` の無い記録）が無く、配信した版（`releases/`）より大きいときだけ受け付ける。やめた版は始め直せる。`hotfix`（true）なら配信中の版だけを直す hotfix で、`version` は配信した版の次のパッチだけ受け付ける。進行中のリリースがあれば、`suspend` にその版（人が一時停止を確かめたもの）が要り、受け付けたら一時停止する（審査を待っている・審査中なら取り下げを頼む。審査に通った版は API で取り下げられないので断る） |
 | `submitForReview` | リリースを始めた版（`{ "type": "submission", "id": "<版>" }`） | 人が見たときの準備の版（`submissions/<版>.json` の `revision`） | `builds`（出すビルド。`[{ "platform", "build" }]`）、`whatsNew`（人が確かめた What's New。`[{ "locale", "text" }]`。下書きと同じ言語）、`releaseType`（`afterApproval`・`manual`・`scheduled`）、`earliestReleaseDate`（`scheduled` のときだけ）、`listing`（人が確かめた掲載文の直し。`[{ "locale", "description"?, "keywords"?, "promotionalText"? }]`。変える言語・欄だけ。言語は `listing.current` にあるものだけ。変えないなら送らない）、`appReview`（人が確かめた App Review の情報の直し。`{ "notes"?, "demoAccountRequired"?, "demoAccountName"? }`。変える欄だけ。パスワードは持たない。記録に `appReview` があるときだけ）、`screenshots`（人が確かめたスクショ。`{ "commit", "keep": [{ "displayType", "locale", "index" }] }`。`commit` は記録の `screenshots.commit`、`keep` は前のままにする差のある画面。スクショを変えないなら送らない。`payloads/submitForReview.schema.json`）。準備がそろい、まだ出していない版だけ受け付ける |
 | `distributeRelease` | リリースを始めた版 | —（版の今の状態に対してだけ意味を持つ） | 空（`payloads/distributeRelease.schema.json`）。審査に通って配信を待っている（`pendingDeveloperRelease`）版だけ。App Store Connect では取り消せない |
 | `withdrawSubmission` | リリースを始めた版 | —（同上） | 空（`payloads/withdrawSubmission.schema.json`）。審査を待っている・審査中の版だけ。取り下げた後は出し直せる |
 | `abandonRelease` | リリースを始めた版 | —（同上） | 空（`payloads/abandonRelease.schema.json`）。審査に出していない・取り下げた・断られた版だけ。記録に `end` を付ける。release ブランチは消さない。リリースを始めたときに作った App Store Connect の版の枠は、まだ審査に出していなければ司令塔が消す（消せなければ理由を記録して知らせる） |
+| `reportRejection` | リリースを始めた版 | —（同上） | `text`（App Store Connect で見た審査の文。10,000 文字まで）・`attachments`（画面の画像。依頼の添付と同じ形・同じ置き場所・同じ上限）。どちらかは要る（`payloads/reportRejection.schema.json`）。AskHub で出して断られた版で、その提出への直し方をまだ選んでいないときだけ受け付ける（選ぶ前なら貼り直せ、前の案は捨てる）。添付は大きさとハッシュを確かめてから、記録の `rejections` に写す |
+| `resolveRejection` | リリースを始めた版 | —（同上） | `remedy`（`code`・`metadata`・`reply`。`payloads/resolveRejection.schema.json`）。今の断られた提出に案（か書けなかった印）があり、まだ選んでいないときだけ受け付ける。コードを直すときの「このリリースを直す」依頼は、クライアントが別に `request`（`release` 付き）で送る |
 | `retakeScreenshots` | リリースを始めた版 | —（同上） | `displayTypes`（撮り直す表示サイズ。App Asset Library の配置グループ）・`locales`（撮り直す App Store Connect の言語）。どちらも省けばすべて（`payloads/retakeScreenshots.schema.json`）。審査に出していない・審査中でない版で、スクショを撮り始めていて、UI テストで撮っている途中でない・前の撮り直しを始める前でないときだけ受け付ける（決まりは `SubmissionFile.retakeProblem`）。記録の `screenshots.retake` に写し、見回りが今の release ブランチの先頭で撮り直す（[store-screenshots.md](store-screenshots.md) の「撮り直す」） |
 | `registerBundleId` | リポジトリ（封筒の `repo`） | — | `identifier`（登録する Bundle ID）、`platform`（`iOS`・`macOS`・`universal`。`payloads/registerBundleId.schema.json`）。`identifier` はリポジトリのビルドの設定にあるものだけ受け付ける。`app-store.json` の `bundleIdRequest` に写し、司令塔が App Store Connect に登録する |
 | `applyAppStoreSettings` | リポジトリ（封筒の `repo`） | — | 書く欄だけ: `contentRights`（`doesNotUseThirdPartyContent`・`usesThirdPartyContent`）、`primaryCategory`・`primarySubcategory`（App Store Connect のカテゴリの id）、`privacyPolicyUrl`（https）、`price`（`free`）、`availability`（`allTerritories`）、初めての版の `supportUrl`（https）・`marketingUrl`（https。任意で、`supportUrl` と一緒に送る）・`copyright`（権利を得た年と持ち主。200 文字まで・改行なし）・`reviewContact`（`copyFromOtherApp`。同じ鍵のほかのアプリの版から App Review の連絡先を写す。値は持たない）。`marketingUrl` のほかに 1 つ以上（`payloads/applyAppStoreSettings.schema.json`）。App Store Connect にアプリがあるときだけ受け付け、`settingsRequest` に写す。前の書き込みを送り終えていなければ断る |

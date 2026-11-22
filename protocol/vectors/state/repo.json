@@ -1843,6 +1843,560 @@
       "read": "malformed"
     },
     {
+      "name": "app-kit-installed",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "appKit": {
+          "ref": "0123456789abcdef0123456789abcdef01234567",
+          "version": "v1.0.0",
+          "installedAt": "2026-11-23T10:00:00Z",
+          "drift": {
+            "foundAt": "2026-11-23T16:00:00Z",
+            "problems": [
+              ".github/workflows/build.yml が app-kit v1.0.0 の中身と違う"
+            ]
+          }
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "app-kit-ref-only",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "appKit": {
+          "ref": "0123456789abcdef0123456789abcdef01234567",
+          "version": null,
+          "installedAt": null,
+          "drift": null
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "app-kit-ref-tag",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "appKit": {
+          "ref": "v1.0.0"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "app-kit-bad-version",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "appKit": {
+          "ref": "0123456789abcdef0123456789abcdef01234567",
+          "version": "1.0.0"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "app-kit-version-leading-zero",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "appKit": {
+          "ref": "0123456789abcdef0123456789abcdef01234567",
+          "version": "v1.01.0"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "app-kit-drift-without-problems",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "appKit": {
+          "ref": "0123456789abcdef0123456789abcdef01234567",
+          "drift": {
+            "foundAt": "2026-11-23T16:00:00Z",
+            "problems": []
+          }
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "setup-adopt-app-kit",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "setup": {
+          "updatedAt": "2026-11-23T10:00:00Z",
+          "discussions": "ready",
+          "workflows": {
+            "state": "open",
+            "pullRequest": 40,
+            "head": "89abcdef0123456789abcdef0123456789abcdef",
+            "changes": [
+              {
+                "kind": "adoptAppKit",
+                "path": ".github/app-kit.json"
+              },
+              {
+                "kind": "adoptAppKit",
+                "path": ".github/workflows/build.yml"
+              },
+              {
+                "kind": "removeReplaced",
+                "path": ".github/workflows/build-develop.yml",
+                "lines": 120,
+                "steps": [
+                  "Firebase の設定を書き出す"
+                ]
+              },
+              {
+                "kind": "removeReplaced",
+                "path": ".github/scripts/check-app-store-app.rb",
+                "lines": 61
+              }
+            ],
+            "appKit": {
+              "version": "v1.0.0",
+              "ref": "0123456789abcdef0123456789abcdef01234567",
+              "renamedChecks": [
+                {
+                  "from": "Build",
+                  "to": "build / build"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "setup-adopt-without-app-kit",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "setup": {
+          "updatedAt": "2026-11-23T10:00:00Z",
+          "discussions": "ready",
+          "workflows": {
+            "state": "open",
+            "pullRequest": 40,
+            "head": "89abcdef0123456789abcdef0123456789abcdef",
+            "changes": [
+              {
+                "kind": "adoptAppKit",
+                "path": ".github/app-kit.json"
+              },
+              {
+                "kind": "adoptAppKit",
+                "path": ".github/workflows/build.yml"
+              },
+              {
+                "kind": "removeReplaced",
+                "path": ".github/workflows/build-develop.yml",
+                "lines": 120,
+                "steps": [
+                  "Firebase の設定を書き出す"
+                ]
+              },
+              {
+                "kind": "removeReplaced",
+                "path": ".github/scripts/check-app-store-app.rb",
+                "lines": 61
+              }
+            ]
+          }
+        }
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "setup-app-kit-without-adopt",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "setup": {
+          "updatedAt": "2026-11-23T10:00:00Z",
+          "discussions": "ready",
+          "workflows": {
+            "state": "open",
+            "pullRequest": 40,
+            "head": "89abcdef0123456789abcdef0123456789abcdef",
+            "changes": [
+              {
+                "kind": "removeReplaced",
+                "path": ".github/workflows/build-develop.yml",
+                "lines": 120,
+                "steps": [
+                  "Firebase の設定を書き出す"
+                ]
+              },
+              {
+                "kind": "removeReplaced",
+                "path": ".github/scripts/check-app-store-app.rb",
+                "lines": 61
+              }
+            ],
+            "appKit": {
+              "version": "v1.0.0",
+              "ref": "0123456789abcdef0123456789abcdef01234567",
+              "renamedChecks": [
+                {
+                  "from": "Build",
+                  "to": "build / build"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "setup-renamed-to-same-name",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "setup": {
+          "updatedAt": "2026-11-23T10:00:00Z",
+          "discussions": "ready",
+          "workflows": {
+            "state": "open",
+            "pullRequest": 40,
+            "head": "89abcdef0123456789abcdef0123456789abcdef",
+            "changes": [
+              {
+                "kind": "adoptAppKit",
+                "path": ".github/app-kit.json"
+              },
+              {
+                "kind": "adoptAppKit",
+                "path": ".github/workflows/build.yml"
+              },
+              {
+                "kind": "removeReplaced",
+                "path": ".github/workflows/build-develop.yml",
+                "lines": 120,
+                "steps": [
+                  "Firebase の設定を書き出す"
+                ]
+              },
+              {
+                "kind": "removeReplaced",
+                "path": ".github/scripts/check-app-store-app.rb",
+                "lines": 61
+              }
+            ],
+            "appKit": {
+              "version": "v1.0.0",
+              "ref": "0123456789abcdef0123456789abcdef01234567",
+              "renamedChecks": [
+                {
+                  "from": "build / build",
+                  "to": "build / build"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "setup-renamed-twice",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "setup": {
+          "updatedAt": "2026-11-23T10:00:00Z",
+          "discussions": "ready",
+          "workflows": {
+            "state": "open",
+            "pullRequest": 40,
+            "head": "89abcdef0123456789abcdef0123456789abcdef",
+            "changes": [
+              {
+                "kind": "adoptAppKit",
+                "path": ".github/app-kit.json"
+              },
+              {
+                "kind": "adoptAppKit",
+                "path": ".github/workflows/build.yml"
+              },
+              {
+                "kind": "removeReplaced",
+                "path": ".github/workflows/build-develop.yml",
+                "lines": 120,
+                "steps": [
+                  "Firebase の設定を書き出す"
+                ]
+              },
+              {
+                "kind": "removeReplaced",
+                "path": ".github/scripts/check-app-store-app.rb",
+                "lines": 61
+              }
+            ],
+            "appKit": {
+              "version": "v1.0.0",
+              "ref": "0123456789abcdef0123456789abcdef01234567",
+              "renamedChecks": [
+                {
+                  "from": "Build",
+                  "to": "build / build"
+                },
+                {
+                  "from": "Build",
+                  "to": "lint"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "setup-empty-steps",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "setup": {
+          "updatedAt": "2026-11-23T10:00:00Z",
+          "discussions": "ready",
+          "workflows": {
+            "state": "open",
+            "pullRequest": 40,
+            "head": "89abcdef0123456789abcdef0123456789abcdef",
+            "changes": [
+              {
+                "kind": "adoptAppKit",
+                "path": ".github/app-kit.json"
+              },
+              {
+                "kind": "adoptAppKit",
+                "path": ".github/workflows/build.yml"
+              },
+              {
+                "kind": "removeReplaced",
+                "path": ".github/workflows/build-develop.yml",
+                "lines": 120,
+                "steps": []
+              },
+              {
+                "kind": "removeReplaced",
+                "path": ".github/scripts/check-app-store-app.rb",
+                "lines": 61
+              }
+            ],
+            "appKit": {
+              "version": "v1.0.0",
+              "ref": "0123456789abcdef0123456789abcdef01234567",
+              "renamedChecks": [
+                {
+                  "from": "Build",
+                  "to": "build / build"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "setup-negative-lines",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "setup": {
+          "updatedAt": "2026-11-23T10:00:00Z",
+          "discussions": "ready",
+          "workflows": {
+            "state": "open",
+            "pullRequest": 40,
+            "head": "89abcdef0123456789abcdef0123456789abcdef",
+            "changes": [
+              {
+                "kind": "adoptAppKit",
+                "path": ".github/app-kit.json"
+              },
+              {
+                "kind": "adoptAppKit",
+                "path": ".github/workflows/build.yml"
+              },
+              {
+                "kind": "removeReplaced",
+                "path": ".github/workflows/build-develop.yml",
+                "lines": -1,
+                "steps": [
+                  "Firebase の設定を書き出す"
+                ]
+              },
+              {
+                "kind": "removeReplaced",
+                "path": ".github/scripts/check-app-store-app.rb",
+                "lines": 61
+              }
+            ],
+            "appKit": {
+              "version": "v1.0.0",
+              "ref": "0123456789abcdef0123456789abcdef01234567",
+              "renamedChecks": [
+                {
+                  "from": "Build",
+                  "to": "build / build"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "setup-unknown-change-kind",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "setup": {
+          "updatedAt": "2026-11-23T10:00:00Z",
+          "discussions": "ready",
+          "workflows": {
+            "state": "open",
+            "pullRequest": 40,
+            "head": "89abcdef0123456789abcdef0123456789abcdef",
+            "changes": [
+              {
+                "kind": "addAppKit",
+                "path": ".github/app-kit.json"
+              },
+              {
+                "kind": "adoptAppKit",
+                "path": ".github/workflows/build.yml"
+              },
+              {
+                "kind": "removeReplaced",
+                "path": ".github/workflows/build-develop.yml",
+                "lines": 120,
+                "steps": [
+                  "Firebase の設定を書き出す"
+                ]
+              },
+              {
+                "kind": "removeReplaced",
+                "path": ".github/scripts/check-app-store-app.rb",
+                "lines": 61
+              }
+            ],
+            "appKit": {
+              "version": "v1.0.0",
+              "ref": "0123456789abcdef0123456789abcdef01234567",
+              "renamedChecks": [
+                {
+                  "from": "Build",
+                  "to": "build / build"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "app-kit-version-trailing-newline",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "appKit": {
+          "ref": "0123456789abcdef0123456789abcdef01234567",
+          "version": "v1.0.0\n"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
       "name": "secrets-key",
       "value": {
         "v": 1,

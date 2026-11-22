@@ -22,6 +22,12 @@ extension EpicIntentsTests {
         },
         Kind(vectors: "payloads/retakeScreenshots.json", kind: "retakeScreenshots", target: submissionTarget, targetVersion: nil) {
             try RetakeScreenshotsIntent(envelope: $0).payload
+        },
+        Kind(vectors: "payloads/reportRejection.json", kind: "reportRejection", target: submissionTarget, targetVersion: nil) {
+            try ReportRejectionIntent(envelope: $0).payload
+        },
+        Kind(vectors: "payloads/resolveRejection.json", kind: "resolveRejection", target: submissionTarget, targetVersion: nil) {
+            try ResolveRejectionIntent(envelope: $0).payload
         }
     ]
 }

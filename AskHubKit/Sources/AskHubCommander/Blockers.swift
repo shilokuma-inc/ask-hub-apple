@@ -33,6 +33,10 @@ public struct Blocker: Equatable, Sendable {
         case submissionProblem(SubmissionFile.Step)
         /// 審査の状態が変わった（審査中・承認・リジェクト）。人を止めないものもあるが、知らせる
         case reviewState(AppStorePlatform, AppStoreVersionState)
+        /// AskHub で出した版が審査で断られ、人が理由を貼るのを待っている（貼ると Claude が直し方の案を書く）
+        case rejected(AppStorePlatform)
+        /// リジェクトの直し方の案ができた（`failed` なら書けなかった）。人が直し方を選ぶのを待っている
+        case rejectionTriaged(failed: Bool)
         /// リリースを始めた版を配信した
         case submissionDistributed
         /// やめたリリースの版の枠を、App Store Connect から消せなかった
@@ -231,6 +235,10 @@ extension Blocker {
         // ビルドか What's New が変わったら（revision が上がったら）知らせ直す
         if submission.awaitsSubmission {
             blockers.append(Blocker(key: "\(base)/ready/\(submission.revision)", scope: scope, reason: .submissionReady))
+        }
+        if submission.awaitsRejectionChoice, let rejection = submission.rejection {
+            let key = "\(base)/rejection/\(rejection.report.at.rawValue)/triaged"
+            blockers.append(Blocker(key: key, scope: scope, reason: .rejectionTriaged(failed: rejection.triage == nil)))
         }
         if let problem = submission.problem, problem.needsHuman {
             let key = "\(base)/problem/\(problem.step.rawValue)/\(problem.at.rawValue)"

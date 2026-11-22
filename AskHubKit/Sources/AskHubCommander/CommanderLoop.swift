@@ -147,6 +147,7 @@ public actor CommanderLoop {
         protection: ProtectionWatch? = nil,
         candidates: RepositoryCandidatesWatch? = nil,
         admin: AdminGitHub? = nil,
+        appKit: (any AppKitSource)? = nil,
         cleanup: CleanupService? = nil
     ) {
         self.context = context
@@ -168,7 +169,7 @@ public actor CommanderLoop {
         self.releases = releases
         self.protection = protection
         self.candidates = candidates
-        handlers = Self.handlers(admin: admin)
+        handlers = Self.handlers(admin: admin, appKit: appKit)
         self.cleanup = cleanup
         let kinds = Self.claudeKinds.union(epicWorkspace == nil ? [] : [.prepareWorkspace]).union(taskRunners.keys)
         slots = JobSlots(mac: context.mac, capacity: settings.capacity, kinds: kinds, log: log)
@@ -296,6 +297,7 @@ public actor CommanderLoop {
     /// 受け付けたら、生きている印を待たずにリリースの見回りを起こす種類（release ブランチを作る・App Store Connect に出すなど）
     static let releaseKinds: Set<String> = [
         "startRelease", "submitForReview", "distributeRelease", "withdrawSubmission", "updatePromotionalText", "retakeScreenshots",
+        "reportRejection", "resolveRejection",
         "registerBundleId", "applyAppStoreSettings", "confirmAppStoreItem", "excludeFromAppStore"
     ]
 

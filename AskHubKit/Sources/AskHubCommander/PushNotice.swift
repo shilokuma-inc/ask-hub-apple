@@ -193,6 +193,10 @@ public struct PushNotice: Equatable, Sendable {
         case .submissionReady: "審査に出す準備ができました。What's New とビルドを確かめて、審査に出してください"
         case let .submissionProblem(step): "リリース（\(step.label)）が止まっています。確かめてください"
         case let .reviewState(platform, state): reviewLine(platform, state)
+        case let .rejected(platform):
+            "\(platform.rawValue) が審査で断られました（リジェクト）。App Store Connect で理由を見て、AskHub に貼ってください。直し方の案を書きます"
+        case let .rejectionTriaged(failed):
+            failed ? "リジェクトの直し方の案を書けませんでした。理由を読んで、直し方を選んでください" : "リジェクトの直し方の案ができました。確かめて、直し方を選んでください"
         case .submissionDistributed: "App Store で配信しました"
         case let .slotKept(platform):
             "やめたリリースの \(platform.rawValue) の版を、App Store Connect から消せませんでした。App Store Connect で確かめてください"

@@ -51,12 +51,32 @@ public struct ProtectionDrift: Codable, Equatable, Sendable {
 public struct RepositoryFile: StateFile {
     public static let formatVersion = 1
 
+    /// 呼ぶ共通リポジトリ app-kit の版（`docs/renewal/app-kit.md`）。司令塔が、入れ替え・版の上げの PR をマージしたときに書き、
+    /// 写すファイルのずれ（`drift`）を定期的に点検して書く
     public struct AppKit: Codable, Equatable, Sendable {
-        /// 呼ぶ共通リポジトリの版（固定したコミットか、保護したタグ）
+        /// 呼ぶ版のコミット（40 桁。呼ぶ側の `uses:` の `@` の後ろと `app-kit-ref`）
         public var ref: String
+        /// 版のタグ（`v1.0.0`）。分からなければ nil（タグの無いコミットを呼んでいる）
+        public var version: AppKitVersion?
+        /// 入れた時刻（入れ替え・版の上げの PR をマージした時刻）。分からなければ nil
+        public var installedAt: Timestamp?
+        /// 写すファイル・呼ぶ版・`.github/app-kit.json` のずれ（`protection.drift` と同じ形）。ずれていない・まだ確かめていなければ nil
+        public var drift: ProtectionDrift?
 
-        public init(ref: String) {
+        public init(ref: String, version: AppKitVersion? = nil, installedAt: Timestamp? = nil, drift: ProtectionDrift? = nil) {
             self.ref = ref
+            self.version = version
+            self.installedAt = installedAt
+            self.drift = drift
+        }
+
+        var problems: [String] {
+            var problems: [String] = []
+            if !AttemptFile.isCommitSHA(ref) { problems.append("appKit.ref はコミット（40 桁）") }
+            if let drift, drift.problems.isEmpty || drift.problems.contains(where: { $0.isEmpty || $0.unicodeScalars.count > 500 }) {
+                problems.append("appKit.drift.problems は 1 つ以上で、空でなく 500 文字まで")
+            }
+            return problems
         }
     }
 
@@ -141,7 +161,7 @@ public struct RepositoryFile: StateFile {
     public var platform: RepositoryPlatform
     /// 同時に回す epic の上限（最初の版は 1）
     public var maxConcurrentEpics: Int
-    /// 共通リポジトリのワークフローを入れる前は nil
+    /// 共通リポジトリ app-kit のワークフローを入れる前は nil
     public var appKit: AppKit?
     public var protection: Protection
     /// ビルドの設定。人が入れる前は nil（開始を断る）
@@ -186,7 +206,7 @@ public struct RepositoryFile: StateFile {
     public var violations: [String] {
         var violations: [String] = []
         if maxConcurrentEpics < 1 { violations.append("maxConcurrentEpics は 1 以上") }
-        if let appKit, appKit.ref.isEmpty { violations.append("appKit.ref が空") }
+        violations += appKit?.problems ?? []
         violations += build?.problems ?? []
         violations += icon?.problems ?? []
         violations += protection.problems

@@ -38,17 +38,29 @@ public struct SubmissionTarget: Equatable, Sendable {
 }
 
 /// リリースを始める人の意図（`kind` が `startRelease`）。封筒の `repo` が対象のリポジトリで、`target`・`targetVersion` は持たない。
-/// `version` は始める版（既定は前に配信した版の次のマイナー）。司令塔が release ブランチを作り、準備を進める
+/// `version` は始める版（既定は前に配信した版の次のマイナー）。司令塔が release ブランチを作り、準備を進める。
+/// `hotfix` なら配信中の版だけを直す hotfix（版は配信中の版の次のパッチ。release ブランチは配信中の版のタグから作り、develop に触れない）。
+/// `suspend` は、hotfix の間一時停止する進行中のリリースの版（人が確かめたもの。進行中のリリースがあるときは要る）
 public struct StartReleaseIntent: Equatable, Sendable {
     public static let kind = "startRelease"
 
     public var repo: RepositoryFullName
     public var version: MarketingVersion
+    public var hotfix: Bool
+    public var suspend: MarketingVersion?
     public var intent: IntentReference
 
-    public init(repo: RepositoryFullName, version: MarketingVersion, intent: IntentReference) {
+    public init(
+        repo: RepositoryFullName,
+        version: MarketingVersion,
+        hotfix: Bool = false,
+        suspend: MarketingVersion? = nil,
+        intent: IntentReference
+    ) {
         self.repo = repo
         self.version = version
+        self.hotfix = hotfix
+        self.suspend = suspend
         self.intent = intent
     }
 
@@ -56,14 +68,34 @@ public struct StartReleaseIntent: Equatable, Sendable {
         guard envelope.kind == Self.kind else { throw .init(detail: "kind が startRelease でない") }
         guard let repo = envelope.repo else { throw .init(detail: "repo が無い") }
         guard envelope.target == nil, envelope.targetVersion == nil else { throw .init(detail: "リリースを始める意図に target か targetVersion がある") }
-        let reader = try PayloadReader(envelope.payload, allowed: ["version"])
+        let reader = try PayloadReader(envelope.payload, allowed: ["version", "hotfix", "suspend"])
         guard let version = MarketingVersion(rawValue: try reader.text("version", required: true, limit: 32)) else {
             throw .init(detail: "version が版の番号の形でない")
         }
-        self.init(repo: repo, version: version, intent: IntentReference(keyId: envelope.keyId, nonce: envelope.nonce))
+        var hotfix = false
+        switch reader.payload["hotfix"] {
+        case nil: break
+        case .bool(true)?: hotfix = true
+        default: throw .init(detail: "hotfix は true だけ（hotfix でなければ書かない）")
+        }
+        var suspend: MarketingVersion?
+        if reader.payload["suspend"] != nil {
+            guard hotfix else { throw .init(detail: "suspend は hotfix のときだけ") }
+            guard let version = MarketingVersion(rawValue: try reader.text("suspend", required: true, limit: 32)) else {
+                throw .init(detail: "suspend が版の番号の形でない")
+            }
+            suspend = version
+        }
+        let intent = IntentReference(keyId: envelope.keyId, nonce: envelope.nonce)
+        self.init(repo: repo, version: version, hotfix: hotfix, suspend: suspend, intent: intent)
     }
 
-    public var payload: [String: JSONValue] { ["version": .string(version.rawValue)] }
+    public var payload: [String: JSONValue] {
+        var payload: [String: JSONValue] = ["version": .string(version.rawValue)]
+        if hotfix { payload["hotfix"] = .bool(true) }
+        if let suspend { payload["suspend"] = .string(suspend.rawValue) }
+        return payload
+    }
 }
 
 /// 審査に出す人の意図（`kind` が `submitForReview`）。`targetVersion` は人が見たときの準備の版（`revision`）。

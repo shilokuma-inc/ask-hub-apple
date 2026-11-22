@@ -10,6 +10,8 @@ public enum StatePath {
     public static let notifications = "notifications.json"
     /// 「対象に加える」の候補（司令塔）
     public static let repositoryCandidates = "repo-candidates.json"
+    /// 共通リポジトリ app-kit の版と、版を広げる進み具合（司令塔）
+    public static let appKit = "app-kit.json"
 
     /// 対象のリポジトリを置くディレクトリ（`repos/<owner>/<repo>/`）
     public static let repositories = "repos"

@@ -16,7 +16,10 @@ struct BuilderTests {
         let items = InboxBuilder.items(from: snapshot, now: now)
         let blocking = Set(items.filter { $0.urgency == .blocking }.map(\.kind))
         let whenFree = Set(items.filter { $0.urgency == .whenFree }.map(\.kind))
-        #expect(blocking == [.questions, .goal, .humanTask, .blocker, .macOffline, .releaseNotes, .submissionReady, .appStoreSetup])
+        // 習慣ログの 1.4.0 は審査で断られ、直し方を選ぶのを待っている
+        #expect(blocking == [
+            .questions, .goal, .humanTask, .blocker, .macOffline, .releaseNotes, .submissionReady, .submissionRejected, .appStoreSetup
+        ])
         #expect(whenFree == [.finalReview, .verification, .cleanup, .token, .claudeVersion, .repositorySetup])
     }
 

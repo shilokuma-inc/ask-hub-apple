@@ -88,6 +88,8 @@ extension StateSnapshotBuilder {
         return switch change.kind {
         case .removeLegacy: "\(name) を外す"
         case .removePathFilters: "\(name) の paths を外す"
+        case .adoptAppKit: "\(name) を app-kit にする"
+        case .removeReplaced: "\(name) を外す（app-kit に置き換わる）"
         }
     }
 }

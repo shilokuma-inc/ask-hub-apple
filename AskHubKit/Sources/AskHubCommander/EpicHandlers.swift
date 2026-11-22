@@ -28,7 +28,7 @@ public struct RequestHandler: IntentHandler {
             }
         }
         // 添付は確かめること（protocol.md の 3）なので、合わなければ記録を作らずに残す（置き直せば次の周で受け付ける）
-        if let problem = try await attachmentProblem(of: request, in: context) { return .ignore(problem) }
+        if let problem = try await Self.attachmentProblem(request.attachments, of: request.intent, in: context) { return .ignore(problem) }
         let epic = EpicFile(
             id: Self.epicID(for: request.intent),
             repo: request.repo,
@@ -72,10 +72,14 @@ public struct RequestHandler: IntentHandler {
         RequestIntent.epicID(for: intent)
     }
 
-    /// 添付は、依頼の意図より先に置く。置いた中身の大きさとハッシュが、署名した封筒と合うかを確かめる
-    private func attachmentProblem(of request: RequestIntent, in context: CommanderContext) async throws(CommanderError) -> String? {
-        for attachment in request.attachments {
-            let path = StatePath.attachment(device: request.intent.keyId, nonce: request.intent.nonce, number: attachment.number)
+    /// 添付は、意図より先に置く。置いた中身の大きさとハッシュが、署名した封筒と合うかを確かめる（依頼・リジェクトの理由）
+    static func attachmentProblem(
+        _ attachments: [RequestAttachment],
+        of intent: IntentReference,
+        in context: CommanderContext
+    ) async throws(CommanderError) -> String? {
+        for attachment in attachments {
+            let path = StatePath.attachment(device: intent.keyId, nonce: intent.nonce, number: attachment.number)
             let blob: StoredBlob?
             do {
                 blob = try await context.store.read(path)
@@ -310,9 +314,12 @@ public struct DecideSplitHandler: IntentHandler {
 public struct AddRepositoryHandler: IntentHandler {
     /// GitHub 側の準備に使う管理用のトークン。nil（ワーカー・テスト）なら準備を流さない
     public var admin: AdminGitHub?
+    /// app-kit を読む部品。nil なら、準備に app-kit への入れ替えを足さない
+    public var appKit: (any AppKitSource)?
 
-    public init(admin: AdminGitHub? = nil) {
+    public init(admin: AdminGitHub? = nil, appKit: (any AppKitSource)? = nil) {
         self.admin = admin
+        self.appKit = appKit
     }
 
     public func handle(_ envelope: IntentEnvelope, in context: CommanderContext) async throws(CommanderError) -> IntentDecision {
@@ -342,7 +349,7 @@ public struct AddRepositoryHandler: IntentHandler {
             throw .files(error)
         }
         // 加え直したとき（準備をやり直す）も流す。準備が止まっても、加えるのは受け付ける
-        if let admin { try await RepositorySetupStep(admin: admin).run(for: add.repo, in: context) }
+        if let admin { try await RepositorySetupStep(admin: admin, appKit: appKit).run(for: add.repo, in: context) }
         return .accept
     }
 }

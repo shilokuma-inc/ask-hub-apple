@@ -32,7 +32,8 @@ struct StateFileKind: Sendable, CustomTestStringConvertible {
         .of(VerificationsFile.self, "verifications"),
         .of(CleanupRequestsFile.self, "cleanup-requests"),
         .of(CleanupCandidatesFile.self, "cleanup-candidates"),
-        .of(RepositoryCandidatesFile.self, "repo-candidates")
+        .of(RepositoryCandidatesFile.self, "repo-candidates"),
+        .of(AppKitFile.self, "app-kit")
     ]
 
     static func of<File: StateFile>(_ type: File.Type, _ name: String) -> Self {

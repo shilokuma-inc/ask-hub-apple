@@ -23,6 +23,7 @@ extension StateSnapshotBuilder {
             index.submissions[submission.id] = Self.entry(file, idle: pending.isEmpty)
             if !file.isEnded, pending.allSatisfy({ $0.kind != AbandonReleaseIntent.kind }) {
                 index.releasingRepositories.insert(submission.repositoryID)
+                index.openReleases[submission.repositoryID, default: []].append((file.version, file.hotfix != nil))
             }
             submissions.append(submission)
         }
@@ -68,7 +69,9 @@ extension StateSnapshotBuilder {
             canDistribute: file.awaitsDistribution && idle,
             canWithdraw: file.canWithdraw && idle,
             canAbandon: file.canAbandon && idle,
-            canRetakeScreenshots: file.retakeProblem == nil && idle
+            canRetakeScreenshots: file.retakeProblem == nil && idle,
+            canReportRejection: file.canReportRejection && idle,
+            canResolveRejection: file.awaitsRejectionChoice && idle
         )
     }
 
@@ -106,6 +109,8 @@ extension StateSnapshotBuilder {
             updatedAt: file.updatedAt.date
         )
         submission.branchCreatedAt = file.branch?.at.date
+        submission.hotfixFrom = file.hotfix?.from.rawValue
+        submission.suspendedBy = file.isSuspended ? file.suspension?.by.rawValue : nil
         submission.submitted = file.submit.map(submitted)
         submission.slots = file.appStoreVersions.map { $0.map(slot) }
         submission.screenshots = file.screenshots.map(storeScreenshots)
@@ -115,7 +120,57 @@ extension StateSnapshotBuilder {
         submission.canAbandon = file.canAbandon
         submission.canRetakeScreenshots = file.retakeProblem == nil
         submission.isSubmitting = file.isSubmitting
+        submission.rejection = file.rejection.map(rejection)
+        submission.awaitsRejectionReport = file.awaitsRejectionReport
+        submission.canReportRejection = file.canReportRejection
+        submission.awaitsRejectionChoice = file.awaitsRejectionChoice
+        submission.awaitsFixedBuild = file.awaitsFixedBuild
         return submission
+    }
+
+    /// リジェクトの対処。画像は、貼った端末の鍵と意図の nonce で決まる状態リポジトリのパスで読む
+    static func rejection(_ rejection: SubmissionFile.Rejection) -> Submission.Rejection {
+        let report = rejection.report
+        return Submission.Rejection(
+            platforms: rejection.platforms.map(\.rawValue),
+            text: report.text,
+            images: report.attachments.map { attachment in
+                let path = StatePath.attachment(device: report.approval.keyId, nonce: report.approval.nonce, number: attachment.number)
+                return Submission.RejectionImage(path: path, name: attachment.name)
+            },
+            reportedAt: report.at.date,
+            triage: rejection.triage.map { triage in
+                Submission.RejectionTriage(
+                    remedy: Submission.Remedy(rawValue: triage.remedy.rawValue) ?? .code,
+                    summary: triage.summary,
+                    plan: triage.plan,
+                    requestTitle: triage.request?.title,
+                    requestBody: triage.request?.body,
+                    reply: triage.reply,
+                    metadataChanges: metadataChanges(triage)
+                )
+            },
+            failure: rejection.failure,
+            choice: rejection.choice.flatMap { Submission.Remedy(rawValue: $0.remedy.rawValue) }
+        )
+    }
+
+    /// メタデータを直す案のある欄（例: 説明文（ja））
+    private static func metadataChanges(_ triage: SubmissionFile.RejectionTriage) -> [String] {
+        var changes: [String] = []
+        for draft in triage.listing?.drafts ?? [] {
+            for field in ListingText.Field.allCases where draft[field] != nil {
+                let name = switch field {
+                case .description: "説明文"
+                case .keywords: "キーワード"
+                case .promotionalText: "プロモーションテキスト"
+                }
+                changes.append("\(name)（\(draft.locale)）")
+            }
+        }
+        changes += (triage.whatsNew ?? []).map { "What's New（\($0.locale)）" }
+        if triage.appReview?.draft != nil { changes.append("App Review の情報") }
+        return changes
     }
 
     /// 人が審査に出した中身
@@ -226,6 +281,8 @@ extension StateSnapshotBuilder {
         case WithdrawSubmissionIntent.kind: .withdraw
         case AbandonReleaseIntent.kind: .abandon
         case RetakeScreenshotsIntent.kind: .retake
+        case ReportRejectionIntent.kind: .reportRejection
+        case ResolveRejectionIntent.kind: .resolveRejection
         default: nil
         }
     }

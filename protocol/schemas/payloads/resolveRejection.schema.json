@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/resolveRejection.schema.json",
+  "title": "リジェクトの直し方を選ぶ人の意図（kind が resolveRejection）の payload",
+  "description": "封筒の target は {type: submission, id: <版>}。targetVersion は書かない。remedy は code（このリリースを直す依頼にする）・metadata（掲載文などだけ直す）・reply（返信だけで済む）。知らない欄のある payload は読まない",
+  "type": "object",
+  "required": [
+    "remedy"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "remedy": {
+      "enum": [
+        "code",
+        "metadata",
+        "reply"
+      ]
+    }
+  }
+}
