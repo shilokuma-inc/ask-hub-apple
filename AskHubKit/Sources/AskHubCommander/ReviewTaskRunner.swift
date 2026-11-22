@@ -9,7 +9,8 @@ import Foundation
 /// 2. 通ったら、読むだけのレビュー役の Claude が差分を読み、必須の指摘を返す。あれば `fixReview`
 /// 3. 無ければ、見た head を固定して merge commit でマージし、子ブランチを消して `merged`
 ///
-/// 待つ間・レビューの間に push された変更はマージしない（`input.head` を固定する）
+/// 待つ間・レビューの間に push された変更はマージしない（`input.head` を固定する）。
+/// 人がタスクを飛ばした後は、マージしない（時間切れとされた元の試行が続いていても、マージの直前にゴールを読み直して止める）
 public struct ReviewTaskRunner: JobRunning {
     public var environment: TaskJobEnvironment
     public var timing: ReviewTiming
@@ -55,6 +56,7 @@ public struct ReviewTaskRunner: JobRunning {
             try await pulls.pullRequest(number: input.pullRequest)
         }
         try Self.check(current, against: input, branches: target.branches, keeping: JobResult(claude: claude))
+        try await checkNotSkipped(job, keeping: JobResult(claude: claude))
         let merge = try await environment.github("子 PR をマージする", keeping: JobResult(claude: claude)) { () throws(PullRequestError) in
             try await pulls.merge(number: input.pullRequest, headSHA: input.head, commitTitle: nil, commitMessage: nil)
         }
@@ -144,7 +146,16 @@ public struct ReviewTaskRunner: JobRunning {
         }
     }
 
-    /// マージした子 PR の子ブランチを消して、`merged` で終える。消す前に子ブランチへ push されていたら、消さずに残す
+    /// 人がタスクを飛ばしていたら、マージせずに試行の失敗として終える（飛ばしたタスクの子 PR は、最終 PR を出すときに閉じる）
+    private func checkNotSkipped(_ job: JobFile, keeping partial: JobResult) async throws(TaskJobExit) {
+        guard let task = job.task else { return }
+        let goal = try await environment.read(GoalFile.self, at: StatePath.goal(job.repo, job.epic))
+        guard goal?.tasks.first(where: { $0.id == task })?.state == .skipped else { return }
+        throw .fail(.unexpected, "タスク \(task) は人が飛ばしたので、子 PR をマージしない", keeping: partial)
+    }
+
+    /// マージした子 PR の子ブランチを消して、`merged` で終える。消す前に子ブランチへ push されていたら、消さずに残す。
+    /// 消せずに試行の失敗とするときも、マージしたことを `outputs` に残す（司令塔は、マージした子 PR のタスクを飛ばさせない）
     private func merged(
         _ input: PullRequestInput,
         sha: String?,
@@ -152,18 +163,17 @@ public struct ReviewTaskRunner: JobRunning {
         pulls: any PullRequestOperations,
         claude: AttemptFile.Claude?
     ) async throws(TaskJobExit) -> JobResult {
+        let commit = sha ?? input.head
+        let outputs = AttemptFile.Outputs(pullRequest: input.pullRequest, commit: commit, branch: target.branches.task, verdict: .merged)
         do {
             _ = try await pulls.deleteBranch(target.branches.task, expectedSHA: input.head)
         } catch .headChanged {
             // マージは済んでいる。マージの後に push されたものは失わないよう、子ブランチは消さずに残す（要らなければ人が GitHub で消す）
         } catch {
-            throw .finish(JobResult(failure: error.attemptFailure(doing: "マージした子ブランチを消す", now: environment.context.now()), claude: claude))
+            let failure = error.attemptFailure(doing: "マージした子ブランチを消す", now: environment.context.now())
+            throw .finish(JobResult(failure: failure, outputs: outputs, claude: claude))
         }
-        let commit = sha ?? input.head
-        return JobResult(
-            outputs: AttemptFile.Outputs(pullRequest: input.pullRequest, commit: commit, branch: target.branches.task, verdict: .merged),
-            claude: claude
-        )
+        return JobResult(outputs: outputs, claude: claude)
     }
 }
 

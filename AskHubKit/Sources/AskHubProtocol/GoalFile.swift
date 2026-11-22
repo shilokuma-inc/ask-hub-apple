@@ -194,6 +194,12 @@ public struct GoalFile: StateFile {
         self.comment = comment
     }
 
+    /// `task` を飛ばすと、すべてのタスクが済み、実装した（`done` の）タスクが 1 つも無いか。最終 PR に入れるものが無いので、飛ばさせない
+    /// （epic ごとやめるなら「やめる」）。司令塔とクライアントで同じ扱いにする
+    public func skippingLeavesNothing(_ task: String) -> Bool {
+        !tasks.contains { $0.state == .done } && tasks.allSatisfy { $0.id == task || $0.state.isSettled }
+    }
+
     public var violations: [String] {
         let dependencies = Dictionary(tasks.map { ($0.id, $0.dependsOn) }) { first, _ in first }
         var violations = LocalIDs.problems(tasks.map(\.id) + humanTasks.map(\.id), dependencies: dependencies)
@@ -213,7 +219,9 @@ public struct GoalFile: StateFile {
         var problems: [String] = []
         if task.title.isEmpty { problems.append("\(task.id): title が空") }
         if (task.state == .skipped) != (task.skip != nil) { problems.append("\(task.id): 飛ばした記録は skipped のタスクだけが持つ") }
-        if task.skip?.note?.isEmpty == true { problems.append("\(task.id): 飛ばしたときのメモが空（無ければ書かない）") }
+        if let note = task.skip?.note, note.isEmpty || note.unicodeScalars.count > SkipTaskIntent.maximumNoteLength {
+            problems.append("\(task.id): 飛ばしたときのメモが空か長すぎる（無ければ書かない。\(SkipTaskIntent.maximumNoteLength) 文字まで）")
+        }
         if let number = task.skip?.pullRequest, number < 1 { problems.append("\(task.id): 飛ばしたときの子 PR の番号が 1 より小さい") }
         return problems
     }
