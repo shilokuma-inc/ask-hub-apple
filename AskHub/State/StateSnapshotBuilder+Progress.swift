@@ -35,7 +35,7 @@ extension StateSnapshotBuilder {
             }
         }
         // タスクがすべて終わってから、司令塔が最終 PR の段取りのジョブを作るまでの間
-        if documents.epic.stage == .running, !goalTasks.isEmpty, goalTasks.allSatisfy({ $0.state == .done }), progress.activities.isEmpty {
+        if documents.epic.stage == .running, !goalTasks.isEmpty, goalTasks.allSatisfy(\.state.isSettled), progress.activities.isEmpty {
             let finishedAt = jobs.map(\.updatedAt.date).max() ?? documents.epic.updatedAt.date
             progress.activities.append(EpicActivity(kind: .tasksFinished, since: finishedAt))
         }
@@ -77,6 +77,9 @@ extension StateSnapshotBuilder {
         case .done:
             // マージしたのは、最後のレビュー
             return .done(pullRequest: Self.latest(taskJobs.filter { $0.kind == .reviewTask })?.pullRequest)
+
+        case .skipped:
+            return .skipped(reason: task.skip.map { Self.skipReason($0.reason, note: $0.note) } ?? TaskSkip.handledElsewhere.label)
 
         case .running:
             guard let job = Self.latest(taskJobs) else {

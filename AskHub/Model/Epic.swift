@@ -197,6 +197,8 @@ struct EpicTask: Identifiable, Hashable {
         case failed(pullRequest: Int?)
         /// 子 PR の番号が分からないときは nil
         case done(pullRequest: Int?)
+        /// 人が飛ばした（理由。メモがあれば添える）。済んだものとして先へ進む
+        case skipped(reason: String)
     }
 
     /// 進めているタスクの段階
@@ -224,7 +226,7 @@ struct EpicTask: Identifiable, Hashable {
              .inProgress(.waitingForAnswer(_, let number)?):
             number
 
-        case .pending, .locked, .inProgress:
+        case .pending, .locked, .inProgress, .skipped:
             nil
         }
     }
@@ -314,6 +316,8 @@ struct Blocker: Hashable {
         case pause
         /// 止まっている作業だけをやめ、epic は続ける（例: 説明をやめて質問に戻す）
         case cancelJob
+        /// 止まっているタスクを飛ばし、epic は次のタスク・最終 PR へ進める（理由は送るときに選ぶ）
+        case skipTask
         /// epic をやめる
         case discard
     }

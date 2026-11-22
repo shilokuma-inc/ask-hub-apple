@@ -20,6 +20,8 @@ enum HumanIntent: Hashable {
     case instructFinal(epicID: Epic.ID, headCommit: String, instruction: String)
     /// `target` は画面に出した `Blocker.target`。送るまでに対象が替わっていれば送らない
     case resolveBlocker(epicID: Epic.ID, action: Blocker.Action, instruction: String, target: String? = nil)
+    /// 止まっているタスクを飛ばす（「対処が要ります」の `Blocker.Action.skipTask`）。`target` は画面に出した `Blocker.target`
+    case skipTask(epicID: Epic.ID, reason: TaskSkip, note: String, target: String? = nil)
     case handOver(epicID: Epic.ID, macID: Mac.ID)
     case pause(epicID: Epic.ID)
     case resume(epicID: Epic.ID)
@@ -61,6 +63,21 @@ enum HumanIntent: Hashable {
     case confirmAppStoreItem(repositoryID: TargetRepository.ID, item: AppStoreSetup.ItemKind)
     /// App Store に出さない（`excluded` が false なら出すに戻す）
     case excludeFromAppStore(repositoryID: TargetRepository.ID, excluded: Bool)
+}
+
+/// タスクを飛ばす理由
+enum TaskSkip: Hashable, CaseIterable {
+    /// 人が別にやる（別のリポジトリの PR など）
+    case handledElsewhere
+    /// やらない
+    case notNeeded
+
+    var label: String {
+        switch self {
+        case .handledElsewhere: "人が別にやる"
+        case .notNeeded: "やらない"
+        }
+    }
 }
 
 enum SplitChoice: Hashable {
@@ -155,6 +172,9 @@ extension HumanIntent {
         case let .resolveBlocker(_, action, _, _):
             Self.label(of: action)
 
+        case .skipTask:
+            "タスクを飛ばす頼み"
+
         case .discard:
             "取り下げ"
 
@@ -200,6 +220,9 @@ extension HumanIntent {
 
         case .cancelJob, .discard:
             "取りやめ"
+
+        case .skipTask:
+            "タスクを飛ばす頼み"
 
         case .fixWithInstruction:
             "直す指示"

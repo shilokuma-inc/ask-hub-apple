@@ -102,7 +102,7 @@ extension DemoData {
                 )
             ],
             occurredAt: ago(minutes: 25),
-            actions: [.fixWithInstruction, .retry, .handOver, .pause, .discard]
+            actions: [.fixWithInstruction, .retry, .skipTask, .handOver, .pause, .discard]
         )
     }
 

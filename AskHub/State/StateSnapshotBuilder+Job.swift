@@ -63,7 +63,7 @@ extension StateSnapshotBuilder {
     }
 
     static func isJobIntent(_ envelope: IntentEnvelope) -> Bool {
-        [RetryJobIntent.kind, GiveUpJobIntent.kind].contains(envelope.kind)
+        [RetryJobIntent.kind, GiveUpJobIntent.kind, SkipTaskIntent.kind].contains(envelope.kind)
     }
 
     /// 意図の対象の、人の対応を待っているジョブ。人が見たときから試行が進んでいれば（司令塔が断る）nil
@@ -98,7 +98,7 @@ extension StateSnapshotBuilder {
             logExcerpt: failure?.logExcerpt,
             attempts: attempts.map(Self.attempt),
             occurredAt: job.updatedAt.date,
-            actions: Self.actions(for: job.kind, at: stage, category: category),
+            actions: Self.actions(for: job.kind, at: stage, category: category, hasTask: job.task != nil),
             subject: subject,
             target: Self.blockerTarget(target)
         )
@@ -121,11 +121,16 @@ extension StateSnapshotBuilder {
         return (remaining?.category ?? .unexpected, remaining.map { "\($0.text)、\(limit)" } ?? limit)
     }
 
-    /// 選べる操作。司令塔が受け付けるものだけを出す（やり直しはどの種類でも、やめるは `JobKind.giveUpEffect(at:)` で扱いが決まっているものだけ）。
+    /// 選べる操作。司令塔が受け付けるものだけを出す（やり直しはどの種類でも、やめるは `JobKind.giveUpEffect(at:)` で扱いが決まっているものだけ、
+    /// タスクを飛ばすのは `JobKind.canSkipTask(at:)` のもので、タスクの id を持つジョブだけ）。
     /// 開始した後の epic に残っていた開始の前のジョブ（着手前の確認など）は、司令塔と同じく、epic ごとではなくその作業だけをやめる
-    private static func actions(for kind: JobKind, at stage: EpicStage, category: FailureCategory) -> [Blocker.Action] {
+    private static func actions(for kind: JobKind, at stage: EpicStage, category: FailureCategory, hasTask: Bool) -> [Blocker.Action] {
         // 認証切れは、人が Mac で直してから再開する
         var actions: [Blocker.Action] = [category == .authExpired ? .resumeAfterFix : .retry]
+        // やめる（epic ごと取り下げ）より先に、済んだタスクを残して進める道を出す
+        if hasTask && kind.canSkipTask(at: stage) {
+            actions.append(.skipTask)
+        }
         switch kind.giveUpEffect(at: stage) {
         case .abandonsEpic:
             actions.append(.discard)

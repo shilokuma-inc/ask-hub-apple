@@ -37,6 +37,9 @@ extension DemoClientService {
         case let .resolveBlocker(epicID, action, instruction, _):
             resolveBlocker(epicID: epicID, action: action, instruction: instruction)
 
+        case let .skipTask(epicID, reason, note, _):
+            skipTask(epicID: epicID, reason: reason, note: note)
+
         case let .handOver(epicID, macID):
             handOver(epicID: epicID, macID: macID)
 
@@ -219,7 +222,8 @@ extension DemoClientService {
         case .discard:
             state.epics.removeAll { $0.id == epicID }
 
-        case .handOver:
+        // 理由を付けて `HumanIntent.skipTask` で送る
+        case .handOver, .skipTask:
             break
 
         case .cancelJob:
@@ -238,6 +242,20 @@ extension DemoClientService {
                 epic.log(instruction.isEmpty ? "もう一度直させました" : "指示を添えて直させました: \(instruction)", at: date)
             }
             resumeImplementation(epicID: epicID)
+        }
+    }
+
+    /// 止まっているタスクを飛ばす（司令塔は済んだものとして次のタスク・最終 PR へ進める）
+    private func skipTask(epicID: Epic.ID, reason: TaskSkip, note: String) {
+        let date = now()
+        state.updateEpic(epicID) { epic in
+            guard let failed = epic.tasks.firstIndex(where: \.isFailed) else {
+                return
+            }
+            let text = note.trimmingCharacters(in: .whitespacesAndNewlines)
+            epic.tasks[failed].state = .skipped(reason: text.isEmpty ? reason.label : "\(reason.label)・\(text)")
+            epic.blocker = nil
+            epic.log("タスク \(epic.tasks[failed].number) を飛ばしました（\(reason.label)）", at: date)
         }
     }
 
