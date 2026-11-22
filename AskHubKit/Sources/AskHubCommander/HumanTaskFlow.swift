@@ -16,7 +16,12 @@ public struct HumanTaskDoneHandler: IntentHandler {
     /// 開始の前にゴールを直すと、作り直したゴールでは作業が `pending` に戻る（直したゴールの作業を、もう一度終えてもらう）
     static let stages: Set<EpicStage> = [.awaitingStart, .running]
 
-    public init() {}
+    /// GitHub の Secrets に入れる作業（`secret` の暗号文を渡す）に使う管理用のトークン。nil（ワーカー・テスト）なら、暗号文は断る
+    public var admin: AdminGitHub?
+
+    public init(admin: AdminGitHub? = nil) {
+        self.admin = admin
+    }
 
     public func handle(_ envelope: IntentEnvelope, in context: CommanderContext) async throws(CommanderError) -> IntentDecision {
         let done: HumanTaskDoneIntent
@@ -35,6 +40,7 @@ public struct HumanTaskDoneHandler: IntentHandler {
         // 前の周で終えたことを書いた（やり直し）
         if task.done?.intent == done.intent { return .accept }
         if let problem = problem(completing: task, with: done, epic: epic, goal: goal) { return .reject(problem) }
+        if let refusal = try await putSecret(of: done, into: task, in: context) { return .reject(refusal) }
         let completion = GoalFile.Completion(intent: done.intent, at: context.timestamp, file: done.file)
         let saved: GoalFile
         do {
@@ -49,14 +55,26 @@ public struct HumanTaskDoneHandler: IntentHandler {
         return .accept
     }
 
+    /// 暗号文があれば、管理用のトークンで Secrets に入れる（作業を終える前に）。入れられなければ断る理由
+    private func putSecret(
+        of done: HumanTaskDoneIntent,
+        into task: GoalFile.HumanTask,
+        in context: CommanderContext
+    ) async throws(CommanderError) -> String? {
+        guard let secret = done.secret, let name = task.handover.name else { return nil }
+        return try await SecretHandover(admin: admin).put(secret, name: name, repo: done.target.repo, in: context)
+    }
+
     /// 受け付けられない理由。受け付けられれば nil
     private func problem(completing task: GoalFile.HumanTask, with done: HumanTaskDoneIntent, epic: EpicFile, goal: GoalFile) -> String? {
         guard Self.stages.contains(epic.stage) else { return "人がする作業を終えられる段階でない（今は \(epic.stage.rawValue)）" }
         guard goal.version == done.target.goalVersion else { return "ゴールが直された（今の版は \(goal.version)）。新しいゴールを見てから送り直す" }
         guard task.state == .pending else { return "人がする作業 \(task.id) はもう終えている" }
+        if done.secret != nil, task.handover.kind != .secret { return "人がする作業 \(task.id) は Secrets に入れる作業でないのに、secret がある" }
         switch (task.handover.kind, done.file) {
         case (.file, nil): return "人がする作業 \(task.id) はファイルを渡す作業なのに、ファイルが無い"
         case (.none, _?), (.secret, _?): return "人がする作業 \(task.id) はファイルを渡さない作業なのに、ファイルがある"
+        // secret の作業は、暗号文を渡す（司令塔が入れる）か、人が GitHub の画面で入れてから「終わった」を押す
         case (.file, _?), (.none, nil), (.secret, nil): return nil
         }
     }
