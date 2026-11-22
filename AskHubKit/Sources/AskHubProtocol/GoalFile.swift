@@ -159,6 +159,22 @@ public struct GoalFile: StateFile {
         }
     }
 
+    /// 別のリポジトリへの依頼の案（ワーカーは対象のリポジトリの作業場所だけで動くので、外の作業はタスクにしない）。
+    /// 人が確かめて、そのリポジトリへの依頼として送る。epic は待たない
+    public struct OutsideRequest: Codable, Equatable, Sendable {
+        public var repo: RepositoryFullName
+        /// 依頼の題
+        public var title: String
+        /// 依頼の本文（そのまま送れる文）
+        public var body: String
+
+        public init(repo: RepositoryFullName, title: String, body: String) {
+            self.repo = repo
+            self.title = title
+            self.body = body
+        }
+    }
+
     /// 直すたびに上げる。「開始」の人の意図は、確かめたゴールの版を持つ
     public var version: Int
     public var summary: String
@@ -167,6 +183,8 @@ public struct GoalFile: StateFile {
     public var doneWhen: [String]
     public var tasks: [Task]
     public var humanTasks: [HumanTask]
+    /// 別のリポジトリへの依頼の案。無ければ nil
+    public var outsideRequests: [OutsideRequest]?
     /// 最後のゴールの修正で、反映しなかった人の指示とその理由（決まったことを変える指示など）。人に出す
     public var notApplied: [String]?
     /// Discussion のゴールの写しのコメントの id
@@ -180,6 +198,7 @@ public struct GoalFile: StateFile {
         doneWhen: [String],
         tasks: [Task],
         humanTasks: [HumanTask] = [],
+        outsideRequests: [OutsideRequest]? = nil,
         notApplied: [String]? = nil,
         comment: String? = nil
     ) {
@@ -190,6 +209,7 @@ public struct GoalFile: StateFile {
         self.doneWhen = doneWhen
         self.tasks = tasks
         self.humanTasks = humanTasks
+        self.outsideRequests = outsideRequests
         self.notApplied = notApplied
         self.comment = comment
     }
@@ -200,6 +220,10 @@ public struct GoalFile: StateFile {
         if version < 1 { violations.append("version は 1 以上") }
         if summary.isEmpty || doneWhen.isEmpty || tasks.isEmpty { violations.append("summary・doneWhen・tasks が空") }
         if notApplied?.contains(where: \.isEmpty) == true { violations.append("notApplied に空の行がある") }
+        if outsideRequests?.isEmpty == true { violations.append("outsideRequests が空（無ければ書かない）") }
+        for (index, request) in (outsideRequests ?? []).enumerated() where request.title.isEmpty || request.body.isEmpty {
+            violations.append("outsideRequests の \(index + 1) 番目: title・body が空")
+        }
         for task in tasks {
             violations += Self.problems(of: task)
         }

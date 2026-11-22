@@ -271,6 +271,72 @@
       "read": "malformed"
     },
     {
+      "name": "with-outside-requests",
+      "value": {
+        "v": 1,
+        "version": 1,
+        "summary": "予定を画像でシェアする",
+        "decided": [],
+        "outOfScope": [],
+        "doneWhen": ["シェアのボタンがある"],
+        "tasks": [{ "id": "t1", "title": "シェアのカードを作る", "dependsOn": [], "state": "pending" }],
+        "humanTasks": [],
+        "outsideRequests": [
+          { "repo": "demo-studio/countdown-android", "title": "画像でシェアを仕様に足す", "body": "docs/SPEC.md の「画像でシェア」を「あり」にして、iOS と同じ仕様を書く" }
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "outside-requests-empty",
+      "value": {
+        "v": 1,
+        "version": 1,
+        "summary": "予定を画像でシェアする",
+        "decided": [],
+        "outOfScope": [],
+        "doneWhen": ["シェアのボタンがある"],
+        "tasks": [{ "id": "t1", "title": "シェアのカードを作る", "dependsOn": [], "state": "pending" }],
+        "humanTasks": [],
+        "outsideRequests": []
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "outside-request-empty-body",
+      "value": {
+        "v": 1,
+        "version": 1,
+        "summary": "予定を画像でシェアする",
+        "decided": [],
+        "outOfScope": [],
+        "doneWhen": ["シェアのボタンがある"],
+        "tasks": [{ "id": "t1", "title": "シェアのカードを作る", "dependsOn": [], "state": "pending" }],
+        "humanTasks": [],
+        "outsideRequests": [{ "repo": "demo-studio/countdown-android", "title": "画像でシェアを仕様に足す", "body": "" }]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "outside-request-bad-repo",
+      "value": {
+        "v": 1,
+        "version": 1,
+        "summary": "予定を画像でシェアする",
+        "decided": [],
+        "outOfScope": [],
+        "doneWhen": ["シェアのボタンがある"],
+        "tasks": [{ "id": "t1", "title": "シェアのカードを作る", "dependsOn": [], "state": "pending" }],
+        "humanTasks": [],
+        "outsideRequests": [{ "repo": "countdown-android", "title": "画像でシェアを仕様に足す", "body": "…" }]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
       "name": "minimal",
       "value": {
         "v": 1,
