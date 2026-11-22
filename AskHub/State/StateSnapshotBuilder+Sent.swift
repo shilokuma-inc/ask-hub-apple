@@ -39,7 +39,7 @@ extension StateSnapshotBuilder {
         case RequestIntent.kind:
             applyRequest(envelope, to: &epics)
 
-        case AddRepositoryIntent.kind, RemoveRepositoryIntent.kind:
+        case AddRepositoryIntent.kind, RemoveRepositoryIntent.kind, CreateRepositoryIntent.kind:
             applyRepositoryIntent(envelope, repositories: &repositories, removed: &removed, index: &index)
 
         case AnswerIntent.kind:

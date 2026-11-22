@@ -150,6 +150,7 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
   - `trustedReviewers`: 指摘を Claude に渡してよいレビューの書き手（GitHub のアカウント。`coderabbitai[bot]` など）。無ければ空
   - `screenshots`: 判断のカードのスクショの撮り方（Swift は `ScreenshotSettings`）。`scenes`（撮れる画面の一覧のファイルの、リポジトリの直下からの相対パス。`.json`）と `destination`（撮る Simulator。`destinations` と同じ形で、macOS はまだ撮らない）。無ければ撮らない（[flows.md](flows.md) の「スクショ」）
 - `build` が無いリポジトリでは、開始を断る
+- `created`: テンプレートから作った記録（`createRepository`）。テンプレートの種類（`template`）・`appName`・`bundleId`・`visibility`・アプリ名と Bundle ID を書き換えたコミット（`renameCommit`。まだなら `null`）・元の意図（`intent`）・作った時刻（`at`）。対象に加えただけのリポジトリは省くか `null`
 - `removedAt`: 対象から外した時刻（`removeRepository`）。外していなければ省くか `null`。外しても `repos/<owner>/<repo>/` のファイルは消さない
   - 外したリポジトリには、依頼・開始・ビルドの設定を受け付けない。司令塔はアイコンを読みに行かない。クライアントは一覧から外し、「対象に加える」の候補に戻す
   - もう一度 `addRepository` を送ると、印を外して戻る（`build` などの設定もそのまま戻る）
@@ -857,6 +858,7 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `retry`・`giveUp` | ジョブ（`{ "type": "job", "epic", "id": <ジョブの ULID> }`） | 人が見たときの試行の番号（ジョブの `attempts`。試行の前に人に渡したジョブ（直しの上限を超えた直し）は `0`） | 空（`payloads/retry.schema.json`・`payloads/giveUp.schema.json`）。やめたときの扱い（epic ごとやめる・ジョブだけやめる・撮らずに進む）はジョブの種類で決まる（`JobKind.giveUpEffect`。[flows.md](flows.md) の「司令塔の動き」） |
 | `skipTask` | ジョブ（`retry` と同じ） | `retry` と同じ | `{ "reason": "handledElsewhere" \| "notNeeded", "note"?: "…" }`（`payloads/skipTask.schema.json`。メモは 2000 文字まで）。人に渡した実装・レビュー・直しのジョブ（`running` の epic）のタスクだけを飛ばせる（`JobKind.canSkipTask(at:)`。[flows.md](flows.md) の「司令塔の動き」） |
 | `addRepository` | リポジトリ（封筒の `repo`） | — | `platform`（`apple`。`payloads/addRepository.schema.json`）。同時に回す epic の上限は、最初の版では 1 に決めているので持たない |
+| `createRepository` | 作るリポジトリ（封筒の `repo`。持ち主と名前） | — | `template`（`ios`・`visionos`）・`visibility`（`public`・`private`）・`appName`（英字で始まる英数字。60 文字まで）・`bundleId`（`payloads/createRepository.schema.json`）。元にするテンプレートのリポジトリは種類から司令塔が決める（`RepositoryTemplate`。任意のリポジトリは書かせない）。司令塔が作るリポジトリの持ち主の管理用のトークンで、テンプレートから作り、アプリ名・Bundle ID を書き換えたコミットを develop に入れ、対象に加えて準備とビルドの設定を流す（[operations.md](operations.md) の「テンプレートからの新規作成」）。同じ名前のリポジトリがあれば、同じテンプレートから同じ公開範囲で作ったものだけ続きから進め、ほかは断る。対象に加えただけのリポジトリ・別の中身で作った記録のあるリポジトリは断る |
 | `configureRepository` | リポジトリ（封筒の `repo`。対象に加えた後） | — | `build`（`repo.json` の `build` と同じ形。`payloads/configureRepository.schema.json`）。送るたびに `build` をまるごと置き換える。`build` の中の知らない欄も含めて、知らない欄があれば読まない |
 | `removeRepository` | リポジトリ（封筒の `repo`） | — | 空（`payloads/removeRepository.schema.json`）。終わっていない（`merged`・`abandoned` 以外の）epic があれば断る（理由に epic を出す。読めない epic があるときも、終わっているかを確かめられないので断る）。外したら `repo.json` に `removedAt` を付け、ファイルは消さない。GitHub 側（ルールセット・Discussions・ワークフロー）には触れない |
 | `applyProtection` | リポジトリ（封筒の `repo`。対象に加えた後） | — | `requiredChecks`（必須にするチェックの名前。1〜20 個・重ならない・空白だけの名前と制御文字（改行など）を含む名前は受け付けない。スキーマでは表せないので読む側が断る。`payloads/applyProtection.schema.json`）。司令塔が管理用のトークンで、ルールセット `askhub-protect` を掛けてから重なる保護を外し、`repo.json` の `protection` を書く。管理用のトークンが無い・private のリポジトリなどは理由を付けて断る |

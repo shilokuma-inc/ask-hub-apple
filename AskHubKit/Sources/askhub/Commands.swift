@@ -69,6 +69,8 @@ extension AskHubMain {
         case "add-repository":
             try arguments.only(["repo"])
             return .addRepository(try arguments.repository())
+        case "create-repository":
+            return try createRepository(arguments)
         case "configure-repository":
             try arguments.only(["repo", "file"])
             return .configureRepository(try arguments.repository(), build: try build(at: try arguments.string("file")))
@@ -81,6 +83,23 @@ extension AskHubMain {
             try arguments.only(["repo", "checks"])
             return .applyProtection(try arguments.repository(), requiredChecks: try requiredChecks(arguments))
         }
+    }
+
+    /// テンプレートから作る意図。アプリ名・Bundle ID は司令塔と同じ決まりで、送る前に確かめる
+    static func createRepository(_ arguments: CommandArguments) throws -> IntentDraft {
+        try arguments.only(["repo", "template", "app-name", "bundle-id", "visibility"])
+        guard let template = RepositoryTemplate(rawValue: try arguments.string("template")) else {
+            throw CommandArguments.Failure(message: "--template は ios か visionos")
+        }
+        let appName = try arguments.string("app-name")
+        guard CreateRepositoryIntent.isAppName(appName) else { throw CommandArguments.Failure(message: "--app-name は英字で始まる英数字") }
+        let bundleId = arguments.values["bundle-id"] ?? CreateRepositoryIntent.defaultBundleId(appName: appName)
+        guard CreateRepositoryIntent.isBundleId(bundleId) else { throw CommandArguments.Failure(message: "--bundle-id の形が違う") }
+        guard let visibility = RepositoryVisibility(rawValue: arguments.values["visibility"] ?? "public") else {
+            throw CommandArguments.Failure(message: "--visibility は public か private")
+        }
+        let repo = try arguments.repository()
+        return .createRepository(repo, template: template, visibility: visibility, appName: appName, bundleId: bundleId)
     }
 
     /// 保護の設定の必須のチェック（`--checks` はカンマ区切り。かっこの中のカンマでは分けない。無ければ `build / build`）
@@ -107,7 +126,7 @@ extension AskHubMain {
 
     static func draft(_ command: String, _ arguments: CommandArguments) throws -> IntentDraft {
         switch command {
-        case "add-repository", "configure-repository", "apply-protection", "approve-setup":
+        case "add-repository", "create-repository", "configure-repository", "apply-protection", "approve-setup":
             return try repositoryDraft(command, arguments)
         case "request":
             try arguments.only(["repo", "title", "body", "release"])

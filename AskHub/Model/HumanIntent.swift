@@ -41,6 +41,8 @@ enum HumanIntent: Hashable {
     case request(repositoryID: TargetRepository.ID, summary: String, body: String, attachments: [RequestFile] = [], release: String? = nil)
     // swiftlint:enable enum_case_associated_values_count
     case addRepository(repositoryID: TargetRepository.ID)
+    /// テンプレートから新しいアプリのリポジトリを作り、対象に加える（司令塔が管理用のトークンで作る）
+    case createRepository(NewAppRequest)
     /// 配信した版のリリース文を確かめて、GitHub Release を公開する。見た下書きの版に結びつける（見た後に下書きが作り直されていれば、司令塔が断る）
     case publishRelease(repositoryID: TargetRepository.ID, version: String, notesVersion: Int, notes: String)
     /// 配信中の版のプロモーションテキストを直して、すぐ反映する（変える言語だけ。空の文は空にする）
@@ -140,6 +142,9 @@ extension HumanIntent {
 
         case .addRepository(let repositoryID):
             "対象に加える（\(repositoryID)）"
+
+        case .createRepository(let request):
+            "新しいアプリ（\(request.fullName)）"
 
         case let .publishRelease(_, version, _, _):
             "GitHub Release の公開（\(version)）"

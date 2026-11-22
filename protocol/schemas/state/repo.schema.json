@@ -130,6 +130,29 @@
         { "type": "null" }
       ]
     },
+    "created": {
+      "description": "テンプレートから作った記録。司令塔が createRepository を処理したときに書く。対象に加えただけのリポジトリは省くか null",
+      "anyOf": [
+        {
+          "type": "object",
+          "required": ["template", "appName", "bundleId", "visibility", "intent", "at"],
+          "additionalProperties": false,
+          "properties": {
+            "template": { "enum": ["ios", "visionos"] },
+            "appName": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9]{0,59}$", "not": { "pattern": "\\n" } },
+            "bundleId": { "type": "string", "maxLength": 155, "pattern": "^[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)+$", "not": { "pattern": "\\n" } },
+            "visibility": { "enum": ["public", "private"] },
+            "renameCommit": {
+              "anyOf": [{ "type": "string", "pattern": "^[0-9a-f]{40}$" }, { "type": "null" }],
+              "description": "アプリ名・Bundle ID を書き換えて develop に入れたコミット。まだなら省くか null"
+            },
+            "intent": { "$ref": "../common.schema.json#/$defs/intentReference" },
+            "at": { "$ref": "../common.schema.json#/$defs/timestamp" }
+          }
+        },
+        { "type": "null" }
+      ]
+    },
     "addedAt": { "$ref": "../common.schema.json#/$defs/timestamp" },
     "removedAt": {
       "anyOf": [{ "$ref": "../common.schema.json#/$defs/timestamp" }, { "type": "null" }],
