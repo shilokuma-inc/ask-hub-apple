@@ -31,7 +31,8 @@ struct StateFileKind: Sendable, CustomTestStringConvertible {
         .of(AppStoreSetupFile.self, "app-store"),
         .of(VerificationsFile.self, "verifications"),
         .of(CleanupRequestsFile.self, "cleanup-requests"),
-        .of(CleanupCandidatesFile.self, "cleanup-candidates")
+        .of(CleanupCandidatesFile.self, "cleanup-candidates"),
+        .of(RepositoryCandidatesFile.self, "repo-candidates")
     ]
 
     static func of<File: StateFile>(_ type: File.Type, _ name: String) -> Self {
