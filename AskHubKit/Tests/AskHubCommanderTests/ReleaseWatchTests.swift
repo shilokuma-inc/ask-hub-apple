@@ -129,7 +129,8 @@ struct ReleaseWatchTests {
     func watch(
         stores: [any AppStoreConnecting]? = nil,
         screenshots: (any StoreScreenshotCapturing)? = nil,
-        artifacts: any StoreScreenshotArtifactExtracting = FakeArtifactExtractor()
+        artifacts: any StoreScreenshotArtifactExtracting = FakeArtifactExtractor(),
+        rejections: (any RejectionTriaging)? = nil
     ) -> ReleaseWatch {
         let clock = clock
         return ReleaseWatch(
@@ -140,6 +141,7 @@ struct ReleaseWatchTests {
             drafter: drafter,
             whatsNew: whatsNewDrafter,
             listing: listingDrafter,
+            rejections: rejections,
             screenshots: screenshots,
             artifacts: artifacts,
             authors: FixedCommitAuthor(GitAuthor(name: "Takumi", email: "1+mrs1669@users.noreply.github.com")),
