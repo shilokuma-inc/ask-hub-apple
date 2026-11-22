@@ -236,9 +236,10 @@ final class FakePullRequests: PullRequestOperations {
         var stateChanges: [(number: Int, state: PullRequest.State)] = []
         var reopenFailures: [PullRequestError] = []
         var closeFailures: [(applied: Bool, error: PullRequestError)] = []
-        /// 書いたコメント（PR の番号と本文）と、書くときに投げる失敗（1 回ずつ使う）
+        /// 書いたコメント（PR の番号と本文）と、コメントを書く・開いた PR の一覧を読むときに投げる失敗（1 回ずつ使う）
         var comments: [(number: Int, body: String)] = []
         var commentFailures: [PullRequestError] = []
+        var listFailures: [PullRequestError] = []
     }
 
     private let state: OSAllocatedUnfairLock<State>
