@@ -1841,6 +1841,74 @@
       },
       "schemaValid": false,
       "read": "malformed"
+    },
+    {
+      "name": "secrets-key",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "secretsKey": {
+          "keyId": "568250167242549743",
+          "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+          "readAt": "2026-11-22T13:00:00Z"
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "secrets-key-null",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "secretsKey": null
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "secrets-key-short",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "secretsKey": {
+          "keyId": "568250167242549743",
+          "key": "AAAAAAAAAAAAAAAAAAAAAA==",
+          "readAt": "2026-11-22T13:00:00Z"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "secrets-key-bad-id",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "secretsKey": {
+          "keyId": "key id",
+          "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+          "readAt": "2026-11-22T13:00:00Z"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
     }
   ]
 }

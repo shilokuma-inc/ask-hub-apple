@@ -6,6 +6,9 @@ extension EpicIntentsTests {
     static let creationKinds: [Kind] = [
         Kind(vectors: "payloads/createRepository.json", kind: "createRepository", target: nil, targetVersion: nil) {
             try CreateRepositoryIntent(envelope: $0).payload
+        },
+        Kind(vectors: "payloads/readSecretsKey.json", kind: "readSecretsKey", target: nil, targetVersion: nil) {
+            try ReadSecretsKeyIntent(envelope: $0).payload
         }
     ]
 }

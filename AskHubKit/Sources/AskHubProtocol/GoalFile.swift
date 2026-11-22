@@ -267,7 +267,7 @@ public struct GoalFile: StateFile {
     }
 
     /// GitHub の Secrets の名前（英大文字・数字・`_`。数字と `GITHUB_` で始まらない）
-    static func isSecretName(_ name: String) -> Bool {
+    public static func isSecretName(_ name: String) -> Bool {
         guard let first = name.utf8.first, !(UInt8(ascii: "0")...UInt8(ascii: "9")).contains(first), !name.hasPrefix("GITHUB_") else {
             return false
         }
