@@ -8,6 +8,13 @@ import Foundation
 public protocol AppStoreConnectCreative: Sendable {
     /// App 情報の言語ごとのアプリ名（言語 → 名前）。準備しているほうの App 情報（配信中の版があれば、次の版のもの）を読む
     func appNames(of appID: String) async throws(AppStoreConnectError) -> [String: String]
+    /// クリエイティブアセットの画像を 1 枚上げる（カテゴリは `CREATIVE_ASSETS`。予約 → 送る → 終わりを伝える）。処理は待たない。上げた画像の id を返す
+    func sendCreativeImage(
+        to libraryID: String,
+        fileName: String,
+        referenceName: String,
+        data: Data
+    ) async throws(AppStoreConnectError) -> String
 }
 
 extension AppStoreConnectClient: AppStoreConnectCreative {
@@ -36,6 +43,17 @@ extension AppStoreConnectClient: AppStoreConnectCreative {
             names[locale] = name
         }
         return names
+    }
+}
+
+extension AppStoreConnectClient {
+    public func sendCreativeImage(
+        to libraryID: String,
+        fileName: String,
+        referenceName: String,
+        data: Data
+    ) async throws(AppStoreConnectError) -> String {
+        try await sendImage(to: libraryID, fileName: fileName, referenceName: referenceName, data: data, category: "CREATIVE_ASSETS")
     }
 }
 

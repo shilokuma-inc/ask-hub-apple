@@ -385,6 +385,20 @@ extension FakeAppStore {
 }
 
 extension FakeAppStore {
+    func sendCreativeImage(
+        to libraryID: String,
+        fileName: String,
+        referenceName: String,
+        data: Data
+    ) async throws(AppStoreConnectError) -> String {
+        try write("sendCreativeImage \(fileName)")
+        return state.withLock { state in
+            let image = AppStoreLibraryImage(id: "creative-\(fileName)", state: state.sentState)
+            state.libraryImages[referenceName, default: []].append(image)
+            return image.id
+        }
+    }
+
     func appNames(of appID: String) async throws(AppStoreConnectError) -> [String: String] {
         state.withLock { state in
             state.reads += 1
