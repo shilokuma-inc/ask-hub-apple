@@ -55,6 +55,13 @@ final class FakeAppStore: AppStoreConnecting {
         var reviewContacts: [String: AppStoreReviewContact] = [:]
         /// App 情報の言語ごとのアプリ名
         var appNames: [String: String] = [:]
+        /// クリエイティブアセットの配置の種類ごとの配置グループ（参照データ）
+        var creativeGroups: [String: [AppStoreCreativeGroup]] = [
+            "PRODUCT_PAGE_HEADER_ASSET": [.init(id: "HEADER_GROUP", specs: ["HEADER_SPEC"])],
+            "APP_STORE_SEARCH_RESULTS_ASSET": [.init(id: "SEARCH_GROUP", specs: ["SEARCH_SPEC"])]
+        ]
+        /// 掲載文の id → 配置の種類 → クリエイティブアセットの配置（置く・消すと変わる）
+        var creativePlacements: [String: [String: [AppStoreCreativePlacement]]] = [:]
     }
 
     let keyID = "ABCDE12345"
@@ -222,17 +229,6 @@ final class FakeAppStore: AppStoreConnecting {
         }
     }
 
-    func deletePlacement(_ id: String) async throws(AppStoreConnectError) {
-        try write("deletePlacement \(id)")
-        state.withLock { state in
-            for (localization, sets) in state.screenshotSets {
-                state.screenshotSets[localization] = sets.map { set in
-                    AppStoreScreenshotSet(displayType: set.displayType, screenshots: set.screenshots.filter { $0.id != id })
-                }
-            }
-        }
-    }
-
     func orderScreenshots(on localizationID: String, displayType: String, ids: [String]) async throws(AppStoreConnectError) {
         try write("orderScreenshots \(localizationID) \(ids.joined(separator: ","))")
         state.withLock { state in
@@ -385,6 +381,21 @@ extension FakeAppStore {
 }
 
 extension FakeAppStore {
+    /// スクショとクリエイティブアセットの配置（どちらも同じ API で消す）
+    func deletePlacement(_ id: String) async throws(AppStoreConnectError) {
+        try write("deletePlacement \(id)")
+        state.withLock { state in
+            for (localization, sets) in state.screenshotSets {
+                state.screenshotSets[localization] = sets.map { set in
+                    AppStoreScreenshotSet(displayType: set.displayType, screenshots: set.screenshots.filter { $0.id != id })
+                }
+            }
+            for (localization, types) in state.creativePlacements {
+                state.creativePlacements[localization] = types.mapValues { $0.filter { $0.id != id } }
+            }
+        }
+    }
+
     func sendCreativeImage(
         to libraryID: String,
         fileName: String,
@@ -393,9 +404,37 @@ extension FakeAppStore {
     ) async throws(AppStoreConnectError) -> String {
         try write("sendCreativeImage \(fileName)")
         return state.withLock { state in
-            let image = AppStoreLibraryImage(id: "creative-\(fileName)", state: state.sentState)
+            // 処理を終えたら、ヘッダーと検索結果の仕様に合わせる
+            let spec = fileName.hasPrefix("product-page-header") ? "HEADER_SPEC" : "SEARCH_SPEC"
+            let image = AppStoreLibraryImage(id: "creative-\(fileName)", state: state.sentState, specId: spec)
             state.libraryImages[referenceName, default: []].append(image)
             return image.id
+        }
+    }
+
+    func creativePlacementGroups() async throws(AppStoreConnectError) -> [String: [AppStoreCreativeGroup]] {
+        state.withLock { $0.creativeGroups }
+    }
+
+    func creativePlacements(
+        on localizationID: String,
+        placementType: String
+    ) async throws(AppStoreConnectError) -> [AppStoreCreativePlacement] {
+        state.withLock { $0.creativePlacements[localizationID]?[placementType] ?? [] }
+    }
+
+    func placeCreative(
+        _ imageID: String,
+        on localizationID: String,
+        placementType: String,
+        group: String
+    ) async throws(AppStoreConnectError) -> String {
+        try write("placeCreative \(imageID) \(localizationID) \(placementType)")
+        return state.withLock { state in
+            state.placementCount += 1
+            let placement = AppStoreCreativePlacement(id: "placement-\(state.placementCount)", imageID: imageID, group: group)
+            state.creativePlacements[localizationID, default: [:]][placementType, default: []].append(placement)
+            return placement.id
         }
     }
 
