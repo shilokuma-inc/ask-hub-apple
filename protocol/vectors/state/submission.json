@@ -2689,6 +2689,556 @@
       "read": "valid"
     },
     {
+      "name": "rejected-with-triage",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/prime-pick-ios",
+        "version": "1.4.0",
+        "origin": "askhub",
+        "start": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-20T01:00:00Z"
+        },
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "20261120.11000",
+            "uploadedAt": "2026-11-20T01:40:00Z"
+          }
+        ],
+        "revision": 2,
+        "review": [
+          {
+            "platform": "iOS",
+            "state": "rejected",
+            "since": "2026-11-21T03:00:00Z",
+            "submittedAt": "2026-11-20T02:05:00Z"
+          }
+        ],
+        "createdAt": "2026-11-20T01:00:00Z",
+        "updatedAt": "2026-11-21T04:10:00Z",
+        "branch": {
+          "name": "release/1.4.0",
+          "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "created": true,
+          "at": "2026-11-20T01:10:00Z"
+        },
+        "nextVersion": {
+          "version": "1.5.0",
+          "state": "open",
+          "pullRequest": 210,
+          "at": "2026-11-20T01:11:00Z"
+        },
+        "whatsNew": {
+          "drafts": [
+            {
+              "locale": "ja",
+              "text": "・素数の判定が速くなりました"
+            },
+            {
+              "locale": "en-US",
+              "text": "- Faster prime checks"
+            }
+          ],
+          "draftedAt": "2026-11-20T01:20:00Z"
+        },
+        "submit": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000002"
+          },
+          "at": "2026-11-20T02:00:00Z",
+          "builds": [
+            {
+              "platform": "iOS",
+              "build": "20261120.11000"
+            }
+          ],
+          "whatsNew": [
+            {
+              "locale": "ja",
+              "text": "・素数の判定が速くなりました"
+            },
+            {
+              "locale": "en-US",
+              "text": "- Faster prime checks"
+            }
+          ],
+          "releaseType": "afterApproval"
+        },
+        "rejections": [
+          {
+            "submittedAt": "2026-11-20T02:00:00Z",
+            "platforms": [
+              "iOS"
+            ],
+            "report": {
+              "text": "Guideline 2.1 - We were unable to sign in.",
+              "attachments": [
+                {
+                  "n": 1,
+                  "name": "審査の文.png",
+                  "size": 2048,
+                  "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                }
+              ],
+              "approval": {
+                "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+                "nonce": "01JCN0NCE00000000000000003"
+              },
+              "at": "2026-11-21T04:00:00Z"
+            },
+            "triage": {
+              "remedy": "reply",
+              "summary": "審査の人がログインできなかった。デモアカウントは不要なアプリなので、ログインが要らないことを返信で伝える",
+              "plan": "App Store Connect の App Review への返信に、下書きを貼って送る。返したら「審査に出し直す」を押す",
+              "reply": "Thank you for your review. This app does not require sign-in.",
+              "draftedAt": "2026-11-21T04:10:00Z"
+            }
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "rejection-resolved",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/prime-pick-ios",
+        "version": "1.4.0",
+        "origin": "askhub",
+        "start": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-20T01:00:00Z"
+        },
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "20261120.11000",
+            "uploadedAt": "2026-11-20T01:40:00Z"
+          }
+        ],
+        "revision": 2,
+        "review": [
+          {
+            "platform": "iOS",
+            "state": "rejected",
+            "since": "2026-11-21T03:00:00Z",
+            "submittedAt": "2026-11-20T02:05:00Z"
+          }
+        ],
+        "createdAt": "2026-11-20T01:00:00Z",
+        "updatedAt": "2026-11-21T04:10:00Z",
+        "branch": {
+          "name": "release/1.4.0",
+          "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "created": true,
+          "at": "2026-11-20T01:10:00Z"
+        },
+        "nextVersion": {
+          "version": "1.5.0",
+          "state": "open",
+          "pullRequest": 210,
+          "at": "2026-11-20T01:11:00Z"
+        },
+        "whatsNew": {
+          "drafts": [
+            {
+              "locale": "ja",
+              "text": "・素数の判定が速くなりました"
+            },
+            {
+              "locale": "en-US",
+              "text": "- Faster prime checks"
+            }
+          ],
+          "draftedAt": "2026-11-20T01:20:00Z"
+        },
+        "rejections": [
+          {
+            "submittedAt": "2026-11-20T02:00:00Z",
+            "platforms": [
+              "iOS"
+            ],
+            "report": {
+              "text": "Guideline 2.1 - We were unable to sign in.",
+              "attachments": [
+                {
+                  "n": 1,
+                  "name": "審査の文.png",
+                  "size": 2048,
+                  "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                }
+              ],
+              "approval": {
+                "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+                "nonce": "01JCN0NCE00000000000000003"
+              },
+              "at": "2026-11-21T04:00:00Z"
+            },
+            "triage": {
+              "remedy": "reply",
+              "summary": "審査の人がログインできなかった。デモアカウントは不要なアプリなので、ログインが要らないことを返信で伝える",
+              "plan": "App Store Connect の App Review への返信に、下書きを貼って送る。返したら「審査に出し直す」を押す",
+              "reply": "Thank you for your review. This app does not require sign-in.",
+              "draftedAt": "2026-11-21T04:10:00Z"
+            },
+            "choice": {
+              "remedy": "reply",
+              "approval": {
+                "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+                "nonce": "01JCN0NCE00000000000000004"
+              },
+              "at": "2026-11-21T04:20:00Z"
+            }
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "rejection-code-without-request",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/prime-pick-ios",
+        "version": "1.4.0",
+        "origin": "askhub",
+        "start": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-20T01:00:00Z"
+        },
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "20261120.11000",
+            "uploadedAt": "2026-11-20T01:40:00Z"
+          }
+        ],
+        "revision": 2,
+        "review": [
+          {
+            "platform": "iOS",
+            "state": "rejected",
+            "since": "2026-11-21T03:00:00Z",
+            "submittedAt": "2026-11-20T02:05:00Z"
+          }
+        ],
+        "createdAt": "2026-11-20T01:00:00Z",
+        "updatedAt": "2026-11-21T04:10:00Z",
+        "branch": {
+          "name": "release/1.4.0",
+          "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "created": true,
+          "at": "2026-11-20T01:10:00Z"
+        },
+        "nextVersion": {
+          "version": "1.5.0",
+          "state": "open",
+          "pullRequest": 210,
+          "at": "2026-11-20T01:11:00Z"
+        },
+        "whatsNew": {
+          "drafts": [
+            {
+              "locale": "ja",
+              "text": "・素数の判定が速くなりました"
+            },
+            {
+              "locale": "en-US",
+              "text": "- Faster prime checks"
+            }
+          ],
+          "draftedAt": "2026-11-20T01:20:00Z"
+        },
+        "submit": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000002"
+          },
+          "at": "2026-11-20T02:00:00Z",
+          "builds": [
+            {
+              "platform": "iOS",
+              "build": "20261120.11000"
+            }
+          ],
+          "whatsNew": [
+            {
+              "locale": "ja",
+              "text": "・素数の判定が速くなりました"
+            },
+            {
+              "locale": "en-US",
+              "text": "- Faster prime checks"
+            }
+          ],
+          "releaseType": "afterApproval"
+        },
+        "rejections": [
+          {
+            "submittedAt": "2026-11-20T02:00:00Z",
+            "platforms": [
+              "iOS"
+            ],
+            "report": {
+              "text": "Guideline 2.1 - We were unable to sign in.",
+              "attachments": [
+                {
+                  "n": 1,
+                  "name": "審査の文.png",
+                  "size": 2048,
+                  "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                }
+              ],
+              "approval": {
+                "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+                "nonce": "01JCN0NCE00000000000000003"
+              },
+              "at": "2026-11-21T04:00:00Z"
+            },
+            "triage": {
+              "remedy": "code",
+              "summary": "審査の人がログインできなかった。デモアカウントは不要なアプリなので、ログインが要らないことを返信で伝える",
+              "plan": "App Store Connect の App Review への返信に、下書きを貼って送る。返したら「審査に出し直す」を押す",
+              "reply": "Thank you for your review. This app does not require sign-in.",
+              "draftedAt": "2026-11-21T04:10:00Z"
+            }
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
+      "name": "rejection-without-report",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/prime-pick-ios",
+        "version": "1.4.0",
+        "origin": "askhub",
+        "start": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-20T01:00:00Z"
+        },
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "20261120.11000",
+            "uploadedAt": "2026-11-20T01:40:00Z"
+          }
+        ],
+        "revision": 2,
+        "review": [
+          {
+            "platform": "iOS",
+            "state": "rejected",
+            "since": "2026-11-21T03:00:00Z",
+            "submittedAt": "2026-11-20T02:05:00Z"
+          }
+        ],
+        "createdAt": "2026-11-20T01:00:00Z",
+        "updatedAt": "2026-11-21T04:10:00Z",
+        "branch": {
+          "name": "release/1.4.0",
+          "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "created": true,
+          "at": "2026-11-20T01:10:00Z"
+        },
+        "nextVersion": {
+          "version": "1.5.0",
+          "state": "open",
+          "pullRequest": 210,
+          "at": "2026-11-20T01:11:00Z"
+        },
+        "whatsNew": {
+          "drafts": [
+            {
+              "locale": "ja",
+              "text": "・素数の判定が速くなりました"
+            },
+            {
+              "locale": "en-US",
+              "text": "- Faster prime checks"
+            }
+          ],
+          "draftedAt": "2026-11-20T01:20:00Z"
+        },
+        "submit": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000002"
+          },
+          "at": "2026-11-20T02:00:00Z",
+          "builds": [
+            {
+              "platform": "iOS",
+              "build": "20261120.11000"
+            }
+          ],
+          "whatsNew": [
+            {
+              "locale": "ja",
+              "text": "・素数の判定が速くなりました"
+            },
+            {
+              "locale": "en-US",
+              "text": "- Faster prime checks"
+            }
+          ],
+          "releaseType": "afterApproval"
+        },
+        "rejections": [
+          {
+            "submittedAt": "2026-11-20T02:00:00Z",
+            "platforms": [
+              "iOS"
+            ],
+            "triage": {
+              "remedy": "reply",
+              "summary": "審査の人がログインできなかった。デモアカウントは不要なアプリなので、ログインが要らないことを返信で伝える",
+              "plan": "App Store Connect の App Review への返信に、下書きを貼って送る。返したら「審査に出し直す」を押す",
+              "reply": "Thank you for your review. This app does not require sign-in.",
+              "draftedAt": "2026-11-21T04:10:00Z"
+            }
+          }
+        ]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "rejection-choice-before-triage",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/prime-pick-ios",
+        "version": "1.4.0",
+        "origin": "askhub",
+        "start": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-20T01:00:00Z"
+        },
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "20261120.11000",
+            "uploadedAt": "2026-11-20T01:40:00Z"
+          }
+        ],
+        "revision": 2,
+        "review": [
+          {
+            "platform": "iOS",
+            "state": "rejected",
+            "since": "2026-11-21T03:00:00Z",
+            "submittedAt": "2026-11-20T02:05:00Z"
+          }
+        ],
+        "createdAt": "2026-11-20T01:00:00Z",
+        "updatedAt": "2026-11-21T04:10:00Z",
+        "branch": {
+          "name": "release/1.4.0",
+          "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "created": true,
+          "at": "2026-11-20T01:10:00Z"
+        },
+        "nextVersion": {
+          "version": "1.5.0",
+          "state": "open",
+          "pullRequest": 210,
+          "at": "2026-11-20T01:11:00Z"
+        },
+        "whatsNew": {
+          "drafts": [
+            {
+              "locale": "ja",
+              "text": "・素数の判定が速くなりました"
+            },
+            {
+              "locale": "en-US",
+              "text": "- Faster prime checks"
+            }
+          ],
+          "draftedAt": "2026-11-20T01:20:00Z"
+        },
+        "submit": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000002"
+          },
+          "at": "2026-11-20T02:00:00Z",
+          "builds": [
+            {
+              "platform": "iOS",
+              "build": "20261120.11000"
+            }
+          ],
+          "whatsNew": [
+            {
+              "locale": "ja",
+              "text": "・素数の判定が速くなりました"
+            },
+            {
+              "locale": "en-US",
+              "text": "- Faster prime checks"
+            }
+          ],
+          "releaseType": "afterApproval"
+        },
+        "rejections": [
+          {
+            "submittedAt": "2026-11-20T02:00:00Z",
+            "platforms": [
+              "iOS"
+            ],
+            "report": {
+              "text": "Guideline 2.1 - We were unable to sign in.",
+              "attachments": [
+                {
+                  "n": 1,
+                  "name": "審査の文.png",
+                  "size": 2048,
+                  "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                }
+              ],
+              "approval": {
+                "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+                "nonce": "01JCN0NCE00000000000000003"
+              },
+              "at": "2026-11-21T04:00:00Z"
+            },
+            "triage": null,
+            "choice": {
+              "remedy": "code",
+              "approval": {
+                "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+                "nonce": "01JCN0NCE00000000000000004"
+              },
+              "at": "2026-11-21T04:20:00Z"
+            }
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
       "name": "unknown-field",
       "value": {
         "v": 1,
