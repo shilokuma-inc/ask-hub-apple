@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/retakeScreenshots.schema.json",
+  "title": "スクショを撮り直す人の意図（kind が retakeScreenshots）の payload",
+  "description": "封筒の target は {type: submission, id: <版>}。targetVersion は書かない。displayTypes（配置グループ）・locales（App Store Connect の言語）で撮り直す組を選ぶ。無ければすべて。知らない欄のある payload は読まない",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "displayTypes": {
+      "type": "array",
+      "maxItems": 50,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,59}$"
+      }
+    },
+    "locales": {
+      "type": "array",
+      "maxItems": 50,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8}){0,2}$"
+      }
+    }
+  }
+}
