@@ -6,6 +6,7 @@ extension CommanderLoop {
     static func handlers(admin: AdminGitHub?) -> [String: any IntentHandler] {
         let administered: [String: any IntentHandler] = [
             "addRepository": AddRepositoryHandler(admin: admin),
+            "createRepository": CreateRepositoryHandler(admin: admin),
             "applyProtection": ApplyProtectionHandler(admin: admin),
             "approveSetupPullRequest": ApproveSetupPullRequestHandler(admin: admin)
         ]
