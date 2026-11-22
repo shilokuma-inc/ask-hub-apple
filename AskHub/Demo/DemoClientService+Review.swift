@@ -295,7 +295,8 @@ extension DemoClientService {
             epic.humanTasks[index].state = .verifying
             epic.log("「\(epic.humanTasks[index].title)」を終えました。確かめています", at: date)
         }
-        schedule { [now] snapshot in
+        schedule { [now, weak self] snapshot in
+            var started = false
             snapshot.updateEpic(epicID) { epic in
                 guard let index = epic.humanTasks.firstIndex(where: { $0.id == taskID }) else {
                     return
@@ -307,6 +308,15 @@ extension DemoClientService {
                     }
                 }
                 epic.log("「\(epic.humanTasks[index].title)」を確かめ、ロックを外しました", at: now())
+                // ほかのタスクが動いていなければ（前のタスクを飛ばした後など）、司令塔と同じく次のタスクを始める
+                let busy = epic.tasks.contains { $0.isInProgress || $0.isFailed }
+                if !busy, let next = epic.tasks.firstIndex(where: { $0.state == .pending }) {
+                    epic.startTask(at: next, attempt: 1, date: now())
+                    started = true
+                }
+            }
+            if started {
+                self?.resumeImplementation(epicID: epicID)
             }
         }
     }

@@ -196,7 +196,19 @@ extension DemoData {
                 Goal.PlannedTask(title: "通知の予約と取り消し", humanTaskID: nil),
                 Goal.PlannedTask(title: "デモのデータに上限を足す", humanTaskID: nil)
             ],
-            revisionRequest: nil
+            revisionRequest: nil,
+            outsideRequests: [
+                Goal.OutsideRequest(
+                    repositoryFullName: "\(Self.owner)/pocket-budget-android",
+                    title: "月の上限の通知を Android 版の仕様に足す",
+                    body: "docs/SPEC.md に、月の上限と 8 割・10 割の通知を iOS と同じ仕様で書く"
+                ),
+                Goal.OutsideRequest(
+                    repositoryFullName: "\(Self.owner)/habit-ios",
+                    title: "通知の文言をおこづかい帳とそろえる",
+                    body: "割合と残りを出す通知の言い回しを、おこづかい帳の上限の通知と同じ形にする"
+                )
+            ]
         )
     }
 

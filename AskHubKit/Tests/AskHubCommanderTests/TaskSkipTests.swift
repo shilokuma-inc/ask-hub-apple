@@ -435,4 +435,18 @@ struct SkippedTaskReviewTests {
         #expect(result.outputs?.verdict == .merged)
         #expect(fixture.pulls.current.merges.map(\.number) == [41])
     }
+
+    @Test func keepsMergedVerdictWhenMergedPullRequestCannotBeReread() async throws {
+        let fixture = try await fixture()
+        // マージの後の読み直し（3 回目の読み）だけを失敗させる
+        let reads = OSAllocatedCounter()
+        fixture.pulls.update { state in
+            state.onRead = { pull in
+                if reads.increment() == 3 { pull.number = 0 }
+            }
+        }
+        let result = try await review(fixture)
+        #expect(result.failure != nil)
+        #expect(result.outputs?.verdict == .merged)
+    }
 }

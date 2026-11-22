@@ -66,13 +66,23 @@ public struct CheckReadinessJob: ClaudeJob {
     public var nextRound: Int
     /// 人が分け方の判断で「このまま 1 つで進める」を選んだ後の確認。大きすぎるとは返させない（追加の質問は、回が残っていれば出せる）
     public var proceeding: Bool
+    /// 対象のリポジトリ。渡せば、別のリポジトリへの依頼の案がこのリポジトリを指していないかを確かめる
+    public var repository: RepositoryFullName?
 
-    public init(title: String, body: String, questions: QuestionsFile, attachments: [String] = [], proceeding: Bool = false) {
+    public init(
+        title: String,
+        body: String,
+        questions: QuestionsFile,
+        attachments: [String] = [],
+        proceeding: Bool = false,
+        repository: RepositoryFullName? = nil
+    ) {
         self.title = title
         self.body = body
         self.questions = questions
         self.attachments = attachments
         self.proceeding = proceeding
+        self.repository = repository
         // 最初の質問づくりは、質問が 1 つも無くても 1 回目と数える
         nextRound = (questions.questions.map(\.round).max() ?? 1) + 1
     }
@@ -113,6 +123,8 @@ public struct CheckReadinessJob: ClaudeJob {
           - humanTasks: 人がする作業（id は h1・h2・…。手順は入れる値まで具体的に。リンクは https だけ）
             GitHub の Secrets に入れる値は handover を {"kind": "secret", "name": "英大文字の名前"} にし、値そのものは書かない
             \(HandoverRules.fileRule)
+          - outsideRequests: 別のリポジトリへの依頼の案（無ければ空）
+          \(GoalScopeRules.goal)
         \(rules)
         - reason に、そう判断した理由を書く
         """
@@ -154,7 +166,7 @@ public struct CheckReadinessJob: ClaudeJob {
         switch output.verdict {
         case .ready:
             guard let goal = output.goal else { return reason + ["verdict が ready なのに、goal が無い"] }
-            return reason + goalProblems(goal, questions: questions)
+            return reason + goalProblems(goal, questions: questions, repository: repository)
         case .moreQuestions:
             return reason + questionProblems(output.questions)
         case .tooLarge:
@@ -210,11 +222,14 @@ public struct ReviseGoalJob: ClaudeJob {
     public var questions: QuestionsFile
     /// 人の指示
     public var instruction: String
+    /// 対象のリポジトリ。渡せば、別のリポジトリへの依頼の案がこのリポジトリを指していないかを確かめる
+    public var repository: RepositoryFullName?
 
-    public init(goal: GoalFile, questions: QuestionsFile, instruction: String) {
+    public init(goal: GoalFile, questions: QuestionsFile, instruction: String, repository: RepositoryFullName? = nil) {
         self.goal = goal
         self.questions = questions
         self.instruction = instruction
+        self.repository = repository
     }
 
     public var prompt: String {
@@ -237,11 +252,12 @@ public struct ReviseGoalJob: ClaudeJob {
         - decided は、今のゴールのものをそのまま書き写す（変えない）
         - タスクの id は t1・t2・…、人がする作業の id は h1・h2・…。リンクは https だけ。Secrets の値は書かない
         - \(HandoverRules.fileRule)
+        \(GoalScopeRules.goal)
         """
     }
 
     public func problems(in output: Output) -> [String] {
-        var problems = goalProblems(output.goal, questions: questions)
+        var problems = goalProblems(output.goal, questions: questions, repository: repository)
         // 決まったことは回答から来ているので、ゴールの修正では変えない（変える指示は notApplied に書く）
         if output.goal.decided != goal.decided { problems.append("決まったこと（decided）は変えない。変える指示は notApplied に書く") }
         if output.notApplied.contains(where: { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
@@ -251,11 +267,28 @@ public struct ReviseGoalJob: ClaudeJob {
     }
 }
 
+/// 対象のリポジトリの外の作業の書き分け（ワーカーは対象のリポジトリの作業場所だけで動く。2026-11-22 のユーザーの決定）
+enum GoalScopeRules {
+    /// 質問づくりの決まり
+    static let questions = """
+        依頼に対象のリポジトリの外の作業（別のリポジトリの変更・GitHub やストアの設定など）が含まれていても、それをこの依頼の中でどう進めるかの質問は作らない\
+        （外の作業は、ゴールで人がする作業か別のリポジトリへの依頼の案になる）
+        """
+
+    /// ゴールの決まり（着手前の確認・ゴールの修正）
+    static let goal = """
+        - tasks と doneWhen には、対象のリポジトリの中の変更と、その中で確かめられることだけを書く（別のリポジトリの変更・PR をタスクや完了の条件にしない）
+          - 外の作業が要るときは、マージの前に済んでいないといけないもの（鍵・設定など）は humanTasks に、そうでなければ outsideRequests に書く
+          - outsideRequests: repo は依頼先のリポジトリ（owner/name。対象のリポジトリ自身は書かない）、title は依頼の題、\
+        body はそのリポジトリへの依頼としてそのまま送れる文。この epic は outsideRequests の作業を待たない
+        """
+}
+
 /// ゴールの案が決まりに合わない点。ゴールの形に合っていても、file の作業に秘密らしい言葉があれば直させる
-private func goalProblems(_ draft: GoalDraft, questions: QuestionsFile) -> [String] {
+private func goalProblems(_ draft: GoalDraft, questions: QuestionsFile, repository: RepositoryFullName?) -> [String] {
     let found: [String]
     do throws(QuestionFlow.ResultError) {
-        _ = try GoalFlow.goal(from: draft, questions: questions, version: 1)
+        _ = try GoalFlow.goal(from: draft, questions: questions, version: 1, repository: repository)
         found = []
     } catch let .invalid(problems) {
         found = problems
