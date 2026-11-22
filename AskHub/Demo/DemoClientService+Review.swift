@@ -245,9 +245,10 @@ extension DemoClientService {
         }
     }
 
-    /// 止まっているタスクを飛ばす（司令塔は済んだものとして次のタスク・最終 PR へ進める）
+    /// 止まっているタスクを飛ばし、司令塔と同じく、済んだものとして次のタスクを始める（マージの後の進め方と同じ）
     private func skipTask(epicID: Epic.ID, reason: TaskSkip, note: String) {
         let date = now()
+        var started = false
         state.updateEpic(epicID) { epic in
             guard let failed = epic.tasks.firstIndex(where: \.isFailed) else {
                 return
@@ -256,6 +257,13 @@ extension DemoClientService {
             epic.tasks[failed].state = .skipped(reason: text.isEmpty ? reason.label : "\(reason.label)・\(text)")
             epic.blocker = nil
             epic.log("タスク \(epic.tasks[failed].number) を飛ばしました（\(reason.label)）", at: date)
+            if let next = epic.tasks.firstIndex(where: { $0.state == .pending }) {
+                epic.startTask(at: next, attempt: 1, date: date)
+                started = true
+            }
+        }
+        if started {
+            resumeImplementation(epicID: epicID)
         }
     }
 
