@@ -7,7 +7,9 @@ import Foundation
 // （人の意図の処理の中で外の操作を待たない。途中で止まっても、見回りがやり直す）
 
 /// リリースを始める（`startRelease`）を受け付け、`submissions/<版>.json` を作る。
-/// 終わっていないリリースがある・配信した版より大きくない・もう始めた版なら断る。やめた版は始め直せる
+/// 終わっていないリリースがある・配信した版より大きくない・もう始めた版なら断る。やめた版は始め直せる。
+/// hotfix は配信中の版の次のパッチだけで、進行中のリリースがあれば、人が確かめた版（`suspend`）を一時停止してから始める
+/// （審査中なら取り下げを頼む。審査に通った版は API で取り下げられないので断る）
 public struct StartReleaseHandler: IntentHandler {
     public init() {}
 
@@ -23,12 +25,15 @@ public struct StartReleaseHandler: IntentHandler {
         // 前の周で作った（やり直し）
         if existing?.start?.approval == start.intent { return .accept }
         if let problem = try await Self.problem(starting: start, existing: existing, in: context) { return .reject(problem) }
+        let released = try await Self.releasedVersions(of: start.repo, in: context).max()
+        if let suspend = start.suspend { try await Self.suspend(suspend, for: start, in: context) }
         // App Store Connect の版の枠は、見回りが作る（空の並びは「これから作る」の印）
         let file = SubmissionFile(
             repo: start.repo,
             version: start.version,
             origin: .askhub,
             start: .init(approval: start.intent, at: context.timestamp),
+            hotfix: start.hotfix ? released.map { .init(from: $0, suspended: start.suspend) } : nil,
             appStoreVersions: [],
             createdAt: context.timestamp,
             updatedAt: context.timestamp
@@ -67,13 +72,67 @@ public struct StartReleaseHandler: IntentHandler {
         if let existing, existing.end?.reason != .abandoned {
             return existing.isEnded ? "\(start.version) はもう配信した" : "\(start.version) のリリースはもう始めている"
         }
-        for other in try await submissions(of: start.repo, in: context) where !other.isEnded && other.version != start.version {
+        let released = try await releasedVersions(of: start.repo, in: context).max()
+        let others = try await submissions(of: start.repo, in: context).filter { !$0.isEnded && $0.version != start.version }
+        if start.hotfix {
+            return hotfixProblem(start, released: released, others: others)
+        }
+        if let other = others.first {
             return "\(other.version) のリリースが終わっていない。先にやめるか、配信を待つ（App Store Connect の編集できる版は 1 つ）"
         }
-        if let released = try await releasedVersions(of: start.repo, in: context).max(), start.version <= released {
+        if let released, start.version <= released {
             return "配信した版（\(released)）より大きい版にする"
         }
         return nil
+    }
+
+    /// hotfix を始められない理由。版は配信中の版の次のパッチだけ。進行中のリリースは、人が確かめた版を一時停止できるときだけ
+    static func hotfixProblem(_ start: StartReleaseIntent, released: MarketingVersion?, others: [SubmissionFile]) -> String? {
+        guard let released else { return "配信した版が無いので、hotfix は始められない" }
+        guard start.version == released.nextPatch else {
+            return "hotfix の版は、配信中の版（\(released)）の次のパッチ（\(released.nextPatch)）にする"
+        }
+        for other in others {
+            if other.hotfix != nil { return "hotfix の \(other.version) が終わっていない" }
+            // 前の周で一時停止を書いた（やり直し）
+            if other.suspension?.approval == start.intent, other.isSuspended { continue }
+            guard start.suspend == other.version else {
+                return "進行中の \(other.version) のリリースを一時停止することを確かめてから始める（取り直して送り直す）"
+            }
+            if other.isSuspended { return "\(other.version) はもう別の hotfix で一時停止している" }
+            if other.isSubmitting { return "\(other.version) を審査に出している途中。出し終えてから hotfix を始める" }
+            if other.review.contains(where: { $0.state.isApproved || $0.state == .readyForDistribution }) {
+                return "\(other.version) は審査に通っている（API で取り下げられない）。配信するか、App Store Connect で取り下げてから hotfix を始める"
+            }
+        }
+        if let suspend = start.suspend, !others.contains(where: { $0.version == suspend }) {
+            return "一時停止する \(suspend) のリリースが無い（取り直して送り直す）"
+        }
+        return nil
+    }
+
+    /// 進行中のリリースを hotfix の間一時停止する。審査を待っている・審査中なら、取り下げも頼む（見回りが取り下げる）
+    static func suspend(
+        _ version: MarketingVersion,
+        for start: StartReleaseIntent,
+        in context: CommanderContext
+    ) async throws(CommanderError) {
+        let path = StatePath.submission(start.repo, version)
+        let suspension = SubmissionFile.Suspension(by: start.version, approval: start.intent, at: context.timestamp)
+        let saved: SubmissionFile
+        do {
+            let message = "\(start.repo) の \(version) を hotfix の間一時停止する"
+            saved = try await context.files.update(SubmissionFile.self, at: path, message: message) { file in
+                guard !file.isEnded, file.suspension?.approval != start.intent else { return false }
+                file.suspension = suspension
+                if file.canWithdraw { file.withdrawal = .init(approval: start.intent, at: context.timestamp) }
+                file.updatedAt = context.timestamp
+                return true
+            }.file
+        } catch {
+            throw .files(error)
+        }
+        guard saved.suspension?.approval == start.intent else { throw .changedWhileProcessing(path) }
     }
 
     /// リポジトリのリリースを始めた版の記録（読めないものは飛ばす）
