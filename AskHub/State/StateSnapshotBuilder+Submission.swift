@@ -23,6 +23,7 @@ extension StateSnapshotBuilder {
             index.submissions[submission.id] = Self.entry(file, idle: pending.isEmpty)
             if !file.isEnded, pending.allSatisfy({ $0.kind != AbandonReleaseIntent.kind }) {
                 index.releasingRepositories.insert(submission.repositoryID)
+                index.openReleases[submission.repositoryID, default: []].append((file.version, file.hotfix != nil))
             }
             submissions.append(submission)
         }
@@ -108,6 +109,8 @@ extension StateSnapshotBuilder {
             updatedAt: file.updatedAt.date
         )
         submission.branchCreatedAt = file.branch?.at.date
+        submission.hotfixFrom = file.hotfix?.from.rawValue
+        submission.suspendedBy = file.isSuspended ? file.suspension?.by.rawValue : nil
         submission.submitted = file.submit.map(submitted)
         submission.slots = file.appStoreVersions.map { $0.map(slot) }
         submission.screenshots = file.screenshots.map(storeScreenshots)

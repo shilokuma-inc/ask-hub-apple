@@ -47,7 +47,7 @@
 | 1 | App Store Connect の API の確かめと鍵の入れ方 | 下の「段階 0 で確かめること」の項目 10。司令塔が読む鍵を常時オンの Mac の Keychain に置く（[release.md](release.md) の「ワークフロー」）。読み取り（配信中の版とビルド）は確かめて #1085 で入れ、鍵は `askhub-commander app-store-connect` で入れる（[operations.md](operations.md) の「App Store Connect の API キー（配信の検知）」）。審査に出す・配信するの API は 3 で確かめる |
 | 2 | 配信の検知と後作業 | 司令塔が配信を見つけ、タグ・リリース文の下書き（人が確かめて公開する）・GitHub Release・次の版に上げる PR を行う（[release.md](release.md) の「配信の検知と後作業」。配信の記録と公開の意図は #1078、司令塔は #1085、アプリは #1091 で入れ、今の仕組みの Release/* は #1087 で外した）。release ブランチを使うときの main と develop への取り込みは 3 で足す |
 | 3 | リリースを始める・準備・審査に出す・審査の見張り・配信 | 記録と意図は #1127、司令塔は #1140、アプリは #1142、release ブランチの取り込みは #1151、版の枠をリリースを始めたときに作るのは #1155（[release.md](release.md) の「リリースを始めてから配信まで」）。App Manager の鍵で提出まで書けることを、2026-11-20 に OshiCon 1.2.0 で確かめた |
-| 4 | リリース中の直し・hotfix・リジェクト | [release.md](release.md) の「リリース中の直し」「リジェクト」「hotfix」。通知のリジェクト（[operations.md](operations.md) の「通知」）も |
+| 4 | リリース中の直し・hotfix・リジェクト | [release.md](release.md) の「リリース中の直し」「リジェクト」「hotfix」。通知のリジェクト（[operations.md](operations.md) の「通知」）も。このリリースを直す依頼は #1215、リジェクトの理由と直し方・出し直しは #1220、hotfix は #1209 の PR で作った。App Store Connect での出し直しと hotfix の取り下げ・付け替えは、まだ実地で通していない |
 | 5 | 共通リポジトリ（app-kit）とテンプレートの作り直し・配布 | [operations.md](operations.md) の「共通リポジトリとテンプレートの配布」。今あるリポジトリにも「対象に加える」と同じ手順を流してそろえる。設計は [app-kit.md](app-kit.md)（2026-11-22 にユーザーが決めた。#1210。実装の順と PR の分け方もそこに書いた） |
 | 6 | App Store の素材 | 掲載文（説明文・キーワード・プロモーションテキスト）の案と確かめ（#1156）・配信中の版のプロモーションテキストをいつでも直す（#1160）・App Review の情報を変わったときだけ直す（#1164）・スクショを撮って前回と比べ、確かめたものを上げる（#1167。[release.md](release.md) の「リリースを始めてから配信まで」の「掲載文」）・スクショの差分・App Review の情報・プロダクトページのヘッダー・検索結果の素材・チャットでの手直し（[release.md](release.md) の「App Store の素材」） |
 | 7 | XcodeGen への移行、macOS の画面の撮影 | macOS の撮影は、常時オンの Mac での画面収録の許可を確かめてから |

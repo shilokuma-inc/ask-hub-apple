@@ -14,6 +14,9 @@ extension StateIntentMapper {
                   let version = MarketingVersion(rawValue: version) else { return false }
             return index.releasedVersions[repositoryID].map { version > $0 } ?? true
 
+        case let .startHotfix(repositoryID, version, suspend):
+            return hotfixProblem(repositoryID, version: version, suspend: suspend) == nil
+
         case let .submitForReview(repositoryID, version, _):
             return index.submissions[Submission.id(repositoryID, version)]?.canSubmit == true
 
@@ -26,30 +29,32 @@ extension StateIntentMapper {
         case let .abandonRelease(repositoryID, version):
             return index.submissions[Submission.id(repositoryID, version)]?.canAbandon == true
 
-        case let .retakeScreenshots(repositoryID, version, _, _):
-            return index.submissions[Submission.id(repositoryID, version)]?.canRetakeScreenshots == true
-
-        case let .reportRejection(repositoryID, version, _, _):
-            return index.submissions[Submission.id(repositoryID, version)]?.canReportRejection == true
-
-        case let .resolveRejection(repositoryID, version, _):
-            return index.submissions[Submission.id(repositoryID, version)]?.canResolveRejection == true
+        case .retakeScreenshots, .reportRejection, .resolveRejection:
+            return supportsFollowUp(intent)
 
         default:
             return false
         }
     }
 
+    /// 準備の後の操作（スクショを撮り直す・リジェクトの理由を貼る・直し方を選ぶ）を送れるか
+    private func supportsFollowUp(_ intent: HumanIntent) -> Bool {
+        switch intent {
+        case let .retakeScreenshots(repositoryID, version, _, _):
+            index.submissions[Submission.id(repositoryID, version)]?.canRetakeScreenshots == true
+        case let .reportRejection(repositoryID, version, _, _):
+            index.submissions[Submission.id(repositoryID, version)]?.canReportRejection == true
+        case let .resolveRejection(repositoryID, version, _):
+            index.submissions[Submission.id(repositoryID, version)]?.canResolveRejection == true
+        default:
+            false
+        }
+    }
+
     func submissionDraft(_ intent: HumanIntent) throws(ClientServiceError) -> IntentDraft {
         switch intent {
-        case let .startRelease(repositoryID, version):
-            guard let parsed = MarketingVersion(rawValue: version) else {
-                throw ClientServiceError(message: "版は 1.2.0 のように、数を . でつないで書いてください")
-            }
-            guard supportsSubmissionIntent(intent) else {
-                throw ClientServiceError(message: "このリポジトリでは、いまはリリースを始められません（終わっていないリリースがあるか、配信した版より大きくありません）")
-            }
-            return .startRelease(try repository(repositoryID), version: parsed)
+        case .startRelease, .startHotfix:
+            return try startDraft(intent)
 
         case let .submitForReview(repositoryID, version, request):
             let entry = try entry(repositoryID, version, \.canSubmit, unavailable: "この版は、いまは審査に出せません。取り直してから送ってください")
@@ -88,6 +93,33 @@ extension StateIntentMapper {
         }
     }
 
+    /// リリースを始める・hotfix を始める
+    private func startDraft(_ intent: HumanIntent) throws(ClientServiceError) -> IntentDraft {
+        switch intent {
+        case let .startRelease(repositoryID, version):
+            guard let parsed = MarketingVersion(rawValue: version) else {
+                throw ClientServiceError(message: "版は 1.2.0 のように、数を . でつないで書いてください")
+            }
+            guard supportsSubmissionIntent(intent) else {
+                throw ClientServiceError(message: "このリポジトリでは、いまはリリースを始められません（終わっていないリリースがあるか、配信した版より大きくありません）")
+            }
+            return .startRelease(try repository(repositoryID), version: parsed)
+
+        case let .startHotfix(repositoryID, version, suspend):
+            if let problem = hotfixProblem(repositoryID, version: version, suspend: suspend) { throw ClientServiceError(message: problem) }
+            guard let parsed = MarketingVersion(rawValue: version) else { throw ClientServiceError(message: "hotfix の版の形が違います") }
+            return .startRelease(
+                try repository(repositoryID),
+                version: parsed,
+                hotfix: true,
+                suspend: suspend.flatMap(MarketingVersion.init(rawValue:))
+            )
+
+        default:
+            throw Self.unsupported
+        }
+    }
+
     /// 準備の後の操作: スクショを撮り直す・リジェクトの理由を貼る・直し方を選ぶ
     private func followUpDraft(_ intent: HumanIntent) throws(ClientServiceError) -> IntentDraft {
         switch intent {
@@ -118,6 +150,22 @@ extension StateIntentMapper {
         default:
             throw Self.unsupported
         }
+    }
+
+    /// hotfix を始められない理由（司令塔の `StartReleaseHandler.hotfixProblem` と同じ決まり）。始められれば nil
+    func hotfixProblem(_ repositoryID: TargetRepository.ID, version: String, suspend: String?) -> String? {
+        guard index.repositories[repositoryID] != nil, let released = index.releasedVersions[repositoryID] else {
+            return "配信した版が無いので、hotfix は始められません"
+        }
+        guard MarketingVersion(rawValue: version) == released.nextPatch else {
+            return "hotfix の版は、配信中の版（\(released)）の次のパッチ（\(released.nextPatch)）にしてください"
+        }
+        let open = index.openReleases[repositoryID] ?? []
+        if open.contains(where: \.hotfix) { return "終わっていない hotfix があります" }
+        guard open.map(\.version.rawValue) == (suspend.map { [$0] } ?? []) else {
+            return "進行中のリリースが変わりました。取り直してから始めてください"
+        }
+        return nil
     }
 
     private func entry(

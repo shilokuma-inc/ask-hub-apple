@@ -146,8 +146,16 @@ public struct IntentDraft: Equatable, Sendable {
     }
 
     /// リリースを始める（司令塔が release ブランチを作り、準備を進める）
-    public static func startRelease(_ repo: RepositoryFullName, version: MarketingVersion) -> Self {
-        Self(kind: StartReleaseIntent.kind, repo: repo, payload: ["version": .string(version.rawValue)])
+    public static func startRelease(
+        _ repo: RepositoryFullName,
+        version: MarketingVersion,
+        hotfix: Bool = false,
+        suspend: MarketingVersion? = nil
+    ) -> Self {
+        var payload: [String: JSONValue] = ["version": .string(version.rawValue)]
+        if hotfix { payload["hotfix"] = .bool(true) }
+        if let suspend { payload["suspend"] = .string(suspend.rawValue) }
+        return Self(kind: StartReleaseIntent.kind, repo: repo, payload: payload)
     }
 
     /// 審査に出す（`revision` は人が見たときの準備の版。ビルド・What's New・掲載文の案が変わっていれば司令塔が断る）。

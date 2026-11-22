@@ -24,27 +24,31 @@ extension ReleaseWatch {
         for version in versions {
             guard let file = try? await context.readable(SubmissionFile.self, at: StatePath.submission(repo, version)) else { continue }
             guard !file.isEnded else {
-                // やめた版は、まだ審査に出していない App Store Connect の版の枠を消す。消せなかった枠を知らせる間は返す
-                if file.end?.reason == .abandoned {
-                    if file.awaitsSlotRemoval {
-                        advanced.append(await submissionStep(.appStoreVersion, file) { try await self.removeSlots($0, settings: settings) })
-                    } else if file.appStoreVersions?.contains(where: { $0.removal == .kept }) == true {
-                        advanced.append(file)
-                    }
-                    continue
-                }
-                // 配信した版は、release ブランチを main と develop に取り込み、配信の知らせを出し続ける間は返す
-                guard file.end?.reason == .distributed else { continue }
-                let bases = Self.integrationBases(settings)
-                advanced.append(file.awaitsIntegration(bases: bases) ? await integrate(file, settings: settings) : file)
+                if let ended = await advanceEnded(file, settings: settings) { advanced.append(ended) }
                 continue
             }
             var progressed = await performRequests(file, settings: settings)
-            if progressed.origin == .askhub { progressed = await prepare(progressed, settings: settings) }
+            // hotfix の間は準備を進めない。hotfix を配信してこの release ブランチに取り込んだら、準備を作り直して再開する
+            if progressed.isSuspended { progressed = await resumeAfterHotfix(progressed) }
+            if progressed.origin == .askhub, !progressed.isSuspended { progressed = await prepare(progressed, settings: settings) }
             if progressed.awaitsRejectionTriage { progressed = await triageRejection(progressed, settings: settings) }
             advanced.append(progressed)
         }
         return advanced
+    }
+
+    /// 終わった版の後始末。やめた版は、まだ審査に出していない App Store Connect の版の枠を消す（消せなかった枠を知らせる間は返す）。
+    /// 配信した版は、release ブランチを main と develop（hotfix は一時停止したリリースにも）に取り込む（配信の知らせを出し続ける間は返す）
+    private func advanceEnded(_ file: SubmissionFile, settings: RepositoryFile) async -> SubmissionFile? {
+        if file.end?.reason == .abandoned {
+            if file.awaitsSlotRemoval {
+                return await submissionStep(.appStoreVersion, file) { try await self.removeSlots($0, settings: settings) }
+            }
+            return file.appStoreVersions?.contains(where: { $0.removal == .kept }) == true ? file : nil
+        }
+        guard file.end?.reason == .distributed else { return nil }
+        let bases = Self.integrationBases(settings, file: file)
+        return file.awaitsIntegration(bases: bases) ? await integrate(file, settings: settings) : file
     }
 
     /// 1 つの版の準備を、進められるところまで進める
@@ -61,20 +65,19 @@ extension ReleaseWatch {
         guard file.branch != nil else { return file }
         if file.nextVersion?.state != .merged, file.nextVersion?.state != .skipped, !isHeld(.nextVersion, file) {
             file = await submissionStep(.nextVersion, file) { file in
-                let reason = "\(file.version) のリリースを始めた（release ブランチ `\(SubmissionFile.branchName(for: file.version))` を作った）ので"
-                guard let next = try await self.nextVersionStep(
-                    file.repo, version: file.version, current: file.nextVersion, settings: settings, reason: reason
-                ) else { return nil }
+                guard let next = try await self.nextVersionStep(file, settings: settings) else { return nil }
                 var file = file
                 file.nextVersion = next
                 return file
             }
         }
-        if file.whatsNew == nil, !isHeld(.whatsNew, file) {
+        // hotfix の What's New と掲載文の案は、直しを入れたビルドが上がってから書く（release ブランチを作ったときは、配信中の版と同じ中身のため）
+        let drafts = file.hotfix == nil || !file.builds.isEmpty
+        if file.whatsNew == nil, drafts, !isHeld(.whatsNew, file) {
             file = await submissionStep(.whatsNew, file) { try await self.draftWhatsNew($0, settings: settings) }
         }
         // 審査に出した後は、案を作らない（出した中身は submit にある）
-        if file.listing == nil, file.submit == nil, !file.hasReviewInFlight, !isHeld(.listing, file) {
+        if file.listing == nil, drafts, file.submit == nil, !file.hasReviewInFlight, !isHeld(.listing, file) {
             file = await submissionStep(.listing, file) { try await self.draftListing($0, settings: settings) }
         }
         // スクショは見回りの外で撮る（UI テストは長い）
@@ -103,11 +106,20 @@ extension ReleaseWatch {
             file.branch = .init(name: name, commit: existing, created: false, at: context.timestamp)
             return file
         }
-        guard let head = try await github({ () throws(PullRequestError) in try await hosting.branchHead(file.repo, branch: base) }) else {
-            throw ReleaseStepProblem("\(base) ブランチが無い。リポジトリのビルドの設定（base）を確かめる", needsHuman: true)
+        // hotfix は配信中の版のタグから作る（develop には触れない）
+        let source = file.hotfix.map { $0.from.tagName } ?? base
+        let found = try await github { () throws(PullRequestError) -> String? in
+            if let hotfix = file.hotfix { return try await hosting.tagCommit(file.repo, tag: hotfix.from.tagName) }
+            return try await hosting.branchHead(file.repo, branch: base)
+        }
+        guard let head = found else {
+            throw ReleaseStepProblem(
+                file.hotfix == nil ? "\(base) ブランチが無い。リポジトリのビルドの設定（base）を確かめる" : "配信中の版のタグ \(source) が無い。人がタグを付ける",
+                needsHuman: true
+            )
         }
         let created = try await github { () throws(PullRequestError) in try await hosting.createBranch(file.repo, branch: name, at: head) }
-        log("\(file.repo) の \(base)（\(head.prefix(7))）から \(name) を作った")
+        log("\(file.repo) の \(source)（\(head.prefix(7))）から \(name) を作った")
         file.branch = .init(name: name, commit: created, created: created == head, at: context.timestamp)
         return file
     }
@@ -133,12 +145,13 @@ extension ReleaseWatch {
         guard let drafter = whatsNew else {
             throw ReleaseStepProblem("What's New を下書きする仕組みが司令塔に無い", needsHuman: true)
         }
-        let (changes, epics) = try await changeMaterial(file, upTo: branch.commit)
+        let commit = try await materialCommit(file, branch: branch)
+        let (changes, epics) = try await changeMaterial(file, upTo: commit)
         let material = WhatsNewMaterial(
             repo: file.repo,
             appName: app.name,
             version: file.version,
-            commit: branch.commit,
+            commit: commit,
             changes: changes,
             epics: epics,
             locales: locales
@@ -183,12 +196,13 @@ extension ReleaseWatch {
             throw ReleaseStepProblem("掲載文の案を書く仕組みが司令塔に無い", needsHuman: true)
         }
         let review = try await reviewDetail(of: live, store: store)
-        let (changes, epics) = try await changeMaterial(file, upTo: branch.commit)
+        let commit = try await materialCommit(file, branch: branch)
+        let (changes, epics) = try await changeMaterial(file, upTo: commit)
         let material = ListingMaterial(
             repo: file.repo,
             appName: app.name,
             version: file.version,
-            commit: branch.commit,
+            commit: commit,
             changes: changes,
             epics: epics,
             current: current,
@@ -392,6 +406,8 @@ extension ReleaseWatch {
         case .builds:
             guard file.submit == nil, file.builds != changed.builds else { return }
             file.builds = changed.builds
+            // hotfix は直しを入れるたびにビルドが上がるので、What's New を今の release ブランチの先頭で書き直す
+            if file.hotfix != nil { file.whatsNew = nil }
         default:
             return
         }

@@ -48,6 +48,43 @@
       },
       "schemaValid": false,
       "read": "malformed"
+    },
+    {
+      "name": "hotfix",
+      "payload": {
+        "version": "1.4.1",
+        "hotfix": true
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "hotfix-suspending",
+      "payload": {
+        "version": "1.4.1",
+        "hotfix": true,
+        "suspend": "1.5.0"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "hotfix-false",
+      "payload": {
+        "version": "1.4.1",
+        "hotfix": false
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "suspend-without-hotfix",
+      "payload": {
+        "version": "1.5.0",
+        "suspend": "1.4.0"
+      },
+      "schemaValid": true,
+      "read": "malformed"
     }
   ]
 }

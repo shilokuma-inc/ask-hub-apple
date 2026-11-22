@@ -3239,6 +3239,90 @@
       "read": "malformed"
     },
     {
+      "name": "hotfix",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/prime-pick-ios",
+        "version": "1.4.1",
+        "origin": "askhub",
+        "start": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-20T01:00:00Z"
+        },
+        "builds": [],
+        "revision": 0,
+        "review": [],
+        "createdAt": "2026-11-20T01:00:00Z",
+        "updatedAt": "2026-11-20T01:00:00Z",
+        "hotfix": {
+          "from": "1.4.0",
+          "suspended": "1.5.0"
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "suspended-for-hotfix",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/prime-pick-ios",
+        "version": "1.5.0",
+        "origin": "askhub",
+        "start": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-20T01:00:00Z"
+        },
+        "builds": [],
+        "revision": 0,
+        "review": [],
+        "createdAt": "2026-11-20T01:00:00Z",
+        "updatedAt": "2026-11-20T01:00:00Z",
+        "suspension": {
+          "by": "1.4.1",
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000008"
+          },
+          "at": "2026-11-20T03:00:00Z"
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "hotfix-not-larger",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/prime-pick-ios",
+        "version": "1.4.0",
+        "origin": "askhub",
+        "start": {
+          "approval": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-20T01:00:00Z"
+        },
+        "builds": [],
+        "revision": 0,
+        "review": [],
+        "createdAt": "2026-11-20T01:00:00Z",
+        "updatedAt": "2026-11-20T01:00:00Z",
+        "hotfix": {
+          "from": "1.4.0"
+        }
+      },
+      "schemaValid": true,
+      "read": "malformed"
+    },
+    {
       "name": "unknown-field",
       "value": {
         "v": 1,
