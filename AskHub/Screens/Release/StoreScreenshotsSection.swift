@@ -92,7 +92,8 @@ struct StoreScreenshotsSection: View {
 
     /// ほかの言語の差のある画面を、まとめて替える（オン）か前のままにする（オフ）
     private func allOthers(_ sets: [Submission.ScreenshotSet]) -> Binding<Bool> {
-        let keys = sets.flatMap { set in set.changedShots.map(set.key) }
+        // 受け付けられなかった画面は動かせない（前のままにするしかない）ので、まとめての切り替えに数えない
+        let keys = sets.flatMap { set in set.changedShots.filter { $0.rejected == nil }.map(set.key) }
         return Binding { keys.allSatisfy { !keep.contains($0) } } set: { isOn in
             if isOn { keep.subtract(keys) } else { keep.formUnion(keys) }
         }
