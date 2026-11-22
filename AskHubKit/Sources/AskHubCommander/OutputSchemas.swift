@@ -81,7 +81,12 @@ enum OutputSchema {
                 "kind": oneOf(HandoverKind.allCases.map(\.rawValue), "none（終わったを押すだけ）・file（ファイルを渡す）・secret（GitHub の Secrets に入れる）"),
                 "name": nullable(string("secret のときの Secrets の名前（英大文字・数字・_）"))
             ], required: ["kind"])
-        ]), "人がする作業。無ければ空")
+        ]), "人がする作業。無ければ空"),
+        "outsideRequests": array(of: object([
+            "repo": string("依頼先のリポジトリ（owner/name）。対象のリポジトリ自身は書かない"),
+            "title": string("依頼の題"),
+            "body": string("依頼の本文（そのリポジトリへの依頼として、そのまま送れる文）")
+        ]), "別のリポジトリへの依頼の案（マージの前に要らない外の作業）。無ければ空")
     ])
 
     static let questionRewrite = object(questionContent.merging([

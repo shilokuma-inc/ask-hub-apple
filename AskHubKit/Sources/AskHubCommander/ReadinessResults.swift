@@ -48,7 +48,8 @@ extension ClaudeJobRunner {
             body: request.body,
             questions: questions,
             attachments: placed?.paths ?? [],
-            proceeding: proceeding
+            proceeding: proceeding,
+            repository: epic.repo
         )
         switch try await ask(claudeJob, for: job, attachments: placed?.directory) {
         case let .failed(failure, session):
@@ -112,7 +113,7 @@ extension ClaudeJobRunner {
         switch output.verdict {
         case .ready:
             guard let draft = output.goal else { throw .invalid(["verdict が ready なのに、goal が無い"]) }
-            return .ready(try GoalFlow.goal(from: draft, questions: job.questions, version: 1))
+            return .ready(try GoalFlow.goal(from: draft, questions: job.questions, version: 1, repository: job.repository))
         case .moreQuestions:
             return .moreQuestions(try QuestionFlow.append(output.questions ?? [], round: job.nextRound, to: job.questions))
         case .tooLarge:
@@ -168,13 +169,15 @@ extension ClaudeJobRunner {
             return .discarded("頼んだ後にゴールが直された", nil)
         }
         guard let questions = try await questionsFile(of: epic) else { return Self.missingQuestions }
-        switch try await ask(ReviseGoalJob(goal: goal, questions: questions, instruction: instruction), for: job) {
+        switch try await ask(ReviseGoalJob(goal: goal, questions: questions, instruction: instruction, repository: epic.repo), for: job) {
         case let .failed(failure, session):
             return .failed(failure, session)
         case let .answered(output, session):
             var revised: GoalFile
             do throws(QuestionFlow.ResultError) {
-                revised = try GoalFlow.goal(from: output.goal, questions: questions, version: version + 1, comment: goal.comment)
+                revised = try GoalFlow.goal(
+                    from: output.goal, questions: questions, version: version + 1, comment: goal.comment, repository: epic.repo
+                )
             } catch {
                 return .failed(AttemptFailure(failureClass: .unexpected, message: "直したゴールを作れない（\(error)）"), session)
             }

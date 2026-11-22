@@ -104,6 +104,26 @@
         }
       }
     },
+    "outsideRequests": {
+      "description": "別のリポジトリへの依頼の案（ワーカーは対象のリポジトリの作業場所だけで動くので、外の作業はタスクにしない）。人が確かめて、そのリポジトリへの依頼として送る。無ければ書かない（空の配列は読む側が弾く）",
+      "anyOf": [
+        {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["repo", "title", "body"],
+            "additionalProperties": false,
+            "properties": {
+              "repo": { "$ref": "../common.schema.json#/$defs/repositoryFullName" },
+              "title": { "type": "string", "minLength": 1 },
+              "body": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        { "type": "null" }
+      ]
+    },
     "notApplied": {
       "anyOf": [{ "type": "array", "items": { "type": "string", "minLength": 1 } }, { "type": "null" }],
       "description": "最後のゴールの修正で、反映しなかった人の指示とその理由（決まったことを変える指示など）"

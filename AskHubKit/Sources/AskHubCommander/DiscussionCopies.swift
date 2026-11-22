@@ -179,6 +179,9 @@ enum CopyText {
         lines += section("完了の条件", goal.doneWhen.map { "- \(plain($0))" })
         lines += section("タスク", goal.tasks.map(task))
         lines += section("人がする作業", goal.humanTasks.flatMap(humanTask))
+        if let requests = goal.outsideRequests {
+            lines += section("別のリポジトリへの依頼の案", requests.map { "- `\($0.repo)`: \(plain($0.title))" })
+        }
         if let notApplied = goal.notApplied { lines += section("反映しなかった指示", notApplied.map { "- \(plain($0))" }) }
         return lines.joined(separator: "\n")
     }

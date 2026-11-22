@@ -51,6 +51,7 @@ public struct MakeQuestionsJob: ClaudeJob {
 
         ## 質問の決まり
         - 人が決めないと実装できないこと、決め方で作るものが大きく変わることだけを質問にする。リポジトリを読めば分かること・慣習で決まることは質問にしない
+        - \(GoalScopeRules.questions)
         - 質問ごとに、なぜ決める必要があるか（why）、選択肢ごとに何が変わるか（options の effect）、推奨（recommended。options の label のどれか）とその理由（reason）を書く
         - 選択肢は 2〜4 個。label は短く（30 文字程度まで）、重ならないようにする。選択肢に無い答えは、人が自由記述で書ける
         - ほかの質問の答えを前提にする質問は、dependsOn にその質問の id を書く（循環させない）。前提が無ければ空にする
@@ -265,6 +266,9 @@ enum PromptText {
         }
         lines += ["人がする作業:"] + goal.humanTasks.map { task in
             "- \(task.id): \(task.title)（\(task.why)）手順: \(task.steps.joined(separator: " → "))"
+        }
+        if let requests = goal.outsideRequests {
+            lines += ["別のリポジトリへの依頼の案（この epic ではしない）:"] + requests.map { "- \($0.repo): \($0.title)（\($0.body)）" }
         }
         return lines.joined(separator: "\n")
     }

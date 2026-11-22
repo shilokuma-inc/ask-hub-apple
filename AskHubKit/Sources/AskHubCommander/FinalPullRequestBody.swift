@@ -54,10 +54,17 @@ enum FinalPullRequestBody {
         if !done.isEmpty {
             sections.append("## 人がした作業\n\n" + list(done.map { "\($0.id): \(safe($0.title))" }))
         }
+        if let requests = goal.outsideRequests {
+            let lines = requests.map { "`\($0.repo)`: \(safe($0.title))" }
+            sections.append("## 別のリポジトリへの依頼の案\n\n\(outsideRequestsGuide)\n\n" + list(lines))
+        }
         let body = String(sections.joined(separator: "\n\n").prefix(maximumLength))
         let marker = JSONValue.object(["type": .string("finalPullRequest"), "epic": .string(epic.id.rawValue)])
         return ProtocolMarker.text(body: body, marker: marker)
     }
+
+    /// 「別のリポジトリへの依頼の案」の前置き
+    static let outsideRequestsGuide = "この PR には入っていない、別のリポジトリでする作業です。AskHub のゴールの画面から、そのリポジトリへの依頼として出せます。"
 
     /// 「飛ばしたタスク」の前置き
     static let skippedGuide = "AskHub のワーカーでは進められなかったなどの理由で、人が飛ばしたタスクです。この PR には入っていません。"

@@ -211,7 +211,7 @@ final class FakePullRequests: PullRequestOperations {
         var deleteError: PullRequestError?
         /// ログを読むときに、先に投げる失敗（1 回ずつ使う）
         var logFailures: [PullRequestError] = []
-        /// 子 PR を読むたびに呼ぶ（待つ間に PR が変わったことにする）
+        /// 子 PR を読むたびに呼ぶ（待つ間に PR が変わったことにする。番号を変えると、読めなかったことにする）
         var onRead: (@Sendable (inout PullRequest) -> Void)?
         /// check run。読むたびに先頭から返す（最後の 1 つは残す）
         var runs: [[CheckRunStatus]] = [[]]
@@ -274,7 +274,7 @@ final class FakePullRequests: PullRequestOperations {
             guard var pull = state.pulls[number] else { return nil }
             state.onRead?(&pull)
             state.pulls[number] = pull
-            return pull
+            return pull.number == number ? pull : nil
         }
         guard let pull else { throw .notFound }
         return pull

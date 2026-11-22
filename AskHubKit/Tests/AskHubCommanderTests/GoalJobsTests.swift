@@ -174,4 +174,51 @@ struct GoalJobsTests {
         #expect(ReviseGoalJob.outputSchema["required"] == .array([.string("goal"), .string("notApplied")]))
         #expect(CheckReadinessJob.outputSchema["required"] == .array([.string("verdict"), .string("reason")]))
     }
+
+    // MARK: - 対象のリポジトリの外の作業
+
+    /// 質問づくり・着手前の確認・ゴールの修正の決まりに、変えられるのは対象のリポジトリだけと、外の作業の書き分けを書く
+    @Test func promptsLimitTasksToTargetRepository() throws {
+        let system = CommanderRules.systemPrompt(repository: Fixture.repo, facts: "")
+        #expect(system.contains("この依頼で変えられるのは、対象のリポジトリの中だけです"))
+        #expect(MakeQuestionsJob(title: "シェア", body: "…").prompt.contains(GoalScopeRules.questions))
+        let check = CheckReadinessJob(title: "シェア", body: "…", questions: try answered()).prompt
+        #expect(check.contains("tasks と doneWhen には、対象のリポジトリの中の変更と、その中で確かめられることだけを書く"))
+        #expect(check.contains("マージの前に済んでいないといけないもの（鍵・設定など）は humanTasks に、そうでなければ outsideRequests に書く"))
+        let goal = try GoalFlow.goal(from: goal(), questions: try answered(), version: 1)
+        let revise = ReviseGoalJob(goal: goal, questions: try answered(), instruction: "…").prompt
+        #expect(revise.contains(GoalScopeRules.goal))
+        #expect(OutputSchema.goalDraft["properties"]?["outsideRequests"] != nil)
+    }
+
+    /// 対象のリポジトリを指す依頼の案は、着手前の確認でもゴールの修正でも直させる
+    @Test func outsideRequestsMustPointElsewhere() throws {
+        var draft = goal()
+        draft.outsideRequests = [.init(repo: Fixture.repo.rawValue, title: "自分", body: "…")]
+        let problem = "outsideRequests の 1 番目: 対象のリポジトリ（\(Fixture.repo)）の変更は tasks に書く。outsideRequests は別のリポジトリへの依頼だけ"
+        let check = CheckReadinessJob(title: "シェア", body: "…", questions: try answered(), repository: Fixture.repo)
+        #expect(check.problems(in: .init(verdict: .ready, reason: "そろった", goal: draft)) == [problem])
+        let current = try GoalFlow.goal(from: goal(), questions: try answered(), version: 1)
+        let revise = ReviseGoalJob(goal: current, questions: try answered(), instruction: "…", repository: Fixture.repo)
+        #expect(revise.problems(in: .init(goal: draft)) == [problem])
+        draft.outsideRequests = [.init(repo: "demo-studio/ranking-android", title: "仕様に足す", body: "SPEC.md に書く")]
+        #expect(check.problems(in: .init(verdict: .ready, reason: "そろった", goal: draft)).isEmpty)
+    }
+
+    /// Claude に渡すゴール・Discussion の写し・最終 PR の本文に、依頼の案を書く
+    @Test func goalTextsListOutsideRequests() throws {
+        var goal = TaskJobsTests.goal()
+        let repo = try #require(RepositoryFullName(rawValue: "demo-studio/ranking-android"))
+        goal.outsideRequests = [.init(repo: repo, title: "仕様に足す", body: "SPEC.md に書く")]
+        #expect(PromptText.goal(goal).contains("別のリポジトリへの依頼の案（この epic ではしない）:\n- demo-studio/ranking-android: 仕様に足す（SPEC.md に書く）"))
+        #expect(CopyText.goal(goal).contains("### 別のリポジトリへの依頼の案\n\n- `demo-studio/ranking-android`: 仕様に足す"))
+        let time = Fixture.now
+        var epic = Fixture.epicFile()
+        epic.stage = .finalizing
+        epic.updatedAt = time
+        let body = FinalPullRequestBody.text(
+            epic: epic, goal: goal, decisions: nil, branches: FinalBranches(base: "develop", epic: "askhub/\(epic.id)")
+        )
+        #expect(body.contains("## 別のリポジトリへの依頼の案\n\n\(FinalPullRequestBody.outsideRequestsGuide)\n\n- `demo-studio/ranking-android`: 仕様に足す"))
+    }
 }
