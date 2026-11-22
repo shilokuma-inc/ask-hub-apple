@@ -72,6 +72,15 @@ extension GitHubPullRequests {
         return commit.sha
     }
 
+    /// PR で変わったファイルのパス（名前を変えたものは前のパスも）。ページングを最後まで追う。
+    /// app-kit の版を広げる PR が、写すファイルのほかを変えていないかを、マージの前に確かめるのに使う
+    public func pullRequestFiles(number: Int) async throws(PullRequestError) -> [String] {
+        try GitNames.checkNumber(number)
+        let query = [URLQueryItem(name: "per_page", value: "100")]
+        let pages = try await api.pages("pulls/\(number)/files", query: query, as: [PullRequestFilePayload].self)
+        return pages.flatMap { $0.flatMap { [$0.filename] + ($0.previousFilename.map { [$0] } ?? []) } }
+    }
+
     static let categoriesQuery = """
         query($owner: String!, $name: String!) {
           repository(owner: $owner, name: $name) {
@@ -127,6 +136,12 @@ private struct CategoryNodes: Decodable {
     }
 
     let nodes: [Node?]
+}
+
+/// PR の変わったファイル 1 つ（キーは `convertFromSnakeCase` で読む）
+private struct PullRequestFilePayload: Decodable {
+    let filename: String
+    let previousFilename: String?
 }
 
 private struct ContentEntry: Decodable {
