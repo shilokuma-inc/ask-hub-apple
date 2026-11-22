@@ -46,6 +46,7 @@ repos/<owner>/<repo>/store-screenshots/<版>/<表示サイズ>/<言語>/<位置>
 repos/<owner>/<repo>/app-store.json                新しいアプリを App Store に載せる準備（司令塔）
 macs/<mac>.json                                    ワーカーの生きている印（その Mac のワーカー）
 commander.json                                     司令塔の生きている印（司令塔）
+repo-candidates.json                               「対象に加える」の候補（司令塔）
 notifications.json                                 進行を止めるもの・止めないもの（実機確認）を知らせた記録（司令塔）
 devices/<device>.json                              通知の宛先（その端末のクライアント）
 keys/<seq>.json                                    公開鍵の追記の記録（クライアント。署名つき）
@@ -695,6 +696,35 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
 - `versions` と `selfCheck` の書き方は `macs/<mac>.json` と同じ（同じ周に、同じ様子を書く）
 
 - GitHub Actions の見張りが、`seenAt` の古さ（30 分。`macs/<mac>.json` のオフラインの判定と同じ）を確かめる。無い・読めないときも止まったとみなす（[operations.md](operations.md) の「司令塔の見張り」）
+
+### repo-candidates.json（「対象に加える」の候補）
+
+クライアントのトークンは状態リポジトリしか読めないので、「対象に加える」の候補は、司令塔が持ち主ごとに読んでここに書く（[operations.md](operations.md) の「対象のリポジトリ」）。
+形は `protocol/schemas/state/repo-candidates.schema.json`（Swift は `RepositoryCandidatesFile`）。
+
+```json
+{
+  "v": 1,
+  "owners": [
+    {
+      "owner": "shilokuma-inc",
+      "readAt": "2026-11-22T13:00:00Z",
+      "repositories": [
+        { "name": "askhub-sandbox", "isPrivate": false, "description": "AskHub を試すリポジトリ", "pushedAt": "2026-11-20T08:00:00Z" }
+      ],
+      "problem": null
+    }
+  ]
+}
+```
+
+- `owners`: 毎日のトークンを置いた持ち主（`githubOwners` と状態リポジトリの持ち主）ごとに 1 つ。司令塔は 1 時間ごとに、その持ち主の毎日のトークンで一覧を読む（自動で読むので、管理用のトークンは使わない）
+  - organization は `orgs/<org>/repos`、個人は `user/repos`（トークンの持ち主のもの）と `users/<owner>/repos`（public）を合わせる。fine-grained token では、public のものと、トークンの Repository access に入れた private のものが返る
+  - アーカイブ・テンプレート・状態リポジトリは入れない。名前の順で、1 つの持ち主に 1,000 件まで（多ければ最近 push したものから残す）。説明は 1 行にして 200 文字で切る
+- `readAt`: 一覧を読んだ時刻。中身（リポジトリと `problem`）が変わったときだけ書き直す（毎時の書き込みで状態リポジトリの履歴を増やさない）
+- `problem`: 最後に読もうとして読めなかった理由（毎日のトークンが無い・期限切れ・上限など）。読めなかったときは、前に読めた一覧を残す。GitHub の上限に当たったら、残りの持ち主は読まずに前のまま
+- 対象かどうかは書かない。クライアントが `repos/` と照らし合わせて、まだ対象でないもの（外したリポジトリと、加えると送ったものも除く）だけを、持ち主ごとに検索できる形で出す。加えるときは、ここに書かれた `owner/name` の書き方（GitHub の `full_name` の大文字小文字のまま）で送る
+- 互換の番号は上げない。前の版の司令塔は書かないので、クライアントは候補を出さず、owner/name を手で入れる形だけになる
 
 ### devices/<device>.json（通知の宛先）
 
