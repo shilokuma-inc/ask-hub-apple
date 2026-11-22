@@ -83,7 +83,8 @@ public struct CreateRepositoryHandler: IntentHandler {
         let build = try? create.template.build(appName: create.appName)
         do {
             if existing == nil {
-                var file = RepositoryFile(repo: create.repo, platform: .apple, maxConcurrentEpics: 1, build: build, addedAt: context.timestamp)
+                // 同時に回す epic は、対象に加えるときと同じく 1 本
+                var file = RepositoryFile(repo: create.repo, platform: .apple, build: build, addedAt: context.timestamp)
                 file.created = creation
                 try await context.files.create(file, at: path, message: "\(create.repo) をテンプレートから作り、対象に加える")
             } else {
@@ -139,12 +140,11 @@ struct RepositoryCreationRunner {
         let texts = try await step("作ったリポジトリのファイルの中身を読めない") { () throws(PullRequestError) in
             try await github.blobTexts(shas)
         }
-        guard let old = (texts[script.sha] ?? nil).flatMap(TemplateRename.oldNames) else {
+        guard let old = texts[script.sha].flatMap({ $0 }).flatMap(TemplateRename.oldNames) else {
             throw .template("\(TemplateRename.scriptPath) から元の名前（OLD_NAME・OLD_REPO）を読めない")
         }
-        guard let plan = TemplateRename.plan(
-            files: files, texts: texts, old: old, appName: create.appName, repo: create.repo.rawValue, bundleId: create.bundleId
-        ) else { return nil }
+        let names = TemplateRename.Names(appName: create.appName, repo: create.repo.rawValue, bundleId: create.bundleId)
+        guard let plan = TemplateRename.plan(files: files, texts: texts, old: old, new: names) else { return nil }
         let message = "[chore] テンプレートから \(create.appName) を作る（アプリ名と Bundle ID を書き換える）"
         return try await step("名前を書き換えたコミットを \(branch) に入れられない") { () throws(PullRequestError) in
             try await github.commitFiles(plan, parent: head, branch: branch, message: message)
@@ -169,7 +169,10 @@ struct RepositoryCreationRunner {
         throw .template("GitHub がまだ作っている途中（\(branch) が出ない）。少し待ってから押し直す")
     }
 
-    private func step<Value>(_ what: String, _ body: () async throws(PullRequestError) -> Value) async throws(RepositoryCreationError) -> Value {
+    private func step<Value>(
+        _ what: String,
+        _ body: () async throws(PullRequestError) -> Value
+    ) async throws(RepositoryCreationError) -> Value {
         do {
             return try await body()
         } catch {

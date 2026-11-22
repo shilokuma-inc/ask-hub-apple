@@ -31,22 +31,23 @@ enum TemplateRename {
         return !binary.contains((file.path as NSString).pathExtension.lowercased())
     }
 
+    /// 書き換えた後の名前
+    struct Names {
+        var appName: String
+        /// 作ったリポジトリの `owner/name`
+        var repo: String
+        var bundleId: String
+    }
+
     /// 書き換えた後のファイルの一覧（全部）。パスに元の名前を含むファイルが無ければ、書き換え済みとして nil
-    static func plan(
-        files: [TreeFile],
-        texts: [String: String?],
-        old: (name: String, repo: String),
-        appName: String,
-        repo: String,
-        bundleId: String
-    ) -> [TreeFile]? {
+    static func plan(files: [TreeFile], texts: [String: String?], old: (name: String, repo: String), new: Names) -> [TreeFile]? {
         guard files.contains(where: { $0.path.contains(old.name) }) else { return nil }
         return files.map { file in
             var renamed = file
-            renamed.path = file.path.replacingOccurrences(of: old.name, with: appName)
-            guard file.type == "blob", file.path != scriptPath, let text = texts[file.sha] ?? nil else { return renamed }
-            var content = text.replacingOccurrences(of: old.name, with: appName).replacingOccurrences(of: old.repo, with: repo)
-            if file.path == configPath { content = Self.settingBundleId(bundleId, in: content) }
+            renamed.path = file.path.replacingOccurrences(of: old.name, with: new.appName)
+            guard file.type == "blob", file.path != scriptPath, let text = texts[file.sha].flatMap({ $0 }) else { return renamed }
+            var content = text.replacingOccurrences(of: old.name, with: new.appName).replacingOccurrences(of: old.repo, with: new.repo)
+            if file.path == configPath { content = Self.settingBundleId(new.bundleId, in: content) }
             if content != text { renamed.content = content }
             return renamed
         }
@@ -54,8 +55,9 @@ enum TemplateRename {
 
     /// `APP_BUNDLE_IDENTIFIER = …` の行を置き換える
     static func settingBundleId(_ bundleId: String, in config: String) -> String {
-        config.split(separator: "\n", omittingEmptySubsequences: false).map { line in
+        let lines = config.split(separator: "\n", omittingEmptySubsequences: false).map { line in
             line.hasPrefix("APP_BUNDLE_IDENTIFIER = ") ? "APP_BUNDLE_IDENTIFIER = \(bundleId)" : String(line)
-        }.joined(separator: "\n")
+        }
+        return lines.joined(separator: "\n")
     }
 }

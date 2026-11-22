@@ -73,7 +73,9 @@ struct RepositoryCreationTests {
     /// 読む blob の中身（sha の順に b0, b1, …）。画像は読まない
     static var blobs: String {
         func text(_ value: String) -> String {
-            let escaped = value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+            let escaped = value
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "\"", with: "\\\"")
                 .replacingOccurrences(of: "\n", with: "\\n")
             return #"{"text":"\#(escaped)","isBinary":false,"isTruncated":false}"#
         }
@@ -87,10 +89,11 @@ struct RepositoryCreationTests {
         let old = try #require(TemplateRename.oldNames(in: Self.script))
         #expect(old.name == "IOSTemplateApp")
         #expect(old.repo == "shilokuma-inc/template-app-ios")
-        let texts: [String: String?] = [Self.sha("a"): Self.script, Self.sha("b"): Self.config, Self.sha("d"): Self.view, Self.sha("f"): Self.readme]
-        let plan = try #require(TemplateRename.plan(
-            files: Self.files, texts: texts, old: old, appName: "CreateCheck", repo: Self.repo.rawValue, bundleId: "jp.shilokuma.create-check"
-        ))
+        let texts: [String: String?] = [
+            Self.sha("a"): Self.script, Self.sha("b"): Self.config, Self.sha("d"): Self.view, Self.sha("f"): Self.readme
+        ]
+        let names = TemplateRename.Names(appName: "CreateCheck", repo: Self.repo.rawValue, bundleId: "jp.shilokuma.create-check")
+        let plan = try #require(TemplateRename.plan(files: Self.files, texts: texts, old: old, new: names))
         #expect(plan.map(\.path) == [
             "scripts/rename.sh",
             "Configs/Project.xcconfig",
@@ -107,7 +110,7 @@ struct RepositoryCreationTests {
         #expect(plan[2].content == "import SwiftUI\n\nstruct ContentView: View {}\n// CreateCheck\n")
         #expect(plan[4].content?.contains("github.com/shilokuma-inc/askhub-create-check/actions") == true)
         // 書き換え済み（元の名前のパスが無い）なら、何もしない
-        #expect(TemplateRename.plan(files: plan, texts: texts, old: old, appName: "CreateCheck", repo: "x/y", bundleId: "a.b") == nil)
+        #expect(TemplateRename.plan(files: plan, texts: texts, old: old, new: names) == nil)
         #expect(!TemplateRename.needsText(Self.files[3]))
     }
 
@@ -147,12 +150,17 @@ struct RepositoryCreationTests {
             "PATCH /repos/shilokuma-inc/askhub-create-check/git/refs/heads/develop"
         ])
         #expect(Set(transport.requests.map { $0.value(forHTTPHeaderField: "Authorization") }) == ["Bearer \(ProtectionTests.adminToken)"])
-        let bodies = transport.bodies
+        try expectRenameCommit(transport.bodies)
+        try await expectCreatedRepository(in: store)
+    }
+
+    /// 作る要求は既定のブランチだけを写し、tree は base を使わず全部のファイルを並べ、ブランチは force にせず進める
+    private func expectRenameCommit(_ bodies: [JSONValue]) throws {
         #expect(bodies[0] == .object([
             "owner": .string("shilokuma-inc"), "name": .string("askhub-create-check"),
             "private": .bool(false), "include_all_branches": .bool(false)
         ]))
-        // tree は base を使わず全部のファイルを並べ、変えたものは中身、変えないものは sha
+        // 変えたものは中身、変えないものは sha
         guard case let .array(entries)? = bodies.first(where: { $0["tree"] != nil })?["tree"] else {
             Issue.record("tree の本文が無い")
             return
@@ -163,7 +171,10 @@ struct RepositoryCreationTests {
             "type": .string("blob"), "sha": .string(Self.sha("e"))
         ])))
         #expect(bodies.contains(.object(["sha": .string(Self.commit), "force": .bool(false)])))
+    }
 
+    /// 作った記録・テンプレートから決まるビルドの設定・準備が書かれ、保護は掛けていない
+    private func expectCreatedRepository(in store: InMemoryStateStore) async throws {
         let file = try #require(try await repository(in: store))
         let created = try #require(file.created)
         #expect(created.template == .ios)
@@ -185,7 +196,8 @@ struct RepositoryCreationTests {
         }
         #expect(reason.contains("既にある"))
         let visibility = StubTransport([
-            .json(200, #"{"template_repository":{"full_name":"shilokuma-inc/template-app-ios"},"private":false,"default_branch":"develop"}"#)
+            .json(200, #"{"template_repository":{"full_name":"shilokuma-inc/template-app-ios"},"private":false,"#
+                + #""default_branch":"develop"}"#)
         ])
         guard case let .reject(why) = try await handler(visibility).handle(envelope(visibility: "private"), in: context(store)) else {
             Issue.record("断っていない")
@@ -203,7 +215,11 @@ struct RepositoryCreationTests {
             repo: Self.repo, platform: .apple, build: try RepositoryTemplate.ios.build(appName: "CreateCheck"), addedAt: Timestamp(Self.now)
         )
         file.created = .init(
-            template: .ios, appName: "CreateCheck", bundleId: "jp.shilokuma.create-check", visibility: .public, renameCommit: Self.commit,
+            template: .ios,
+            appName: "CreateCheck",
+            bundleId: "jp.shilokuma.create-check",
+            visibility: .public,
+            renameCommit: Self.commit,
             intent: IntentReference(keyId: KeyID(rawValue: String(repeating: "k", count: 43))!, nonce: ULID.generate(at: Self.now)),
             at: Timestamp(Self.now)
         )

@@ -44,12 +44,13 @@ extension GitHubPullRequests {
             let fields = batch.enumerated().map { index, sha in
                 "b\(index): object(oid: \"\(sha)\") { ... on Blob { text isBinary isTruncated } }"
             }
-            let query = "query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { \(fields.joined(separator: " ")) } }"
+            let query = "query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { "
+                + fields.joined(separator: " ") + " } }"
             let variables = TemplateRepositoryVariables(owner: repository.owner, name: repository.name)
             let response = try await api.graphQL(query, variables: variables, as: BlobTextsData.self)
             guard let nodes = response.repository else { throw .notFound }
             for (index, sha) in batch.enumerated() {
-                guard let node = nodes["b\(index)"] ?? nil else { throw .malformed("blob \(sha) が無い") }
+                guard let node = nodes["b\(index)"].flatMap({ $0 }) else { throw .malformed("blob \(sha) が無い") }
                 if node.isBinary == true {
                     texts[sha] = .some(nil)
                 } else if node.isTruncated == true || node.text == nil {
