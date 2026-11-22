@@ -229,6 +229,11 @@ public struct SubmitForReviewHandler: IntentHandler {
         // 前の周で写した（やり直し）
         if file.submit?.approval == submit.intent { return .accept }
         if let problem = Self.problem(submitting: submit, on: file, now: context.now()) { return .reject(problem) }
+        // 載せるクリエイティブアセットは、人が承認した今の案で、ライブラリで置ける状態になったものだけ
+        if let choice = submit.creative {
+            let creative = try await context.read(CreativeFile.self, at: StatePath.creative(target.repo))
+            if let problem = Self.problem(creative: choice, on: creative) { return .reject(problem) }
+        }
         let request = SubmissionFile.Submit(
             approval: submit.intent,
             at: context.timestamp,
@@ -238,7 +243,8 @@ public struct SubmitForReviewHandler: IntentHandler {
             earliestReleaseDate: submit.earliestReleaseDate,
             listing: submit.listing,
             appReview: submit.appReview,
-            screenshots: submit.screenshots
+            screenshots: submit.screenshots,
+            creative: submit.creative
         )
         let saved: SubmissionFile
         do {
@@ -257,6 +263,17 @@ public struct SubmitForReviewHandler: IntentHandler {
         }
         guard saved.submit == request else { throw .changedWhileProcessing(path) }
         return .accept
+    }
+
+    /// 載せるクリエイティブアセットが、承認した案に合わない理由。合えば nil
+    static func problem(creative choice: SubmissionFile.CreativeChoice, on file: CreativeFile?) -> String? {
+        guard let approved = file?.approved, approved.revision == choice.revision else {
+            return "ヘッダーと検索結果の承認した案が変わった（見た案は \(choice.revision)）。見直してから送り直す"
+        }
+        guard let library = approved.library, library.total > 0, library.ready == library.total else {
+            return "ヘッダーと検索結果の案 \(choice.revision) を、まだ App Store Connect のライブラリで置けない（取り込みを待つ）"
+        }
+        return nil
     }
 
     /// 人が確かめたスクショが、撮って比べた結果に合わない理由。合えば nil

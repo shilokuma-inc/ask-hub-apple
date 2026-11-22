@@ -45,8 +45,16 @@ extension ReleaseWatch {
         let originals = file.screenshots?.commit.flatMap { commit in
             screenshots?.originals(file.repo, version: file.version, commit: commit)
         }
+        var creative: CreativeFile.Approval?
+        if let choice = request.creative { creative = try await approvedCreative(of: file.repo, revision: choice.revision) }
         let submission = AppStoreSubmission(
-            store: store, app: app, version: file.version, request: request, screenshots: file.screenshots, originals: originals
+            store: store,
+            app: app,
+            version: file.version,
+            request: request,
+            screenshots: file.screenshots,
+            originals: originals,
+            creative: creative
         )
         for choice in request.builds {
             let review = file.review.first { $0.platform == choice.platform }
@@ -65,7 +73,38 @@ extension ReleaseWatch {
         }
         // 提出の直後に、次の見回りで状態を読み直す
         detectedAt[file.repo] = nil
+        if let choice = request.creative, creative?.revision == choice.revision, file.review.contains(where: { $0.platform == .iOS }) {
+            await recordCreativePlaced(file.repo, version: file.version, revision: choice.revision)
+        }
         return file
+    }
+
+    /// 載せるクリエイティブアセット（人が承認した案）。受け付けたときに確かめた案と違えば止める（黙って載せずに出さない）
+    private func approvedCreative(of repo: RepositoryFullName, revision: Int) async throws -> CreativeFile.Approval {
+        let approved = try await context.readable(CreativeFile.self, at: StatePath.creative(repo))?.approved
+        guard let approved, approved.revision == revision else {
+            throw ReleaseStepProblem("審査に出すときに選んだヘッダーと検索結果の案 \(revision) が、承認した案と違う。審査に出し直す", needsHuman: true)
+        }
+        return approved
+    }
+
+    /// 審査に出す版に置いたクリエイティブアセットを `creative.json` の `placed` に書く（新しい順・10 件まで）。書けなくても提出は止めない
+    nonisolated func recordCreativePlaced(_ repo: RepositoryFullName, version: MarketingVersion, revision: Int) async {
+        let path = StatePath.creative(repo)
+        let now = context.timestamp
+        _ = try? await context.writingResult { () throws(CommanderError) -> Bool in
+            do throws(StateFileStore.Failure) {
+                return try await context.files.update(CreativeFile.self, at: path, message: "\(repo) の \(version) にヘッダーと検索結果を置いた") { file in
+                    guard !file.placed.contains(where: { $0.version == version && $0.revision == revision }) else { return false }
+                    file.placed.insert(.init(version: version, revision: revision, at: now), at: 0)
+                    file.placed = Array(file.placed.prefix(10))
+                    file.updatedAt = now
+                    return true
+                }.file.placed.isEmpty == false
+            } catch {
+                throw .files(error)
+            }
+        }
     }
 
     /// 承認された（Pending Developer Release の）版を配信する。App Store Connect では取り消せない
