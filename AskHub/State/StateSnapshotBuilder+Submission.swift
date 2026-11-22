@@ -67,7 +67,8 @@ extension StateSnapshotBuilder {
             canSubmit: file.awaitsSubmission && idle,
             canDistribute: file.awaitsDistribution && idle,
             canWithdraw: file.canWithdraw && idle,
-            canAbandon: file.canAbandon && idle
+            canAbandon: file.canAbandon && idle,
+            canRetakeScreenshots: file.retakeProblem == nil && idle
         )
     }
 
@@ -104,24 +105,28 @@ extension StateSnapshotBuilder {
             createdAt: file.createdAt.date,
             updatedAt: file.updatedAt.date
         )
-        submission.submitted = file.submit.map { submit in
-            Submission.Submitted(
-                builds: submit.builds.map { Submission.Build(platform: $0.platform.rawValue, build: $0.build) },
-                whatsNew: submit.whatsNew.map { Submission.Localized(locale: $0.locale, text: $0.text) },
-                releaseType: releaseType(submit.releaseType, date: submit.earliestReleaseDate),
-                at: submit.at.date,
-                listing: (submit.listing ?? []).map(listingTexts),
-                appReview: submit.appReview.map(reviewInfo)
-            )
-        }
+        submission.submitted = file.submit.map(submitted)
         submission.slots = file.appStoreVersions.map { $0.map(slot) }
         submission.screenshots = file.screenshots.map(storeScreenshots)
         submission.awaitsSubmission = file.awaitsSubmission
         submission.awaitsDistribution = file.awaitsDistribution
         submission.canWithdraw = file.canWithdraw
         submission.canAbandon = file.canAbandon
+        submission.canRetakeScreenshots = file.retakeProblem == nil
         submission.isSubmitting = file.isSubmitting
         return submission
+    }
+
+    /// 人が審査に出した中身
+    private static func submitted(_ submit: SubmissionFile.Submit) -> Submission.Submitted {
+        Submission.Submitted(
+            builds: submit.builds.map { Submission.Build(platform: $0.platform.rawValue, build: $0.build) },
+            whatsNew: submit.whatsNew.map { Submission.Localized(locale: $0.locale, text: $0.text) },
+            releaseType: releaseType(submit.releaseType, date: submit.earliestReleaseDate),
+            at: submit.at.date,
+            listing: (submit.listing ?? []).map(listingTexts),
+            appReview: submit.appReview.map(reviewInfo)
+        )
     }
 
     private static func storeScreenshots(_ file: SubmissionFile.StoreScreenshots) -> Submission.StoreScreenshots {
@@ -142,14 +147,29 @@ extension StateSnapshotBuilder {
                         changed: shot.changed,
                         before: shot.before.flatMap(URL.init(string:)).map(Screenshot.remote),
                         after: shot.preview.map(Screenshot.stored),
-                        area: shot.area.map { CGRect(x: $0.x, y: $0.y, width: $0.width, height: $0.height) }
+                        area: shot.area.map { CGRect(x: $0.x, y: $0.y, width: $0.width, height: $0.height) },
+                        rejected: shot.rejected
                     )
                 },
                 removed: set.removed
             )
         }
         let skipped = file.skipped.map { Submission.SkippedDisplayType(displayType: $0.displayType, reason: $0.reason) }
-        return Submission.StoreScreenshots(state: state, commit: file.commit, sets: sets, skipped: skipped)
+        return Submission.StoreScreenshots(state: state, commit: file.commit, sets: sets, skipped: skipped, progress: progress(of: file))
+    }
+
+    /// 撮っている間の今の段階。App Store Connect の取り込みを待っているか、GitHub Actions で撮っているか。UI テストの撮り方は nil
+    static func progress(of file: SubmissionFile.StoreScreenshots) -> String? {
+        guard file.state == .capturing else { return nil }
+        if let library = file.library {
+            return "App Store Connect の取り込みを待っています（\(library.ready) / \(library.total) 枚）"
+        }
+        guard let run = file.run else { return nil }
+        return switch run.status {
+        case "completed": "撮った画像を取り込んで、前回の App Store のものと比べています"
+        case "in_progress": "GitHub Actions で撮っています"
+        default: "GitHub Actions の撮影を待っています"
+        }
     }
 
     private static func slot(_ slot: SubmissionFile.VersionSlot) -> Submission.Slot {
@@ -204,6 +224,7 @@ extension StateSnapshotBuilder {
         case DistributeReleaseIntent.kind: .distribute
         case WithdrawSubmissionIntent.kind: .withdraw
         case AbandonReleaseIntent.kind: .abandon
+        case RetakeScreenshotsIntent.kind: .retake
         default: nil
         }
     }

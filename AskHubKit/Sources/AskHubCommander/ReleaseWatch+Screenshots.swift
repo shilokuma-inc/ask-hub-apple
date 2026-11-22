@@ -8,6 +8,7 @@ import Foundation
 /// 人が直す失敗は `failed` にし、スクショを変えずに審査に出せるようにする
 extension ReleaseWatch {
     func prepareScreenshots(_ file: SubmissionFile, settings: RepositoryFile) async -> SubmissionFile {
+        if let advanced = await advanceRequestedScreenshots(file, settings: settings) { return advanced }
         guard let branch = file.branch, file.screenshots?.state.isSettled != true else { return file }
         let key = Self.screenshotKey(file)
         guard !capturing.contains(key) else { return file }
@@ -52,6 +53,20 @@ extension ReleaseWatch {
         return started
     }
 
+    /// 撮り方によらない段取り。人が頼んだ撮り直しを始める（始めたら、続けて撮り直しを進める）か、
+    /// 撮って比べ終えた後の App Store Connect のライブラリの取り込みを待つ。どちらでもなければ nil
+    private func advanceRequestedScreenshots(_ file: SubmissionFile, settings: RepositoryFile) async -> SubmissionFile? {
+        if file.screenshots?.awaitsRetake == true {
+            let started = await startRetake(file, settings: settings)
+            guard started.screenshots?.awaitsRetake == false else { return started }
+            return await prepareScreenshots(started, settings: settings)
+        }
+        guard file.screenshots?.state == .capturing, file.screenshots?.library != nil, !capturing.contains(Self.screenshotKey(file)) else {
+            return nil
+        }
+        return await advanceLibraryUpload(file, settings: settings)
+    }
+
     /// 撮って比べ、結果を記録に書く（見回りの外で動く）。待てば直る失敗は、撮り始めた印のまま次の見回りでやり直す
     private func captureScreenshots(
         _ file: SubmissionFile,
@@ -85,10 +100,19 @@ extension ReleaseWatch {
             report("\(file.repo) の \(file.version) のスクショを撮れない（\(error)）。次の見回りでやり直す")
             return
         }
-        _ = await submissionStep(.screenshots, file) { file in
+        let originals = capturer.originals(file.repo, version: file.version, commit: commit)
+        await finishCapture(file, result: awaitingLibrary(result, originals: originals), settings: repository)
+    }
+
+    /// 撮って比べた結果を書く。ライブラリに上げる画像があれば、続けて上げ始める（取り込みは見回りの周で待つ）
+    func finishCapture(_ file: SubmissionFile, result: SubmissionFile.StoreScreenshots, settings: RepositoryFile) async {
+        let saved = await submissionStep(.screenshots, file) { file in
             var file = file
             file.screenshots = result
             return file
+        }
+        if saved.screenshots?.library != nil, saved.screenshots?.state == .capturing {
+            _ = await advanceLibraryUpload(saved, settings: settings, force: true)
         }
     }
 
@@ -105,12 +129,24 @@ extension ReleaseWatch {
     /// `revision` を上げる。撮っている間は、撮影のワークフローの実行（`run`）と、実行が撮ったコミットの進みだけを写す。審査に出した後は変えない
     static func mergeScreenshots(_ changed: SubmissionFile, into file: inout SubmissionFile) {
         guard file.submit == nil, let screenshots = changed.screenshots else { return }
+        // 頼まれた撮り直しを始めた。同じ頼みの、まだ始めていない撮影を置き換える
+        if let retake = screenshots.retake, retake.startedAt != nil, let current = file.screenshots, current.awaitsRetake,
+           current.retake?.approval == retake.approval {
+            file.screenshots = screenshots
+            return
+        }
         if let current = file.screenshots {
             let isSameCapture = current.commit == screenshots.commit || current.startedAt == screenshots.startedAt
             guard current.state == .capturing, isSameCapture else { return }
             if screenshots.state == .capturing {
                 file.screenshots?.run = screenshots.run ?? current.run
                 if screenshots.run != nil { file.screenshots?.commit = screenshots.commit }
+                // 比べ終えてライブラリの取り込みを待つ間は、比べた組（受け付けられなかった画面の印も）と取り込みの数を写す
+                if let library = screenshots.library {
+                    file.screenshots?.library = library
+                    file.screenshots?.sets = screenshots.sets
+                    file.screenshots?.skipped = screenshots.skipped
+                }
                 return
             }
         }

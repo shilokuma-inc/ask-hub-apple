@@ -509,6 +509,15 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "rejected": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "minLength": 1,
+                      "maxLength": 1000,
+                      "description": "App Store Connect のライブラリが受け付けなかったわけ（この画面は前のままにするしかない）"
                     }
                   }
                 }
@@ -600,6 +609,90 @@
                 "null"
               ],
               "minimum": 0
+            }
+          }
+        },
+        "library": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "撮って比べた画像を App Store Connect のライブラリに先に上げた様子（配置はしない）。total は上げた画像の数（同じ画像は 1 つ）、ready は置ける状態になった数、sentAt は上げ終えた時刻。すべて置ける（か受け付けられない）まで state は capturing のまま",
+          "required": [
+            "total",
+            "ready",
+            "sentAt"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "total": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "ready": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "sentAt": {
+              "$ref": "../common.schema.json#/$defs/timestamp"
+            }
+          }
+        },
+        "retake": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "人が頼んだ撮り直し（retakeScreenshots）。displayTypes・locales は撮り直す組（空ならすべて）、approval は頼んだ人の意図、at は受け付けた時刻、startedAt は司令塔が撮り直しを始めた時刻（まだなら null。その間は審査に出す準備をそろえない）、from は一部だけ撮り直すときに引き継ぐ組を撮ったコミット",
+          "required": [
+            "displayTypes",
+            "locales",
+            "approval",
+            "at"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "displayTypes": {
+              "type": "array",
+              "maxItems": 50,
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Z][A-Z0-9_]{1,59}$"
+              }
+            },
+            "locales": {
+              "type": "array",
+              "maxItems": 50,
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8}){0,2}$"
+              }
+            },
+            "approval": {
+              "$ref": "../common.schema.json#/$defs/intentReference"
+            },
+            "at": {
+              "$ref": "../common.schema.json#/$defs/timestamp"
+            },
+            "startedAt": {
+              "anyOf": [
+                {
+                  "$ref": "../common.schema.json#/$defs/timestamp"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "from": {
+              "anyOf": [
+                {
+                  "$ref": "release.schema.json#/$defs/commit"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             }
           }
         }

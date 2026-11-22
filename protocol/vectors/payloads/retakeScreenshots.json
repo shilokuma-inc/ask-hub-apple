@@ -1,0 +1,55 @@
+{
+  "description": "スクショを撮り直す人の意図の payload の例。read は、封筒の target が正しいときに、読む側が撮り直すとして読めるか",
+  "schema": "payloads/retakeScreenshots.schema.json",
+  "cases": [
+    {
+      "name": "all",
+      "payload": {},
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "some",
+      "payload": {
+        "displayTypes": [
+          "IPHONE_DUO_PROFILE"
+        ],
+        "locales": [
+          "ja",
+          "en-US"
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "unknown-field",
+      "payload": {
+        "platform": "iOS"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "bad-display-type",
+      "payload": {
+        "displayTypes": [
+          "iphone"
+        ]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "duplicate-locale",
+      "payload": {
+        "locales": [
+          "ja",
+          "ja"
+        ]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    }
+  ]
+}

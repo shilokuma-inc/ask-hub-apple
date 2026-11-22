@@ -13,7 +13,7 @@ struct StoreScreenshotsSection: View {
             EmptyView()
         case .capturing:
             Section {
-                Label("撮っています", systemImage: "camera")
+                Label(screenshots.progress ?? "撮っています", systemImage: "camera")
             } header: {
                 Text("スクショ")
             }
@@ -92,7 +92,8 @@ struct StoreScreenshotsSection: View {
 
     /// ほかの言語の差のある画面を、まとめて替える（オン）か前のままにする（オフ）
     private func allOthers(_ sets: [Submission.ScreenshotSet]) -> Binding<Bool> {
-        let keys = sets.flatMap { set in set.changedShots.map(set.key) }
+        // 受け付けられなかった画面は動かせない（前のままにするしかない）ので、まとめての切り替えに数えない
+        let keys = sets.flatMap { set in set.changedShots.filter { $0.rejected == nil }.map(set.key) }
         return Binding { keys.allSatisfy { !keep.contains($0) } } set: { isOn in
             if isOn { keep.subtract(keys) } else { keep.formUnion(keys) }
         }
@@ -112,8 +113,18 @@ private struct ShotComparisonRow: View {
                 column("Before", shot.before, highlight: nil, empty: "新しい画面")
                 column("After", shot.after, highlight: shot.area, empty: "撮れなかった")
             }
-            Toggle(shot.before == nil ? "載せない" : "前のままにする", isOn: $keep)
-                .accessibilityIdentifier("store-screenshot-keep-\(shot.index)")
+            if let rejected = shot.rejected {
+                // App Store Connect が受け付けなかった画面は、前のままにするしかない（司令塔も置かない）
+                Label(rejected, systemImage: "exclamationmark.triangle")
+                    .appFont(.footnote)
+                    .foregroundStyle(.secondary)
+                Toggle(shot.before == nil ? "載せない" : "前のままにする", isOn: .constant(true))
+                    .disabled(true)
+                    .accessibilityIdentifier("store-screenshot-keep-\(shot.index)")
+            } else {
+                Toggle(shot.before == nil ? "載せない" : "前のままにする", isOn: $keep)
+                    .accessibilityIdentifier("store-screenshot-keep-\(shot.index)")
+            }
         }
     }
 

@@ -29,6 +29,8 @@ extension Submission {
         var commit: String?
         var sets: [ScreenshotSet]
         var skipped: [SkippedDisplayType]
+        /// 撮っている間の今の段階（GitHub Actions の撮影・取り込み・App Store Connect の取り込みの数）。分からなければ nil
+        var progress: String?
 
         /// 差のある組
         var changedSets: [ScreenshotSet] { sets.filter(\.isChanged) }
@@ -82,6 +84,8 @@ extension Submission {
         var after: Screenshot?
         /// 変わった所（画像に対する割合。左上が原点）
         var area: CGRect?
+        /// App Store Connect が受け付けなかったわけ（この画面は前のままにするしかない）
+        var rejected: String?
 
         var id: Int { index }
     }

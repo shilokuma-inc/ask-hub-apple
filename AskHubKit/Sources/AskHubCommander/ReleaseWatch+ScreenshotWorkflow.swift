@@ -74,8 +74,12 @@ extension ReleaseWatch {
             }
             let after = Self.matching(existing, workflow: workflow.workflow, branch: branch.name).map(\.id).max() ?? 0
             var file = file
-            let startedAt = file.screenshots?.startedAt ?? now
-            file.screenshots = .init(state: .capturing, commit: head, startedAt: startedAt, run: .init(dispatchedAt: now, after: after))
+            // 撮り直しで引き継いだ組と頼みは残す
+            var shots = file.screenshots ?? .init(state: .capturing, startedAt: now)
+            shots.state = .capturing
+            shots.commit = head
+            shots.run = .init(dispatchedAt: now, after: after)
+            file.screenshots = shots
             return file
         }
         guard let marked = started.screenshots, marked.state == .capturing, let run = marked.run, run.id == nil,
@@ -90,7 +94,7 @@ extension ReleaseWatch {
         branch: SubmissionFile.Branch
     ) async -> SubmissionFile {
         screenshotRunsCheckedAt[Self.screenshotKey(file)] = context.now()
-        let inputs = Self.screenshotInputs(workflow)
+        let inputs = Self.screenshotInputs(workflow, retake: file.screenshots?.retake)
         return await submissionStep(.screenshots, file) { file in
             let dispatched: DispatchedRun?
             do throws(PullRequestError) {
@@ -234,6 +238,14 @@ extension ReleaseWatch {
                 throw ReleaseStepProblem("撮った元の画像を置く場所が司令塔に無い（スクショを撮る道具の設定が無い）", needsHuman: true)
             }
             let (store, app) = try await submissionApp(file.repo, settings: settings)
+            // 撮り直しで引き継いだ組の元の画像を、前の撮影の置き場所から写す
+            if let from = file.screenshots?.retake?.from {
+                Self.copyCarriedOriginals(
+                    file.screenshots?.sets ?? [],
+                    from: capturer.originals(file.repo, version: file.version, commit: from),
+                    to: capturer.originals(file.repo, version: file.version, commit: commit)
+                )
+            }
             let run = WorkflowScreenshotImport(
                 context: context,
                 store: store,
@@ -253,11 +265,8 @@ extension ReleaseWatch {
         }
         screenshotRunsCheckedAt[key] = nil
         settled = true
-        _ = await submissionStep(.screenshots, file) { file in
-            var file = file
-            file.screenshots = result
-            return file
-        }
+        let originals = screenshots?.originals(file.repo, version: file.version, commit: commit)
+        await finishCapture(file, result: originals.map { awaitingLibrary(result, originals: $0) } ?? result, settings: settings)
     }
 
     /// 撮影のワークフローの入力（反映はしない。撮る表示サイズは `artifacts` の値）

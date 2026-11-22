@@ -76,6 +76,7 @@ extension DemoData {
         submission.screenshots = Self.recipeScreenshots
         submission.awaitsSubmission = true
         submission.canAbandon = true
+        submission.canRetakeScreenshots = true
         // おこづかい帳の初めての版。App Store の準備の残り（初めての版の項目を含む）を、あなたの番に出す
         var first = Submission(
             repositoryID: Self.repositoryID("pocket-budget-ios"),
@@ -90,6 +91,14 @@ extension DemoData {
             updatedAt: ago(minutes: 30)
         )
         first.canAbandon = true
+        // 初めての版なので、撮った画面はすべて新しい。App Store Connect のライブラリに先に上げ、取り込みを待っている
+        first.screenshots = Submission.StoreScreenshots(
+            state: .capturing,
+            commit: String(repeating: "d", count: 40),
+            sets: [],
+            skipped: [],
+            progress: "App Store Connect の取り込みを待っています（2 / 5 枚）"
+        )
         return [submission, first]
     }
 
@@ -140,12 +149,28 @@ extension DemoData {
             .row("鶏もも肉", detail: "600 g", highlighted: false),
             .row("しょうゆ", detail: "1 本", highlighted: false)
         ])
+        // App Store Connect が受け付けなかった画面（前のままにするしかない）
+        let settings = DemoScreen(title: "設定", elements: [.row("単位", detail: "g", highlighted: false)])
+        let settingsAfter = DemoScreen(title: "設定", elements: [
+            .row("単位", detail: "g", highlighted: false),
+            .row("人数の初期値", detail: "2 人分", highlighted: true)
+        ])
+        let settingsArea = CGRect(x: 0, y: 0.2, width: 1, height: 0.1)
         let area = CGRect(x: 0, y: 0.12, width: 1, height: 0.22)
         func set(_ locale: String) -> Submission.ScreenshotSet {
             let shots: [Submission.Shot] = [
                 .init(index: 1, name: "01-レシピ", changed: false, before: .demo(list)),
                 .init(index: 2, name: "02-材料", changed: true, before: .demo(before), after: .demo(after), area: area),
-                .init(index: 3, name: "03-買い物リスト", changed: true, after: .demo(added))
+                .init(index: 3, name: "03-買い物リスト", changed: true, after: .demo(added)),
+                .init(
+                    index: 4,
+                    name: "04-設定",
+                    changed: true,
+                    before: .demo(settings),
+                    after: .demo(settingsAfter),
+                    area: settingsArea,
+                    rejected: "App Store Connect が受け付けなかった（IMAGE_INCORRECT_DIMENSIONS: 画像の大きさが表示サイズに合わない）"
+                )
             ]
             return Submission.ScreenshotSet(displayType: "IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE", locale: locale, shots: shots, removed: 0)
         }
