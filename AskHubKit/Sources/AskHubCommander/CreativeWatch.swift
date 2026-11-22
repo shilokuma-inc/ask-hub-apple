@@ -130,13 +130,22 @@ public actor CreativeWatch {
             throw ReleaseStepProblem("\(repo) のビルドの設定を読めない（\(error)）", needsHuman: false)
         }
         guard !bundleIDs.isEmpty else { return nil }
+        // 1 つの鍵で読めなくても（失効・上限）、ほかの鍵で探す。どの鍵でも見つからず、読めない鍵があったときだけ、その失敗を投げる
+        var failure: (any Error)?
         for (index, store) in stores.enumerated() {
-            let found = try await appStoreConnect { () throws(AppStoreConnectError) in try await store.apps(bundleIDs: bundleIDs) }
+            let found: [AppStoreApp]
+            do {
+                found = try await appStoreConnect { () throws(AppStoreConnectError) in try await store.apps(bundleIDs: bundleIDs) }
+            } catch {
+                failure = error
+                continue
+            }
             if let app = found.first {
                 apps[repo] = (index, app)
                 return (index, app)
             }
         }
+        if let failure { throw failure }
         return nil
     }
 
@@ -146,7 +155,9 @@ public actor CreativeWatch {
             return try await body()
         } catch {
             switch error {
-            case .rateLimited, .serverError, .transport, .cancelled, .malformed, .headChanged:
+            case let .rateLimited(retryAfter):
+                throw CreativeRateLimit(retryAfter: retryAfter)
+            case .serverError, .transport, .cancelled, .malformed, .headChanged:
                 throw ReleaseStepProblem("GitHub に届かない（\(error)）", needsHuman: false)
             case .unauthorized, .tokenUnavailable, .forbidden:
                 throw ReleaseStepProblem("GitHub のトークンで操作できない（\(error)）", needsHuman: true)
@@ -162,6 +173,24 @@ public actor CreativeWatch {
         } catch {
             throw ReleaseWatch.problem(error)
         }
+    }
+}
+
+/// GitHub の上限に当たった（待てば直る）。GitHub が示した時間（`Retry-After`）を、次に送る時刻まで運ぶ
+struct CreativeRateLimit: Error, CustomStringConvertible {
+    var retryAfter: Duration
+
+    var seconds: TimeInterval { TimeInterval(retryAfter.components.seconds) }
+    var description: String { "GitHub の上限（\(Int(seconds)) 秒あける）" }
+}
+
+extension CreativeWatch {
+    /// 待てば直る失敗の後、`key` の作業を始めない時刻を決める（上限なら GitHub の示した時間、ほかは `interval`）
+    func hold(_ key: String, after error: any Error, interval: TimeInterval) -> TimeInterval {
+        var wait = interval
+        if let limit = error as? CreativeRateLimit { wait = max(wait, limit.seconds) }
+        notBefore[key] = context.now().addingTimeInterval(wait)
+        return wait
     }
 }
 
@@ -214,7 +243,7 @@ extension CreativeWatch {
     private func startCreativeDraft(_ file: CreativeFile, draft: CreativeFile.Draft, settings: RepositoryFile) {
         let key = Self.creativeKey(file.repo, revision: draft.revision)
         guard !inFlight.contains(key) else { return }
-        if let checked = checkedAt[key], context.now().timeIntervalSince(checked) < Self.creativeDraftRetryInterval { return }
+        if let until = notBefore[key], context.now() < until { return }
         inFlight.insert(key)
         tasks[key] = Task { await self.draftCreative(file, draft: draft, settings: settings) }
     }
@@ -242,9 +271,9 @@ extension CreativeWatch {
         } catch let problem as ReleaseStepProblem where problem.needsHuman {
             outcome = .failure(problem)
         } catch {
-            // 待つ時間は、書けなかった時から数える（書くのに十数分かかることがあるため、始めた時からではない）
-            checkedAt[key] = context.now()
-            report("\(file.repo) のクリエイティブアセットの案 \(draft.revision) を書けない（\(error)）。\(Int(Self.creativeDraftRetryInterval / 60)) 分後にやり直す")
+            // 待つ時間は、書けなかった時から数える（書くのに十数分かかることがあるため、始めた時からではない）。上限なら GitHub の示した時間
+            let wait = hold(key, after: error, interval: Self.creativeDraftRetryInterval)
+            report("\(file.repo) のクリエイティブアセットの案 \(draft.revision) を書けない（\(error)）。\(Int(wait / 60)) 分後にやり直す")
             return
         }
         settled = true

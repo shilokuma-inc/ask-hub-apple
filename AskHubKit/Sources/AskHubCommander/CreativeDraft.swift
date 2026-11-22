@@ -178,11 +178,13 @@ public struct ClaudeCreativeDrafter: CreativeDrafting {
         }
     }
 
-    /// 合わない点。空なら書き出してよい（形の誤り・言語の抜け・Apple の決まりに合わない文言・低いコントラスト）
+    /// 合わない点。空なら書き出してよい（形の誤り・言語の抜け・Apple の決まりに合わない文言・低いコントラスト）。
+    /// 書き出しは止めない問題（`cautions`）も、Claude が直せるものは直させる。アプリ名は App Store Connect の名前で Claude には変えられないので、
+    /// 価格らしい文字があっても直させない（人には案の問題として見せる）
     static func problems(_ output: Output, request: CreativeDraftRequest, config: CreativeRepositoryConfig) -> [String] {
         let spec = output.spec(request, config: config)
         var problems = spec.violations
-        problems += spec.cautions.map(\.message)
+        problems += spec.cautions(checkingAppName: false).map(\.message)
         let missing = request.locales.map(\.locale).filter { locale in !spec.locales.contains { $0.locale == locale } }
         if !missing.isEmpty { problems.append("locales に \(missing.joined(separator: "・")) が無い（すべての言語を書く）") }
         let unknown = (spec.screens.header + spec.screens.search).filter { !config.screens.contains($0) }
