@@ -333,7 +333,7 @@ extension Submission {
     private var branchStatus: StepStatus {
         let title = Step.branch.label
         if let branch {
-            let source = hotfixFrom.map { "v\($0) から" } ?? ""
+            let source = hotfixFrom.map { "v\($0) から " } ?? ""
             return StepStatus(id: "branch", title: title, detail: "\(source)\(branch) を作りました", state: .done)
         }
         if sending == .start {
