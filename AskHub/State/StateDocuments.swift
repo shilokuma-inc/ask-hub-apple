@@ -40,6 +40,8 @@ struct StateDocuments {
     var commander: CommanderFile?
     /// 「対象に加える」の候補（司令塔が書く）
     var repositoryCandidates: RepositoryCandidatesFile?
+    /// 共通リポジトリ app-kit の版と広げる様子（司令塔が書く）
+    var appKit: AppKitFile?
     /// 新しい順
     var sentIntents: [SentIntent] = []
     var failures: [SourceFailure] = []
@@ -86,6 +88,7 @@ struct StateReader {
         async let macs = Self.capture { () throws(StateStoreError) in try await readMacs() }
         async let commander = read(CommanderFile.self, at: StatePath.commander)
         async let candidates = read(RepositoryCandidatesFile.self, at: StatePath.repositoryCandidates)
+        async let appKit = read(AppKitFile.self, at: StatePath.appKit)
         async let sent = Self.capture { () throws(StateStoreError) in try await sentIntents() }
         var documents = StateDocuments()
         for part in try await repositories.get() {
@@ -106,6 +109,9 @@ struct StateReader {
         let candidatesPart = await candidates
         documents.repositoryCandidates = candidatesPart.value
         documents.failures += candidatesPart.failures
+        let appKitPart = await appKit
+        documents.appKit = appKitPart.value
+        documents.failures += appKitPart.failures
         let sentPart = try await sent.get()
         documents.sentIntents = sentPart.value
         documents.failures += sentPart.failures

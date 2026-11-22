@@ -73,6 +73,10 @@ enum HumanIntent: Hashable {
     case applyProtection(repositoryID: TargetRepository.ID, requiredChecks: [String])
     /// 加えるときに司令塔が出したワークフローの直しの PR のマージの承認。見たときの head に結びつける
     case approveSetup(repositoryID: TargetRepository.ID, pullRequest: Int, head: String)
+    /// app-kit の版を広げる（版ごとに 1 回。見たときの版のコミットに結びつける）。止めた版にもう一度送ると、止めたところからやり直す
+    case rolloutAppKit(version: String, ref: String)
+    /// app-kit の版を広げるのをやめる（開いている PR を司令塔が閉じる）
+    case stopAppKitRollout(version: String, ref: String)
     /// Bundle ID を登録する（司令塔が App Store Connect に送る）
     case registerBundleId(repositoryID: TargetRepository.ID, identifier: String, platform: AppStoreSetup.BundlePlatform)
     /// 決まった値（価格・配信の地域・カテゴリ・コンテンツの権利・プライバシーポリシーの URL）を App Store Connect に書く
@@ -196,6 +200,12 @@ extension HumanIntent {
 
         case .approveSetup:
             "ワークフローの直しの承認"
+
+        case let .rolloutAppKit(version, _):
+            "app-kit \(version) を広げる"
+
+        case let .stopAppKitRollout(version, _):
+            "app-kit \(version) を広げるのをやめる"
 
         case let .registerBundleId(_, identifier, _):
             "Bundle ID の登録（\(identifier)）"

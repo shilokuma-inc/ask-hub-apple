@@ -34,7 +34,7 @@ extension DemoClientService {
         case .reviseGoal, .decideSplit, .addRepository, .removeRepository, .configureRepository:
             applySetupIntent(intent)
 
-        case .applyProtection, .approveSetup, .createRepository:
+        case .applyProtection, .approveSetup, .createRepository, .rolloutAppKit, .stopAppKitRollout:
             applyAdministrationIntent(intent)
 
         case .respondToDecision, .acceptAllDecisions, .merge, .instructFinal, .verify:
@@ -125,6 +125,28 @@ extension DemoClientService {
 
         case .createRepository(let request):
             createRepository(request)
+
+        case .rolloutAppKit, .stopAppKitRollout:
+            applyAppKitIntent(intent)
+
+        default:
+            break
+        }
+    }
+
+    /// app-kit の版を広げる・やめる。デモでは広げ始めた（やめた）様子にするだけ
+    private func applyAppKitIntent(_ intent: HumanIntent) {
+        let date = now()
+        switch intent {
+        case let .rolloutAppKit(version, ref):
+            let pilot = state.appKit?.rollout?.pilot ?? "demo-studio/habit-ios"
+            state.appKit?.rollout = .init(
+                version: version, ref: ref, state: .running, pilot: pilot, targets: [], problem: nil, startedAt: date, updatedAt: date
+            )
+
+        case .stopAppKitRollout:
+            state.appKit?.rollout?.state = .stopped
+            state.appKit?.rollout?.updatedAt = date
 
         default:
             break

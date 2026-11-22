@@ -10,6 +10,15 @@ struct RepositoryListView: View {
     var body: some View {
         let groups = store.snapshot?.repositoryGroups ?? []
         RouteList(selection: selection) {
+            if let appKit = store.snapshot?.appKit {
+                CardSection {
+                    NavigationLink(value: AppRoute.appKit) {
+                        AppKitRow(appKit: appKit)
+                    }
+                } header: {
+                    Text("共通のワークフロー")
+                }
+            }
             ForEach(groups) { group in
                 CardSection {
                     ForEach(group.repositories) { repository in
@@ -130,6 +139,9 @@ struct RepositoryDetailView: View {
                 }
                 if let protection = repository.protection {
                     ProtectionSection(repository: repository, protection: protection)
+                }
+                if let appKit = repository.appKit, !isRemoved {
+                    AppKitRepositorySection(repository: repository, appKit: appKit)
                 }
                 ReleaseSection(repository: repository, isRemoved: isRemoved, isStarting: $isStartingRelease)
             }
