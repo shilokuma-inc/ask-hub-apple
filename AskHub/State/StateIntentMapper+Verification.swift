@@ -24,7 +24,7 @@ extension StateIntentMapper {
     }
 
     /// 実機確認への答え。確かめたゴールの版に結びつける。「問題あり」は、確かめた項目・元の epic・最終 PR を添えた依頼も一緒に送り、
-    /// 新しい epic で直してもらう（司令塔は答えを記録するだけ）
+    /// 新しい epic で直してもらう（司令塔は答えを記録するだけ）。「このリリースで直す」なら、依頼に直すリリースの版を付ける
     func verifyDrafts(
         epicID: Epic.ID,
         itemID: VerificationItem.ID,
@@ -36,7 +36,10 @@ extension StateIntentMapper {
         }
         let target = VerificationTarget(repo: epic.repo, epic: epic.id, item: itemID, goalVersion: verification.goalVersion)
         let problem = try Self.problemNote(reply)
-        let request = problem.map { Self.problemRequest(repo: epic.repo, item: itemID, note: $0, verification: verification) }
+        let release = try Self.problemRelease(reply)
+        let request = problem.map {
+            Self.problemRequest(repo: epic.repo, item: itemID, note: $0, verification: verification, release: release)
+        }
         guard verification.unanswered.contains(itemID) else {
             // 「問題あり」の答えだけが届き、依頼を送れなかったときの送り直し（同じ説明の「問題あり」だけ）。
             // 答えがまだ処理を待っていれば、送る処理（`perform`）が送ってある答えを除いて依頼だけを送る。記録された後なら依頼だけを作る
@@ -55,7 +58,7 @@ extension StateIntentMapper {
 
     /// 「問題あり」の説明（前後の空白を除く）。「確認した」は nil
     private static func problemNote(_ reply: VerificationReply) throws(ClientServiceError) -> String? {
-        guard case .problem(let note) = reply else {
+        guard case .problem(let note, _) = reply else {
             return nil
         }
         let problem = note.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -66,24 +69,38 @@ extension StateIntentMapper {
         return problem
     }
 
-    /// 「問題あり」から作る依頼。要約は確かめたこと、内容は元の epic・最終 PR・何が起きたか
+    /// 「このリリースで直す」の直すリリースの版。次のリリースで直すなら nil
+    private static func problemRelease(_ reply: VerificationReply) throws(ClientServiceError) -> MarketingVersion? {
+        guard case .problem(_, let release?) = reply else {
+            return nil
+        }
+        guard let version = MarketingVersion(rawValue: release) else {
+            throw ClientServiceError(message: "直すリリースの版の形が違います")
+        }
+        return version
+    }
+
+    /// 「問題あり」から作る依頼。要約は確かめたこと、内容は元の epic・最終 PR・何が起きたか。
+    /// `release` があれば「このリリースを直す」依頼にする（epic はその版の release ブランチを base にする）
     static func problemRequest(
         repo: RepositoryFullName,
         item: String,
         note: String,
-        verification: StateIndex.VerificationEntry
+        verification: StateIndex.VerificationEntry,
+        release: MarketingVersion? = nil
     ) -> IntentDraft {
         let checked = verification.items[item] ?? item
         let title = clipped("実機確認で問題: \(checked)", to: RequestIntent.maximumTitleLength)
+        let target = release.map { "\n\nリリース \($0.rawValue) の中で直す（release ブランチ release/\($0.rawValue) に向ける）。" } ?? ""
         let body = """
-            epic「\(verification.title)」（最終 PR #\(verification.pullRequest)）の実機確認で、問題がありました。
+            epic「\(verification.title)」（最終 PR #\(verification.pullRequest)）の実機確認で、問題がありました。\(target)
 
             確かめたこと（\(item)）: \(checked)
 
             何が起きたか:
             \(note)
             """
-        return .request(repo: repo, title: title, body: clipped(body, to: RequestIntent.maximumBodyLength))
+        return .request(repo: repo, title: title, body: clipped(body, to: RequestIntent.maximumBodyLength), release: release)
     }
 
     /// Unicode のコードポイントで `limit` までに切る（司令塔は意図の文の長さをコードポイントで数える）

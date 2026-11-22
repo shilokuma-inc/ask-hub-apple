@@ -22,6 +22,38 @@
       "read": "valid"
     },
     {
+      "name": "release-fix",
+      "value": {
+        "v": 1,
+        "id": "01JCEP1C000000000000000002",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "title": "審査で断られた所を直す",
+        "stage": "running",
+        "mac": "macbook-a",
+        "branch": "askhub/01JCEP1C000000000000000002",
+        "release": "1.4.0",
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T10:20:00Z"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "release-not-version",
+      "value": {
+        "v": 1,
+        "id": "01JCEP1C000000000000000002",
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "title": "直す",
+        "stage": "drafting",
+        "release": "release/1.4.0",
+        "createdAt": "2026-11-03T10:00:00Z",
+        "updatedAt": "2026-11-03T10:20:00Z"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
       "name": "merged-with-approval",
       "value": {
         "v": 1,

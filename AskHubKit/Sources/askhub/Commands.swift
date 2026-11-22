@@ -129,8 +129,16 @@ extension AskHubMain {
         case "add-repository", "create-repository", "configure-repository", "apply-protection", "approve-setup":
             return try repositoryDraft(command, arguments)
         case "request":
-            try arguments.only(["repo", "title", "body"])
-            return .request(repo: try arguments.repository(), title: try arguments.string("title"), body: arguments.values["body"] ?? "")
+            try arguments.only(["repo", "title", "body", "release"])
+            var release: MarketingVersion?
+            if let text = arguments.values["release"] {
+                guard let version = MarketingVersion(rawValue: text) else {
+                    throw CommandArguments.Failure(message: "--release は版の番号（1.4.0 など）")
+                }
+                release = version
+            }
+            let body = arguments.values["body"] ?? ""
+            return .request(repo: try arguments.repository(), title: try arguments.string("title"), body: body, release: release)
         case "answer", "clarify":
             return try answer(command, arguments)
         case "decide", "approve-merge", "instruct-final":

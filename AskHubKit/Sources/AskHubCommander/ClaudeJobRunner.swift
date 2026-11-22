@@ -67,17 +67,19 @@ public struct ClaudeJobRunner: Sendable {
 
     // MARK: - 共通
 
-    /// 作業場所を用意して Claude に頼む。写しは、ワーカーが作業ブランチを作る元（`repo.json` の `build.baseBranch`）から取り出す。
-    /// ビルドを設定する前のリポジトリは、既定のブランチから取り出す
+    /// 作業場所を用意して Claude に頼む。写しは、ワーカーが作業ブランチを作る元（`repo.json` の `build.baseBranch`。
+    /// 「このリリースを直す」epic は `release/<版>`）から取り出す。ビルドを設定する前のリポジトリは、既定のブランチから取り出す
     func ask<Job: ClaudeJob>(
         _ claudeJob: Job,
         for job: JobFile,
+        epic: EpicFile,
         attachments: URL? = nil
     ) async throws(CommanderError) -> ClaudeReply<Job.Output> {
         let repository = try await context.read(RepositoryFile.self, at: StatePath.repository(job.repo))
+        let base = epic.release.map(SubmissionFile.branchName(for:)) ?? repository?.build?.baseBranch
         let prepared: PreparedWorkspace
         do {
-            prepared = try await workspace.prepare(job.repo, base: repository?.build?.baseBranch, for: job.id)
+            prepared = try await workspace.prepare(job.repo, base: base, for: job.id)
         } catch {
             return .failed(error.attemptFailure, nil)
         }
@@ -133,7 +135,7 @@ extension ClaudeJobRunner {
             return .failed(error.attemptFailure, nil)
         }
         let claudeJob = MakeQuestionsJob(title: request.title, body: request.body, attachments: placed?.paths ?? [])
-        switch try await ask(claudeJob, for: job, attachments: placed?.directory) {
+        switch try await ask(claudeJob, for: job, epic: epic, attachments: placed?.directory) {
         case let .failed(failure, session):
             return .failed(failure, session)
         case let .answered(output, session):
@@ -180,7 +182,7 @@ extension ClaudeJobRunner {
         guard stages.contains(epic.stage) else {
             return .discarded("epic はもう開始した・やめた（今は \(epic.stage.rawValue)）", nil)
         }
-        switch try await ask(ExplainJob(questions: questions, question: question, asked: asked), for: job) {
+        switch try await ask(ExplainJob(questions: questions, question: question, asked: asked), for: job, epic: epic) {
         case let .failed(failure, session):
             return .failed(failure, session)
         case let .answered(output, session):
@@ -205,7 +207,7 @@ extension ClaudeJobRunner {
             return .discarded("質問の一覧が無い", nil)
         }
         let claudeJob = ReviseQuestionJob(questions: questions, question: question, basis: basis)
-        switch try await ask(claudeJob, for: job) {
+        switch try await ask(claudeJob, for: job, epic: epic) {
         case let .failed(failure, session):
             return .failed(failure, session)
         case let .answered(output, session):

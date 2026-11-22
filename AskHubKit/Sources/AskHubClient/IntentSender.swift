@@ -34,12 +34,20 @@ public struct IntentDraft: Equatable, Sendable {
         self.payload = payload
     }
 
-    /// 依頼。添付は参照（番号・名前・大きさ・ハッシュ）だけを書き、中身は `IntentSender.send(_:attachments:)` で意図より先に置く
-    public static func request(repo: RepositoryFullName, title: String, body: String, attachments: [RequestAttachment] = []) -> Self {
+    /// 依頼。添付は参照（番号・名前・大きさ・ハッシュ）だけを書き、中身は `IntentSender.send(_:attachments:)` で意図より先に置く。
+    /// `release` は「このリリースを直す」依頼の直すリリースの版（epic は `release/<版>` を base にする）
+    public static func request(
+        repo: RepositoryFullName,
+        title: String,
+        body: String,
+        attachments: [RequestAttachment] = [],
+        release: MarketingVersion? = nil
+    ) -> Self {
         var payload: [String: JSONValue] = ["title": .string(title), "body": .string(body)]
         if !attachments.isEmpty {
             payload["attachments"] = .array(attachments.map(\.jsonValue))
         }
+        if let release { payload["release"] = .string(release.rawValue) }
         return Self(kind: RequestIntent.kind, repo: repo, payload: payload)
     }
 

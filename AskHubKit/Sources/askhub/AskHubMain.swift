@@ -47,7 +47,7 @@ enum AskHubMain {
           approve-setup --repo <owner/repo> --pr <番号> --head <PR の head>   加えるときに司令塔が出したワークフローの直しの PR を承認する
           apply-protection --repo <owner/repo> [--checks <名前,名前>]   保護の設定（ルールセット askhub-protect）を司令塔に掛けてもらう
                          （必須のチェックは既定で build / build。司令塔の管理用のトークンで掛け、重なる保護を外す）
-          request --repo <owner/repo> --title <題> [--body <本文>]
+          request --repo <owner/repo> --title <題> [--body <本文>] [--release <直すリリースの版>]
           answer --repo <owner/repo> --epic <id> --question <q1> --version <版> [--choice <選択肢>] [--note <補足>]
           clarify --repo <owner/repo> --epic <id> --question <q1> --version <版> --note <問い>
           start --repo <owner/repo> --epic <id> --version <ゴールの版> --mac <Mac の名前>

@@ -46,7 +46,8 @@ extension StateSnapshotBuilder {
             split: Self.split(file.stage, readiness: documents.readiness),
             isAbandoned: file.stage == .abandoned,
             workspace: progress.workspace,
-            pausedAt: file.pause?.since.date
+            pausedAt: file.pause?.since.date,
+            release: file.release?.rawValue
         )
     }
 

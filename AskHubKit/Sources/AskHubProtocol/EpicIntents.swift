@@ -34,7 +34,7 @@ public struct RequestAttachment: Codable, Equatable, Sendable {
     }
 }
 
-/// 依頼の人の意図（`kind` が `request`）
+/// 依頼の人の意図（`kind` が `request`）。`release` があれば「このリリースを直す」依頼で、epic はその版の release ブランチを base にする
 public struct RequestIntent: Equatable, Sendable {
     public static let kind = "request"
     public static let maximumTitleLength = 200
@@ -47,6 +47,8 @@ public struct RequestIntent: Equatable, Sendable {
     public var title: String
     public var body: String
     public var attachments: [RequestAttachment]
+    /// 直すリリースの版（「このリリースを直す」依頼）。ふだんの依頼は nil
+    public var release: MarketingVersion?
     public var intent: IntentReference
 
     /// 依頼の人の意図から決める epic の id。司令塔が epic を作るときと、クライアントが受け取られる前の依頼を epic として出すときに使う
@@ -54,11 +56,19 @@ public struct RequestIntent: Equatable, Sendable {
         .derived(from: intent.nonce, seed: "\(intent.keyId)/epic")
     }
 
-    public init(repo: RepositoryFullName, title: String, body: String, attachments: [RequestAttachment] = [], intent: IntentReference) {
+    public init(
+        repo: RepositoryFullName,
+        title: String,
+        body: String,
+        attachments: [RequestAttachment] = [],
+        release: MarketingVersion? = nil,
+        intent: IntentReference
+    ) {
         self.repo = repo
         self.title = title
         self.body = body
         self.attachments = attachments
+        self.release = release
         self.intent = intent
     }
 
@@ -67,12 +77,20 @@ public struct RequestIntent: Equatable, Sendable {
         guard let repo = envelope.repo else { throw .init(detail: "repo が無い") }
         // 依頼は版を持つものを対象にしないので、targetVersion を書かない
         guard envelope.targetVersion == nil else { throw .init(detail: "依頼に targetVersion がある") }
-        let reader = try PayloadReader(envelope.payload, allowed: ["title", "body", "attachments"])
+        let reader = try PayloadReader(envelope.payload, allowed: ["title", "body", "attachments", "release"])
+        var release: MarketingVersion?
+        if reader.payload["release"] != nil {
+            guard let version = MarketingVersion(rawValue: try reader.text("release", required: true, limit: 32)) else {
+                throw .init(detail: "release が版の番号の形でない")
+            }
+            release = version
+        }
         self.init(
             repo: repo,
             title: try reader.text("title", required: true, limit: Self.maximumTitleLength),
             body: try reader.text("body", required: false, limit: Self.maximumBodyLength),
             attachments: try Self.readAttachments(reader.payload["attachments"]),
+            release: release,
             intent: IntentReference(keyId: envelope.keyId, nonce: envelope.nonce)
         )
     }
@@ -83,6 +101,7 @@ public struct RequestIntent: Equatable, Sendable {
         if !attachments.isEmpty {
             payload["attachments"] = .array(attachments.map(\.jsonValue))
         }
+        if let release { payload["release"] = .string(release.rawValue) }
         return payload
     }
 

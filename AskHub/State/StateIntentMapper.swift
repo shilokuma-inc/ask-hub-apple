@@ -57,7 +57,7 @@ struct StateIntentMapper {
     /// 意図より先に状態リポジトリに置く中身（依頼の添付・渡すファイル）。`drafts(for:)` の payload の `attachments` の順
     static func attachments(for intent: HumanIntent) -> [Data] {
         switch intent {
-        case let .request(_, _, _, files):
+        case let .request(_, _, _, files, _):
             files.map(\.data)
 
         case let .completeHumanTask(_, _, file?):

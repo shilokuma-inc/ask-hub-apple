@@ -19,8 +19,10 @@ extension DemoClientService {
 
     func apply(_ intent: HumanIntent) -> SendReceipt {
         switch intent {
-        case let .request(repositoryID, summary, body, files):
-            let epicID = addRequest(repositoryID: repositoryID, summary: summary, body: body, attachmentCount: files.count)
+        case let .request(repositoryID, summary, body, files, release):
+            let epicID = addRequest(
+                repositoryID: repositoryID, summary: summary, body: body, attachmentCount: files.count, release: release
+            )
             return SendReceipt(requestedEpicID: epicID)
 
         case .answer, .requestExplanation:
@@ -394,10 +396,16 @@ extension DemoClientService {
     }
 
     /// 依頼を epic にして、その id を返す
-    private func addRequest(repositoryID: TargetRepository.ID, summary: String, body: String, attachmentCount: Int) -> Epic.ID {
+    private func addRequest(
+        repositoryID: TargetRepository.ID,
+        summary: String,
+        body: String,
+        attachmentCount: Int,
+        release: String? = nil
+    ) -> Epic.ID {
         let date = now()
         let id = "request-\(Int(date.timeIntervalSince1970))"
-        let epic = Epic(
+        var epic = Epic(
             id: id,
             title: summary,
             repositoryID: repositoryID,
@@ -414,6 +422,7 @@ extension DemoClientService {
             history: [Epic.HistoryEntry(date: date, text: "依頼しました")],
             updatedAt: date
         )
+        epic.release = release
         state.epics.insert(epic, at: 0)
         schedule(after: 1.5) { [now] snapshot in
             let asked = now()

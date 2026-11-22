@@ -20,6 +20,18 @@ struct RepositoryCreationTests {
         """
     static let config = "// IOSTemplateApp\nDEVELOPMENT_TEAM = XU74X3434S\nAPP_BUNDLE_IDENTIFIER = jp.shilokuma.IOSTemplateApp\n"
     static let view = "import SwiftUI\n\nstruct ContentView: View {}\n// IOSTemplateApp\n"
+    /// テンプレートの Build（ドキュメントだけの変更でも流す形。準備で直すところが無い）
+    static let buildWorkflow = """
+        name: Build
+        on:
+          push:
+            branches:
+              - '**'
+        jobs:
+          build:
+            uses: ./.github/workflows/_build.yml
+
+        """
     static let readme = "# IOSTemplateApp\n\n[![Build](https://github.com/shilokuma-inc/template-app-ios/actions)]\n"
 
     /// テンプレートのファイル（sha は中身ごとに決めた 40 桁）
@@ -134,7 +146,9 @@ struct RepositoryCreationTests {
             .json(200, "{}"),
             .data(#"{"repository":{"discussionCategories":{"nodes":[{"name":"Ideas"}]}}}"#),
             .json(200, "[]"),
-            .json(404, #"{"message":"Not Found"}"#)
+            .json(200, #"{"object":{"sha":"\#(Self.commit)","type":"commit"}}"#),
+            .json(200, #"[{"name":"build.yml","path":".github/workflows/build.yml","sha":"\#(Self.sha("2"))","type":"file"}]"#),
+            .json(200, #"{"content":"\#(Data(Self.buildWorkflow.utf8).base64EncodedString())","encoding":"base64"}"#)
         ])
         #expect(try await handler(transport).handle(envelope(), in: context(store)) == .accept)
         let requests = transport.requests.map { "\($0.httpMethod ?? "") \($0.url?.path ?? "")" }
