@@ -118,6 +118,8 @@ public struct SubmitForReviewIntent: Equatable, Sendable {
     public var listing: [ListingText]
     public var appReview: ReviewInformation?
     public var screenshots: SubmissionFile.ScreenshotDecision?
+    /// 載せるクリエイティブアセット（人が承認した案の版）。載せないなら nil
+    public var creative: SubmissionFile.CreativeChoice?
     public var intent: IntentReference
 
     public init(
@@ -130,6 +132,7 @@ public struct SubmitForReviewIntent: Equatable, Sendable {
         listing: [ListingText] = [],
         appReview: ReviewInformation? = nil,
         screenshots: SubmissionFile.ScreenshotDecision? = nil,
+        creative: SubmissionFile.CreativeChoice? = nil,
         intent: IntentReference
     ) {
         self.target = target
@@ -141,6 +144,7 @@ public struct SubmitForReviewIntent: Equatable, Sendable {
         self.listing = listing
         self.appReview = appReview
         self.screenshots = screenshots
+        self.creative = creative
         self.intent = intent
     }
 
@@ -152,6 +156,7 @@ public struct SubmitForReviewIntent: Equatable, Sendable {
         var listing: [ListingText]?
         var appReview: ReviewInformation?
         var screenshots: SubmissionFile.ScreenshotDecision?
+        var creative: SubmissionFile.CreativeChoice?
     }
 
     public init(envelope: IntentEnvelope) throws(MalformedIntent) {
@@ -178,6 +183,7 @@ public struct SubmitForReviewIntent: Equatable, Sendable {
             listing: payload.listing ?? [],
             appReview: payload.appReview,
             screenshots: payload.screenshots,
+            creative: payload.creative,
             intent: IntentReference(keyId: envelope.keyId, nonce: envelope.nonce)
         )
     }
@@ -194,12 +200,18 @@ public struct SubmitForReviewIntent: Equatable, Sendable {
         }
         let listingProblems = ListingText.problems(of: payload.listing ?? [], name: "listing")
         if !listingProblems.isEmpty { throw .init(detail: listingProblems.joined(separator: "、")) }
+        try validateAssets(payload)
+    }
+
+    /// App Review の情報・スクショ・クリエイティブアセットの決まり
+    private static func validateAssets(_ payload: Payload) throws(MalformedIntent) {
         if let appReview = payload.appReview {
             if appReview.isEmpty { throw .init(detail: "appReview に変える欄が無い") }
             let problems = ReviewInformation.problems(of: appReview, name: "appReview")
             if !problems.isEmpty { throw .init(detail: problems.joined(separator: "、")) }
         }
         if let problems = payload.screenshots?.problems, !problems.isEmpty { throw .init(detail: problems.joined(separator: "、")) }
+        if let creative = payload.creative, creative.revision < 1 { throw .init(detail: "creative の revision は 1 以上") }
     }
 
     public var targetVersion: String { String(revision) }
@@ -212,7 +224,8 @@ public struct SubmitForReviewIntent: Equatable, Sendable {
             earliestReleaseDate: earliestReleaseDate,
             listing: listing,
             appReview: appReview,
-            screenshots: screenshots
+            screenshots: screenshots,
+            creative: creative
         )
     }
 
@@ -224,7 +237,8 @@ public struct SubmitForReviewIntent: Equatable, Sendable {
         earliestReleaseDate: Timestamp?,
         listing: [ListingText] = [],
         appReview: ReviewInformation? = nil,
-        screenshots: SubmissionFile.ScreenshotDecision? = nil
+        screenshots: SubmissionFile.ScreenshotDecision? = nil,
+        creative: SubmissionFile.CreativeChoice? = nil
     ) -> [String: JSONValue] {
         let payload = Payload(
             builds: builds,
@@ -233,7 +247,8 @@ public struct SubmitForReviewIntent: Equatable, Sendable {
             earliestReleaseDate: earliestReleaseDate,
             listing: listing.isEmpty ? nil : listing,
             appReview: appReview,
-            screenshots: screenshots
+            screenshots: screenshots,
+            creative: creative
         )
         guard case let .object(fields)? = (try? JSONEncoder().encode(payload)).flatMap({ try? JSONValue(parsing: $0) }) else { return [:] }
         return fields

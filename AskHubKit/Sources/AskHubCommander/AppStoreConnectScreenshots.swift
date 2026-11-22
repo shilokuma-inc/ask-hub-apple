@@ -71,11 +71,14 @@ public struct AppStoreLibraryImage: Equatable, Sendable {
     public var state: String?
     /// 処理に失敗したわけ（`stateDetails` の誤りの文）
     public var details: String?
+    /// 処理を終えた画像に Apple が合わせた仕様（処理の前は nil）
+    public var specId: String?
 
-    public init(id: String, state: String?, details: String? = nil) {
+    public init(id: String, state: String?, details: String? = nil, specId: String? = nil) {
         self.id = id
         self.state = state
         self.details = details
+        self.specId = specId
     }
 
     /// 処理を終え、置ける。上げ終わっていない・処理の途中・失敗したものは置かない
@@ -219,7 +222,7 @@ extension AppStoreConnectClient: AppStoreConnectScreenshots {
         try Self.checkID(libraryID)
         let query = [
             URLQueryItem(name: "filter[referenceName]", value: referenceName),
-            URLQueryItem(name: "fields[appAssetLibraryImages]", value: "referenceName,state,stateDetails"),
+            URLQueryItem(name: "fields[appAssetLibraryImages]", value: "referenceName,state,stateDetails,specId"),
             URLQueryItem(name: "limit", value: "50")
         ]
         let response = try await get(
@@ -228,7 +231,9 @@ extension AppStoreConnectClient: AppStoreConnectScreenshots {
         // 絞り込みが完全一致とは文書に書かれていないので、返った参照名を比べ直す
         return response.data.compactMap { item in
             guard Self.isID(item.id), item.attributes?.referenceName == referenceName else { return nil }
-            return AppStoreLibraryImage(id: item.id, state: item.attributes?.state, details: item.attributes?.stateDetails?.message)
+            return AppStoreLibraryImage(
+                id: item.id, state: item.attributes?.state, details: item.attributes?.stateDetails?.message, specId: item.attributes?.specId
+            )
         }
     }
 
@@ -247,12 +252,23 @@ extension AppStoreConnectClient: AppStoreConnectScreenshots {
         referenceName: String,
         data: Data
     ) async throws(AppStoreConnectError) -> String {
+        try await sendImage(
+            to: libraryID, fileName: fileName, referenceName: referenceName, data: data, category: "APP_SCREENSHOTS_AND_PREVIEWS"
+        )
+    }
+
+    /// 1 枚上げる。`category` はスクショ（`APP_SCREENSHOTS_AND_PREVIEWS`）かクリエイティブアセット（`CREATIVE_ASSETS`。後から変えられない）
+    func sendImage(
+        to libraryID: String,
+        fileName: String,
+        referenceName: String,
+        data: Data,
+        category: String
+    ) async throws(AppStoreConnectError) -> String {
         try Self.checkID(libraryID)
         let body = try Self.document(
             "appAssetLibraryImages",
-            attributes: [
-                "fileName": fileName, "fileSize": data.count, "category": "APP_SCREENSHOTS_AND_PREVIEWS", "referenceName": referenceName
-            ],
+            attributes: ["fileName": fileName, "fileSize": data.count, "category": category, "referenceName": referenceName],
             relationships: ["assetLibrary": ("appAssetLibraries", libraryID)]
         )
         let reply = try await send("POST", "v1/appAssetLibraryImages", body: body)

@@ -399,6 +399,20 @@
           ]
         }
       }
+    },
+    "creativeChoice": {
+      "type": "object",
+      "required": [
+        "revision"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "revision": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "人が承認した案の版（creative.json の approved.revision）"
+        }
+      }
     }
   },
   "properties": {
@@ -1041,6 +1055,10 @@
         "screenshots": {
           "$ref": "#/$defs/screenshotDecision",
           "description": "人が確かめたスクショ。無ければスクショを変えない"
+        },
+        "creative": {
+          "$ref": "#/$defs/creativeChoice",
+          "description": "載せるクリエイティブアセット。無ければ載せない"
         }
       }
     },

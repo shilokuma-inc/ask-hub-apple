@@ -119,6 +119,18 @@ extension StateClientServiceTests {
         ])
     }
 
+    /// 載せるクリエイティブアセットの案の版を送る（承認した案と同じかは司令塔が確かめる）
+    @Test
+    func sendsCreativeChoice() async throws {
+        let fixture = try makeService(files: Self.submissionFiles())
+        _ = try await fixture.service.fetchSnapshot()
+        var withCreative = request
+        withCreative.creative = 3
+        try await fixture.service.perform(.submitForReview(repositoryID: submissionRepositoryID, version: "1.2.0", request: withCreative))
+        let submit = try SubmitForReviewIntent(envelope: try await sentEnvelope(in: fixture.store, key: fixture.key))
+        #expect(submit.creative == .init(revision: 3))
+    }
+
     @Test
     func sendsScreenshotDecisionForTheCapturedShots() async throws {
         let fixture = try makeService(files: Self.submissionFiles())

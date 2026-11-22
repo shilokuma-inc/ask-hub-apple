@@ -90,6 +90,10 @@ enum HumanIntent: Hashable {
     case confirmAppStoreItem(repositoryID: TargetRepository.ID, item: AppStoreSetup.ItemKind)
     /// App Store に出さない（`excluded` が false なら出すに戻す）
     case excludeFromAppStore(repositoryID: TargetRepository.ID, excluded: Bool)
+    /// クリエイティブアセット（App Store のヘッダー・検索結果の画像）の案を頼む・直してほしいことを書く（人が見た案の版。案が無ければ 0）
+    case draftCreativeAssets(repositoryID: TargetRepository.ID, revision: Int, comment: String?)
+    /// 書き出したクリエイティブアセットの案を承認する（次のリリースで載せる）
+    case approveCreativeAssets(repositoryID: TargetRepository.ID, revision: Int)
 }
 
 /// タスクを飛ばす理由
@@ -223,6 +227,12 @@ extension HumanIntent {
 
         case let .excludeFromAppStore(_, excluded):
             excluded ? "App Store に出さない" : "App Store に出すに戻す"
+
+        case let .draftCreativeAssets(_, revision, comment):
+            revision == 0 ? "ヘッダーと検索結果の案を頼む" : (comment == nil ? "ヘッダーと検索結果の案を作り直す" : "ヘッダーと検索結果の案の直し")
+
+        case let .approveCreativeAssets(_, revision):
+            "ヘッダーと検索結果の案 \(revision) の承認"
 
         case let .resolveBlocker(_, action, _, _):
             Self.label(of: action)

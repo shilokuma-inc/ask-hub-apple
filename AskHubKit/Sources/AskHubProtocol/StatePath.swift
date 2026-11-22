@@ -103,6 +103,29 @@ public enum StatePath {
         return Data(base64Encoded: data, options: .ignoreUnknownCharacters)
     }
 
+    /// クリエイティブアセット（プロダクトページのヘッダー・検索結果の画像）の案と反映（`docs/renewal/creative-assets.md`）
+    public static func creative(_ repo: RepositoryFullName) -> String {
+        "\(repositoryDirectory(repo))/creative.json"
+    }
+
+    /// クリエイティブアセットの案の見本（幅 600 の JPEG を base64 にした文字。1 回の書き出しの見本を 1 つのコミットでまとめて書く）。
+    /// 案の版をパスに入れ、直した案が前の案の見本を上書きしない。元の画像は常時オンの Mac に置く
+    public static func creativePreview(_ repo: RepositoryFullName, revision: Int, locale: String, kind: CreativeKind) -> String {
+        "\(repositoryDirectory(repo))/creative/\(revision)/\(locale)/\(kind.rawValue).b64"
+    }
+
+    /// クリエイティブアセットの案の見本のパスか（`..` や絶対パスを含まない）
+    public static func isCreativePreviewPath(_ path: String) -> Bool {
+        let parts = path.split(separator: "/", omittingEmptySubsequences: false)
+        guard path.hasPrefix("repos/"), parts.count == 7, parts[3] == "creative", path.hasSuffix(".b64"),
+              !parts.contains(where: { $0.isEmpty || $0 == "." || $0 == ".." }),
+              let revision = Int(parts[4]), revision > 0, String(revision) == parts[4],
+              LocalizedText.isLocale(String(parts[5])) else {
+            return false
+        }
+        return CreativeKind.allCases.contains { "\($0.rawValue).b64" == parts[6] }
+    }
+
     /// 新しいアプリを App Store に載せる準備（チェックリスト）
     public static func appStoreSetup(_ repo: RepositoryFullName) -> String {
         "\(repositoryDirectory(repo))/app-store.json"

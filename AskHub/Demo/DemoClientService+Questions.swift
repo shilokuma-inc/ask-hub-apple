@@ -52,8 +52,9 @@ extension DemoClientService {
              .reportRejection, .resolveRejection:
             applySubmissionIntent(intent)
 
-        case .registerBundleId, .applyAppStoreSettings, .confirmAppStoreItem, .excludeFromAppStore:
-            applyAppStoreSetupIntent(intent)
+        case .registerBundleId, .applyAppStoreSettings, .confirmAppStoreItem, .excludeFromAppStore, .draftCreativeAssets,
+             .approveCreativeAssets:
+            applyStoreAssetIntent(intent)
         }
         return SendReceipt()
     }

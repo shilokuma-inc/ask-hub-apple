@@ -47,6 +47,12 @@ public actor ReleaseWatch {
     var captureTasks: [String: Task<Void, Never>] = [:]
     /// 撮影のワークフローの実行を最後に読んだ時刻（`<owner>/<repo>/<版>`）。見回りのたびに読まず、5 分空ける
     var screenshotRunsCheckedAt: [String: Date] = [:]
+    /// 撮影の実行が動いている版（`<owner>/<repo>/<版>` → 小文字の持ち主）。見回りの途中で覚え、起動するときに同じ持ち主のものを数える
+    var screenshotRunsInFlight: [String: String] = [:]
+    /// 起動してから、見回りを一周し終えたか（一周するまでは、ほかの撮影が動いているか分からない）
+    var hasRefreshedAllRepositories = false
+    /// epic のジョブが動いている持ち主（小文字。司令塔の周が渡す）。まだ渡されていなければ nil
+    var ownersWithEpicJobs: Set<String>?
     /// ログに出した知らせ（同じものを見回りのたびに出さない）
     private var reported: Set<String> = []
     private var running = false
@@ -137,6 +143,8 @@ public actor ReleaseWatch {
             }
         }
         blockers = waiting
+        forgetScreenshotRuns(outside: repositories)
+        hasRefreshedAllRepositories = true
     }
 
     private func isDetectDue(_ repo: RepositoryFullName) -> Bool {

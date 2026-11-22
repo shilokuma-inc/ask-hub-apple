@@ -51,6 +51,8 @@ extension CommanderLoop {
         "withdrawSubmission": WithdrawSubmissionHandler(),
         "abandonRelease": AbandonReleaseHandler(),
         "retakeScreenshots": RetakeScreenshotsHandler(),
+        "draftCreativeAssets": DraftCreativeAssetsHandler(),
+        "approveCreativeAssets": ApproveCreativeAssetsHandler(),
         "reportRejection": ReportRejectionHandler(),
         "resolveRejection": ResolveRejectionHandler(),
         "registerBundleId": RegisterBundleIdHandler(),

@@ -90,7 +90,7 @@ public protocol AppStoreConnectListing: Sendable {
 }
 
 /// 審査の API と準備の API の両方（司令塔の見回りが使う）
-public typealias AppStoreConnecting = AppStoreConnectSubmitting & AppStoreConnectListing
+public typealias AppStoreConnecting = AppStoreConnectSubmitting & AppStoreConnectListing & AppStoreConnectCreative
 
 extension AppStoreConnectClient: AppStoreConnectListing {
     /// 無料の価格を決めるときの基準の地域

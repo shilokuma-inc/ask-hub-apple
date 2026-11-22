@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/creative-spec.schema.json",
+  "title": "クリエイティブアセットの案（creative.json の spec・書き出しのワークフローの入力 spec）",
+  "description": "shilokuma-inc/app-kit の schema/creative-spec.schema.json と同じ形（変えるときは両方を変える）。Swift は CreativeSpec。司令塔が書き出しのワークフロー（app-store-creative.yml）の入力 spec に JSON の文字列で渡す。文言の決まり（URL・価格・記号）と色のコントラストは、書き出しを止めずに problems に出す",
+  "type": "object",
+  "required": [
+    "v",
+    "layout",
+    "colors",
+    "screens",
+    "locales"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "v": {
+      "const": 1
+    },
+    "layout": {
+      "description": "雛形の配置の種類。standard は、ヘッダーが中央の見出しと 3 台の端末、検索結果が左に文言と右に 2 台の端末",
+      "enum": [
+        "standard"
+      ]
+    },
+    "colors": {
+      "type": "object",
+      "required": [
+        "background",
+        "accent",
+        "text"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "background": {
+          "$ref": "#/$defs/color",
+          "description": "背景（上）"
+        },
+        "background2": {
+          "$ref": "#/$defs/color",
+          "description": "背景（下）。省くと background だけ"
+        },
+        "accent": {
+          "$ref": "#/$defs/color",
+          "description": "チップの色"
+        },
+        "highlight": {
+          "$ref": "#/$defs/color",
+          "description": "強調（* で囲んだ文字）とアプリ名の色。省くと accent"
+        },
+        "text": {
+          "$ref": "#/$defs/color",
+          "description": "文字の色。一文は少し薄くして使う"
+        }
+      }
+    },
+    "screens": {
+      "description": "端末に載せる画面（撮影の artifact のファイル名から .png を除いたもの。例 01_home）",
+      "type": "object",
+      "required": [
+        "header",
+        "search"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "header": {
+          "description": "中央・左・右の順。1 つなら中央だけ",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "items": {
+            "$ref": "#/$defs/screen"
+          }
+        },
+        "search": {
+          "description": "手前・奥の順",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "items": {
+            "$ref": "#/$defs/screen"
+          }
+        }
+      }
+    },
+    "locales": {
+      "description": "App Store Connect の言語ごとの文言。言語ごとに 2 枚書き出す",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "required": [
+          "locale",
+          "screenshots",
+          "appName",
+          "header",
+          "search"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "locale": {
+            "description": "App Store Connect の言語（ja・en-US など）。artifact のフォルダの名前になる",
+            "type": "string",
+            "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8}){0,2}$"
+          },
+          "screenshots": {
+            "description": "撮影の artifact のこの言語のフォルダ（AppStore/languages.json の language）",
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,20}$"
+          },
+          "appName": {
+            "description": "アプリ名（App Store Connect の名前）。検索結果に載せる。* もそのまま描く（強調にしない）",
+            "$ref": "#/$defs/text",
+            "maxLength": 30,
+            "minLength": 1,
+            "pattern": "\\S"
+          },
+          "header": {
+            "type": "object",
+            "required": [
+              "title"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "title": {
+                "description": "見出し（2 行まで）",
+                "$ref": "#/$defs/text",
+                "maxLength": 60,
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "subtitle": {
+                "description": "見出しを支える一文（2 行まで。空でよい）",
+                "$ref": "#/$defs/text",
+                "maxLength": 90
+              }
+            }
+          },
+          "search": {
+            "type": "object",
+            "required": [
+              "title"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "title": {
+                "description": "何をするアプリか（3 行まで）",
+                "$ref": "#/$defs/text",
+                "maxLength": 60,
+                "minLength": 1,
+                "pattern": "\\S"
+              },
+              "chips": {
+                "description": "主な機能（3 つまで）",
+                "type": "array",
+                "maxItems": 3,
+                "items": {
+                  "$ref": "#/$defs/text",
+                  "maxLength": 30,
+                  "minLength": 1,
+                  "pattern": "\\S"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "color": {
+      "type": "string",
+      "pattern": "^#[0-9A-Fa-f]{6}$"
+    },
+    "screen": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+    },
+    "text": {
+      "description": "文字として描く（HTML は読まない）。* で囲んだところを強調する（* は偶数個。アプリ名は除く）。改行は欄ごとに決まる（見出し・一文は 1、検索結果の見出しは 2、アプリ名・チップは 0）",
+      "type": "string",
+      "pattern": "^[^\\u0000-\\u0009\\u000b-\\u001f\\u007f]*$"
+    }
+  }
+}

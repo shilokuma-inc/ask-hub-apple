@@ -55,6 +55,8 @@ extension SubmissionFile {
         public var appReview: ReviewInformation?
         /// 人が確かめたスクショ（前のままにする画面）。nil ならスクショを変えない
         public var screenshots: ScreenshotDecision?
+        /// 載せるクリエイティブアセット（人が承認した案の版）。nil なら載せない
+        public var creative: CreativeChoice?
 
         public init(
             approval: IntentReference,
@@ -65,7 +67,8 @@ extension SubmissionFile {
             earliestReleaseDate: Timestamp? = nil,
             listing: [ListingText]? = nil,
             appReview: ReviewInformation? = nil,
-            screenshots: ScreenshotDecision? = nil
+            screenshots: ScreenshotDecision? = nil,
+            creative: CreativeChoice? = nil
         ) {
             self.approval = approval
             self.at = at
@@ -76,6 +79,16 @@ extension SubmissionFile {
             self.listing = listing
             self.appReview = appReview
             self.screenshots = screenshots
+            self.creative = creative
+        }
+    }
+
+    /// 審査に出すときに載せるクリエイティブアセット（`creative.json` の `approved` の案の版）
+    public struct CreativeChoice: Codable, Equatable, Sendable {
+        public var revision: Int
+
+        public init(revision: Int) {
+            self.revision = revision
         }
     }
 

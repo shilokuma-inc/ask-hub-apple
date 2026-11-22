@@ -213,10 +213,12 @@ final class StateClientService: ClientService {
         StateIntentMapper(index: index).supports(intent)
     }
 
-    /// 判断のカードのスクショ（epic の `screenshots/` の下の PNG）と、App Store のスクショの見本（base64 の文字は画像に戻す）を状態リポジトリから読む
+    /// 判断のカードのスクショ（epic の `screenshots/` の下の PNG）と、App Store のスクショ・クリエイティブアセットの見本
+    /// （base64 の文字は画像に戻す）を状態リポジトリから読む
     func screenshot(at path: String) async throws -> Data {
         if let data = screenshots[path] { return data }
-        let isStore = StatePath.isStoreScreenshotPath(path)
+        // クリエイティブアセットの見本は、いつも base64 の文字（`.b64`）
+        let isStore = StatePath.isStoreScreenshotPath(path) || StatePath.isCreativePreviewPath(path)
         guard DecisionsFile.isScreenshotPath(path) || isStore else {
             throw ClientServiceError(message: "スクショのパスの形が違う")
         }

@@ -143,6 +143,8 @@ struct StateIndex {
     var busyRepositories: Set<TargetRepository.ID> = []
     /// 新しいアプリを App Store に載せる準備（処理を待つ意図を当てた後のもの）
     var appStoreSetups: [TargetRepository.ID: AppStoreSetupEntry] = [:]
+    /// クリエイティブアセットの今の案（処理を待つ意図を当てた後のもの。頼んだリポジトリだけ）
+    var creatives: [TargetRepository.ID: CreativeEntry] = [:]
 
     struct AppStoreSetupEntry {
         var bundleIDs: [String]
@@ -204,6 +206,7 @@ struct StateSnapshotBuilder {
         let submissions = submissions(index: &index, overlaid: overlaid)
         let appStoreSetups = appStoreSetups(index: &index, overlaid: overlaid)
         let appKit = appKitOverview(index: &index)
+        let creatives = creatives(index: &index, overlaid: overlaid)
         let snapshot = ClientSnapshot(
             repositories: repositories.sorted { $0.fullName.localizedStandardCompare($1.fullName) == .orderedAscending },
             candidateRepositories: candidates(excluding: repositories + removed, index: &index),
@@ -218,7 +221,8 @@ struct StateSnapshotBuilder {
             releases: releases,
             submissions: submissions,
             appStoreSetups: appStoreSetups,
-            appKit: appKit
+            appKit: appKit,
+            creatives: creatives
         )
         return (snapshot, index)
     }

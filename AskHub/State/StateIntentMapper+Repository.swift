@@ -30,6 +30,9 @@ extension StateIntentMapper {
         case .rolloutAppKit, .stopAppKitRollout:
             supportsAppKitIntent(intent)
 
+        case .draftCreativeAssets, .approveCreativeAssets:
+            supportsCreativeIntent(intent)
+
         default:
             false
         }
@@ -89,6 +92,9 @@ extension StateIntentMapper {
 
         case .rolloutAppKit, .stopAppKitRollout:
             return try appKitDraft(intent)
+
+        case .draftCreativeAssets, .approveCreativeAssets:
+            return try creativeDraft(intent)
 
         default:
             return try cleanupDraft(intent)

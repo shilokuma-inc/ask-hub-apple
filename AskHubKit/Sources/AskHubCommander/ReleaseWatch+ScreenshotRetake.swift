@@ -50,9 +50,15 @@ extension ReleaseWatch {
         return started
     }
 
-    /// 撮り直す組だけの撮影の入力（`display_types`・`languages`）。頼みが無い・すべてなら、設定のすべて
-    static func screenshotInputs(_ workflow: StoreScreenshotWorkflow, retake: SubmissionFile.Retake?) -> [String: String] {
+    /// 撮り直す組だけの撮影の入力（`display_types`・`languages`）。頼みが無い・すべてなら、設定のすべて。
+    /// 同時に使う macOS ランナーの数（`maxParallel`）は、撮り直しでも同じ決め方で送る
+    static func screenshotInputs(
+        _ workflow: StoreScreenshotWorkflow,
+        retake: SubmissionFile.Retake?,
+        maxParallel: Int? = nil
+    ) -> [String: String] {
         var inputs = screenshotInputs(workflow)
+        if let maxParallel { inputs[maxParallelInput] = String(maxParallel) }
         guard let retake, retake.isPartial else { return inputs }
         if !retake.displayTypes.isEmpty {
             let names = workflow.artifacts.filter { retake.displayTypes.contains($0.key) }.values

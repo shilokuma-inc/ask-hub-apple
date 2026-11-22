@@ -948,6 +948,60 @@
       },
       "schemaValid": false,
       "read": "malformed"
+    },
+    {
+      "name": "with-creative",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "afterApproval",
+        "creative": {
+          "revision": 2
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "creative-zero",
+      "payload": {
+        "builds": [
+          {
+            "platform": "iOS",
+            "build": "45"
+          }
+        ],
+        "whatsNew": [
+          {
+            "locale": "ja",
+            "text": "・素数の判定が速くなりました"
+          },
+          {
+            "locale": "en-US",
+            "text": "- Faster prime checks"
+          }
+        ],
+        "releaseType": "afterApproval",
+        "creative": {
+          "revision": 0
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
     }
   ]
 }
