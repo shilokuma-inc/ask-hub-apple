@@ -283,6 +283,10 @@ public struct SubmissionFile: StateFile {
     public var origin: Origin
     /// リリースを始めた人の意図（`askhub` のときだけ）
     public var start: Approval?
+    /// hotfix（配信中の版だけを直す）なら、直す版。ふつうのリリースは nil
+    public var hotfix: Hotfix?
+    /// hotfix の間の一時停止。止めていなければ nil（再開した後も、`resumedAt` を付けて残す）
+    public var suspension: Suspension?
     public var branch: Branch?
     /// develop の `MARKETING_VERSION` を次の版に上げる PR（配信の後作業と同じ形）
     public var nextVersion: ReleaseFile.NextVersion?
@@ -316,6 +320,8 @@ public struct SubmissionFile: StateFile {
         version: MarketingVersion,
         origin: Origin,
         start: Approval? = nil,
+        hotfix: Hotfix? = nil,
+        suspension: Suspension? = nil,
         branch: Branch? = nil,
         nextVersion: ReleaseFile.NextVersion? = nil,
         builds: [Build] = [],
@@ -340,6 +346,8 @@ public struct SubmissionFile: StateFile {
         self.version = version
         self.origin = origin
         self.start = start
+        self.hotfix = hotfix
+        self.suspension = suspension
         self.branch = branch
         self.nextVersion = nextVersion
         self.builds = builds
@@ -385,7 +393,9 @@ public struct SubmissionFile: StateFile {
 
     /// 人が What's New とビルドを確かめて「審査に出す」を押すのを待っている（「あなたの番」に出す）。
     /// リジェクトでコードを直すを選んだ後は、直した後に上げたビルドが見つかるまで待たない
-    public var awaitsSubmission: Bool { !isEnded && isPrepared && submit == nil && !hasReviewInFlight && !awaitsFixedBuild }
+    public var awaitsSubmission: Bool {
+        !isEnded && isPrepared && submit == nil && !hasReviewInFlight && !awaitsFixedBuild && !isSuspended
+    }
 
     /// 審査に通り、人が「配信する」を押すのを待っている（配信の方式が手動）
     public var awaitsDistribution: Bool {
@@ -400,17 +410,6 @@ public struct SubmissionFile: StateFile {
 
     /// このリリースをやめられる（審査に出していない・取り下げた・断られた）
     public var canAbandon: Bool { !isEnded && !hasReviewInFlight && !isSubmitting }
-
-    /// やめたリリースの、まだ消していない版の枠がある
-    public var awaitsSlotRemoval: Bool {
-        end?.reason == .abandoned && (appStoreVersions ?? []).contains { $0.removal == nil }
-    }
-
-    /// 配信した後に、release ブランチを main と develop に取り込むのを待っている（取り込む先がすべて終わるまで見回る）
-    public func awaitsIntegration(bases: [String]) -> Bool {
-        guard end?.reason == .distributed, branch != nil else { return false }
-        return bases.contains { base in !(integration ?? []).contains { $0.base == base && $0.isDone } }
-    }
 
     public var violations: [String] {
         var violations: [String] = []
@@ -486,6 +485,7 @@ public struct SubmissionFile: StateFile {
             if origin != .askhub { violations.append("rejections は AskHub で始めた記録だけ持つ") }
             violations += rejections.flatMap(\.problems)
         }
+        violations += hotfixProblems
         if problem?.message.isEmpty == true { violations.append("problem の message が空") }
         return violations
     }
