@@ -339,14 +339,14 @@ fine-grained token は 1 つの持ち主（organization・個人）のリポジ�
 保護の設定（ルールセット）・Discussions を有効にする・ワークフローのファイルを変える PR などの管理の操作は、毎日のトークン（上の「GitHub のトークン（持ち主ごと）」）ではできない。
 毎日のトークンには Administration・Workflows を付けず、常時オンの Mac の司令塔の Keychain に、持ち主ごとの管理用のトークンを別に置く（[security.md](security.md) の「管理用のトークン」。2026-11-12 に決めた）。
 
-- 使うのは司令塔だけで、署名した人の意図を処理するときだけ（保護の設定・対象に加えるときの GitHub 側の準備）。自動では使わない
+- 使うのは司令塔だけで、署名した人の意図を処理するときだけ（保護の設定・対象に加えるときの GitHub 側の準備・テンプレートからの新規作成）。自動では使わない
 - git の credential helper（`git-credential`）・Claude のジョブ・ワーカーには渡さない。Keychain の名前（`github-admin-token/<持ち主>`）も読む部品（`GitHubAdminTokens`）も、毎日のトークンとは別にしてある
 - 管理用のトークンが無い持ち主のリポジトリへの管理の操作は、「管理用のトークンが無い（`askhub-commander admin-token <持ち主>` で入れる）」の理由で断り、クライアントに出す。毎日の仕事（依頼から最終 PR まで）は止めない
 
 作り方（毎日のトークンと同じ画面で、別のトークンとして作る）:
 
 1. GitHub の Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token。名前は毎日のものと見分けがつくもの（`askhub-admin-<持ち主>` など）
-2. Resource owner に持ち主を選ぶ。Repository access は Only select repositories で、その持ち主の対象のリポジトリを選ぶ（状態リポジトリは要らない）
+2. Resource owner に持ち主を選ぶ。Repository access は Only select repositories で、その持ち主の対象のリポジトリを選ぶ（状態リポジトリは要らない）。テンプレートから新しいアプリを作る持ち主は、All repositories にする（作る前のリポジトリは選べないため。下の「テンプレートからの新規作成」）
 3. Repository permissions:
 
    | 権限 | 付け方 | 使う所 |
@@ -543,10 +543,17 @@ GitHub の REST の上限（1 時間に 5,000 回）は、トークンごとで�
 
 2026-11-12 に決めた。段階 5 の共通リポジトリを待たず、段階 4 の 5 で作る。今の仕組みでは、依頼の「新しいアプリ」から作っていた（2026-10 に 4 本）。
 
-1. 先に、テンプレート（template-app-ios・visionOS のもの）から今の仕組みの跡（ralph-kit を呼ぶワークフローとスクリプト・CLAUDE.md のループの節など）を外す
-2. クライアントで、テンプレート・持ち主・名前・公開範囲を選んで送る（作る意図。名前は実装で決める）。司令塔が管理用のトークンで、テンプレートからリポジトリを作る
-3. 作った後は、「対象に加える」と同じ準備（上の「対象に加えるときの GitHub 側の準備」）と、ビルドの設定を流す
-4. App Store Connect でしかできない作業（アプリの新規作成など）は、司令塔が App Store Connect にアプリが無いのを見つけて、「あなたの番」のチェックリストで出す（[release.md](release.md) の「新しいアプリを載せる」）
+1. 先に、テンプレート（template-app-ios・visionOS のもの）から今の仕組みの跡（ralph-kit を呼ぶワークフローとスクリプト・CLAUDE.md のループの節など）を外す（template-app-ios#182・template-app-visionos#6）
+2. クライアントの依頼の画面の「新しいアプリ」で、テンプレート（iOS・visionOS）・持ち主・名前・アプリ名・Bundle ID・公開範囲を選んで送る（`createRepository`。非常口は `askhub create-repository`）。持ち主は、司令塔に管理用のトークンを入れた持ち主だけを出す
+   - 元にするテンプレートのリポジトリは、種類から司令塔が決める（iOS: shilokuma-inc/template-app-ios、visionOS: shilokuma-vision/template-app-visionos）。人の意図に任意のリポジトリは書かせない
+   - 司令塔が、作るリポジトリの持ち主の管理用のトークンで、テンプレートから作る（既定のブランチだけを写す）。作る前のリポジトリは選べないので、管理用のトークンの Repository access は、その持ち主の All repositories にしておく
+3. 作った直後、保護の無いうちに、アプリ名・Bundle ID を書き換えたコミットを develop に直接入れる（テンプレートの `scripts/rename.sh` と同じ中身。2026-11-22 にユーザーが決めた）
+   - パスに元の名前（`OLD_NAME`）を含むファイルを新しい名前のパスに移し、テキストのファイルの中の元の名前と元のリポジトリ（`OLD_REPO`）を置き換え、`Configs/Project.xcconfig` の `APP_BUNDLE_IDENTIFIER` を選んだ Bundle ID にする
+   - clone はしない（管理用のトークンを git に渡さないため）。tree を読み、GitHub の API で全部のファイルを並べた tree とコミットを作り、develop を進める（force にしない）
+4. 続けて「対象に加える」と同じく `repo.json` を作り（`created` に作った記録）、テンプレートから決まるビルドの設定（`<アプリ名>.xcodeproj`・スキーム `<アプリ名>`・iPhone 17 Pro か Apple Vision Pro・待つチェック `build / build`・子 PR は `<アプリ名>Tests` だけ）を入れ、加えるときの準備（上の「対象に加えるときの GitHub 側の準備」）を流す。保護は掛けない（人が保護の設定を押したときだけ）
+5. 途中で止まったら（作っている途中でブランチがまだ出ない・上限など）、理由を付けて断る。押し直すと、作ってあるものは作り直さずに続きから進める。同じ名前のリポジトリがテンプレートから作ったものでない・公開範囲が違うときは、何もせずに断る
+6. 作った後に人がすること: 毎日のトークン（司令塔と各 Mac）の Repository access に作ったリポジトリを足す（足すまで、ワーカーが clone・push できない。上の「GitHub のトークン（持ち主ごと）」）
+7. App Store Connect でしかできない作業（アプリの新規作成など）は、司令塔が App Store Connect にアプリが無いのを見つけて、「あなたの番」のチェックリストで出す（[release.md](release.md) の「新しいアプリを載せる」）
 
 - 共通リポジトリ（段階 5 の 5）ができたら、テンプレートも共通リポジトリのワークフローを呼ぶ形に作り直し、作ったリポジトリもほかと同じく移す
 
