@@ -80,7 +80,7 @@ extension StateIntentMapper {
         case let .configureRepository(repositoryID, json):
             return .configureRepository(try repository(repositoryID), build: try Self.build(json))
 
-        case .applyProtection, .approveSetup, .createRepository:
+        case .applyProtection, .approveSetup, .createRepository, .readSecretsKey:
             return try administrationDraft(intent)
 
         default:
@@ -103,6 +103,9 @@ extension StateIntentMapper {
 
         case .createRepository(let request):
             return try createRepositoryDraft(request)
+
+        case .readSecretsKey(let repositoryID):
+            return .readSecretsKey(try repository(repositoryID))
 
         default:
             throw Self.unsupported

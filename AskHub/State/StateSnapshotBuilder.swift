@@ -220,6 +220,7 @@ struct StateSnapshotBuilder {
         index.repositories[repository.id] = file.repo
         repository.icon = Self.appIcon(of: file)
         repository.build = file.build.map(Self.buildSettings)
+        repository.secretsKey = file.secretsKey
         repository.protection = protection(of: file)
         repository.setup = setup(of: file)
         repository.lastMacID = epics.filter { $0.repositoryID == repository.id && $0.macID != nil }

@@ -1,3 +1,4 @@
+import AskHubProtocol
 import Foundation
 
 /// 対象のリポジトリ（AskHub でループ開発を回すリポジトリ）。
@@ -17,6 +18,8 @@ struct TargetRepository: Identifiable, Hashable {
     var lastMacID: Mac.ID?
     /// ビルドの設定。まだ入れていなければ nil（開始を断られる）
     var build: RepositoryBuildSettings?
+    /// GitHub Actions の Secrets の公開鍵（司令塔が読んだもの）。人がする作業の Secrets の値を、この端末で暗号化するのに使う。まだ読んでいなければ nil
+    var secretsKey: SecretsPublicKey?
     /// ブランチの保護の様子。読めていない（デモの一部）なら nil
     var protection: RepositoryProtection?
     /// 対象に加えるときの GitHub 側の準備の様子。まだ流していなければ nil

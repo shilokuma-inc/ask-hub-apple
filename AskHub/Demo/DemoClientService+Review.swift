@@ -52,7 +52,7 @@ extension DemoClientService {
         case .discard(let epicID):
             state.epics.removeAll { $0.id == epicID }
 
-        case let .completeHumanTask(epicID, taskID, _):
+        case let .completeHumanTask(epicID, taskID, _), let .handOverSecret(epicID, taskID, _):
             completeHumanTask(epicID: epicID, taskID: taskID)
 
         case let .cleanUp(macID, candidateIDs):
