@@ -89,6 +89,9 @@ extension HumanIntent {
              .applyProtection(let repositoryID, _), .approveSetup(let repositoryID, _, _):
             [.repository(repositoryID)]
 
+        case .createRepository(let request):
+            [.repository(request.repositoryID)]
+
         case let .publishRelease(repositoryID, version, _, _), let .updatePromotionalText(repositoryID, version, _):
             [.release(repositoryID: repositoryID, version: version)]
 

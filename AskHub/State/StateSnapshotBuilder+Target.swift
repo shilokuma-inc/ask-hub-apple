@@ -22,7 +22,7 @@ extension StateSnapshotBuilder {
         case RequestIntent.kind:
             return nil
 
-        case AddRepositoryIntent.kind, RemoveRepositoryIntent.kind, ConfigureRepositoryIntent.kind:
+        case AddRepositoryIntent.kind, CreateRepositoryIntent.kind, RemoveRepositoryIntent.kind, ConfigureRepositoryIntent.kind:
             return repo.map { .repository(repository($0).id) }
 
         case RegisterBundleIdIntent.kind, ApplyAppStoreSettingsIntent.kind, ConfirmAppStoreItemIntent.kind, ExcludeFromAppStoreIntent.kind:

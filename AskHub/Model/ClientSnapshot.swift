@@ -52,6 +52,15 @@ struct SourceFailure: Hashable {
 }
 
 extension ClientSnapshot {
+    /// 管理用のトークンを入れた持ち主（司令塔が使えるもの）。テンプレートから作る先に選べる
+    var adminOwners: [String] {
+        let owners = macs.flatMap(\.tokens).compactMap { token -> String? in
+            guard case let .githubAdmin(owner) = token.kind, token.state == .ok else { return nil }
+            return owner
+        }
+        return Array(Set(owners)).sorted()
+    }
+
     /// 対象のリポジトリ。外したリポジトリも返す（外す前の epic の名前とアイコンを出すため）
     func repository(_ id: TargetRepository.ID) -> TargetRepository? {
         repositories.first { $0.id == id } ?? removedRepositories.first { $0.id == id }

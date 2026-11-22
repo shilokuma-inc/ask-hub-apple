@@ -3,6 +3,20 @@ import Foundation
 // MARK: - 人の意図を当てる（依頼から開始まで）
 
 extension DemoClientService {
+    /// テンプレートから作った直後の形で、対象のリポジトリに足す（デモにはアイコン・ビルドの設定は無い）
+    private func createRepository(_ request: NewAppRequest) {
+        guard !state.repositories.contains(where: { $0.id == request.repositoryID }) else {
+            return
+        }
+        state.repositories.append(TargetRepository(
+            owner: request.owner,
+            ownerAvatar: DemoData.ownerAvatar(request.owner),
+            name: request.name,
+            appName: request.appName,
+            icon: .monogram
+        ))
+    }
+
     func apply(_ intent: HumanIntent) -> SendReceipt {
         switch intent {
         case let .request(repositoryID, summary, body, files):
@@ -18,7 +32,7 @@ extension DemoClientService {
         case .reviseGoal, .decideSplit, .addRepository, .removeRepository, .configureRepository:
             applySetupIntent(intent)
 
-        case .applyProtection, .approveSetup:
+        case .applyProtection, .approveSetup, .createRepository:
             applyAdministrationIntent(intent)
 
         case .respondToDecision, .acceptAllDecisions, .merge, .instructFinal, .verify:
@@ -105,6 +119,9 @@ extension DemoClientService {
 
         case .approveSetup(let repositoryID, _, _):
             updateRepository(repositoryID) { $0.setup?.workflowPullRequest?.state = .merged }
+
+        case .createRepository(let request):
+            createRepository(request)
 
         default:
             break

@@ -63,7 +63,7 @@ extension StateIntentMapper {
         case let .configureRepository(repositoryID, json):
             return .configureRepository(try repository(repositoryID), build: try Self.build(json))
 
-        case .applyProtection, .approveSetup:
+        case .applyProtection, .approveSetup, .createRepository:
             return try administrationDraft(intent)
 
         default:
@@ -84,6 +84,9 @@ extension StateIntentMapper {
         case let .approveSetup(repositoryID, pullRequest, head):
             return .approveSetupPullRequest(try repository(repositoryID), number: pullRequest, head: head)
 
+        case .createRepository(let request):
+            return try createRepositoryDraft(request)
+
         default:
             throw Self.unsupported
         }
@@ -102,5 +105,17 @@ extension StateIntentMapper {
         } catch {
             throw ClientServiceError(message: "ビルドの設定が決まりに合いません（\(error.detail)）")
         }
+    }
+
+    /// テンプレートから作る意図。対象・外したリポジトリと同じ名前には送らない（司令塔も断る）
+    func createRepositoryDraft(_ request: NewAppRequest) throws(ClientServiceError) -> IntentDraft {
+        if let problem = request.problem { throw ClientServiceError(message: problem) }
+        guard let repo = request.repository else { throw ClientServiceError(message: "リポジトリの名前の形が違います") }
+        guard index.repositories[request.repositoryID] == nil, index.removedRepositories[request.repositoryID] == nil else {
+            throw ClientServiceError(message: "\(request.fullName) はもう対象のリポジトリにあります")
+        }
+        return .createRepository(
+            repo, template: request.template, visibility: request.visibility, appName: request.appName, bundleId: request.bundleId
+        )
     }
 }
