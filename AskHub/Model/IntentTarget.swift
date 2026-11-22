@@ -80,7 +80,7 @@ extension HumanIntent {
         case let .handOver(epicID, _), let .pause(epicID), let .resume(epicID), let .discard(epicID):
             [.epicControl(epicID: epicID)]
 
-        case let .completeHumanTask(epicID, taskID, _), let .handOverSecret(epicID, taskID, _):
+        case let .completeHumanTask(epicID, taskID, _), let .handOverSecret(epicID, taskID, _, _):
             [.humanTask(epicID: epicID, taskID: taskID)]
 
         case .readSecretsKey(let repositoryID):

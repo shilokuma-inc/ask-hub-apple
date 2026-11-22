@@ -30,8 +30,9 @@ enum HumanIntent: Hashable {
     /// 人がする作業を終えた。ファイルを渡す作業は、渡すファイルを付ける（中身は意図より先に状態リポジトリに置く）。
     /// GitHub の Secrets に入れる作業は、人が GitHub の設定画面で入れてから終えたことにする（値は受け取らない）
     case completeHumanTask(epicID: Epic.ID, taskID: HumanTask.ID, file: HandoverFile? = nil)
-    /// GitHub の Secrets に入れる作業を、値を渡して終える。値はこの端末でリポジトリの公開鍵で暗号化し、暗号文だけを持つ（司令塔が Secrets に入れる）
-    case handOverSecret(epicID: Epic.ID, taskID: HumanTask.ID, secret: EncryptedSecret)
+    /// GitHub の Secrets に入れる作業を、値を渡して終える。値はこの端末でリポジトリの公開鍵で暗号化し、暗号文だけを持つ（司令塔が Secrets に入れる）。
+    /// Secrets の名前を出したときのゴールの版に結びつける（送るまでにゴールが直されて名前が変わっていれば、司令塔が断る）
+    case handOverSecret(epicID: Epic.ID, taskID: HumanTask.ID, goalVersion: Int, secret: EncryptedSecret)
     /// リポジトリの Secrets の公開鍵を、司令塔に読ませる（管理用のトークンで読む）
     case readSecretsKey(repositoryID: TargetRepository.ID)
     case verify(epicID: Epic.ID, itemID: VerificationItem.ID, reply: VerificationReply)

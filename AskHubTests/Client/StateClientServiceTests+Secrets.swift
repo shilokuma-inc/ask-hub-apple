@@ -48,7 +48,8 @@ extension StateClientServiceTests {
         let secret = try #require(HumanTaskView.encrypt(value, with: key))
         #expect(secret.keyId == Self.secretsKeyId)
         #expect(secret.problem == nil)
-        try await service.perform(.handOverSecret(epicID: Self.epicID, taskID: "h3", secret: secret))
+        // 作業を出したときのゴールの版（goal.json の version）に結びつける
+        try await service.perform(.handOverSecret(epicID: Self.epicID, taskID: "h3", goalVersion: 3, secret: secret))
 
         let envelope = try await sentEnvelope(in: fixture.store, key: fixture.key)
         let done = try HumanTaskDoneIntent(envelope: envelope)
@@ -62,7 +63,7 @@ extension StateClientServiceTests {
         #expect(HumanTaskView.encrypt(value, with: key) != secret)
     }
 
-    /// Secrets に入れる作業でないものには、暗号文を送らない
+    /// Secrets に入れる作業でないもの・見た後にゴールが直されたものには、暗号文を送らない（状態リポジトリにも置かない）
     @Test
     func handOverSecretOnlyForSecretTasks() async throws {
         let recipient = Curve25519.KeyAgreement.PrivateKey()
@@ -73,8 +74,13 @@ extension StateClientServiceTests {
         let key = try #require(snapshot.repository(Self.repo)?.secretsKey)
         let secret = try #require(HumanTaskView.encrypt("value", with: key))
         await #expect(throws: ClientServiceError.self) {
-            try await fixture.service.perform(.handOverSecret(epicID: Self.epicID, taskID: "h1", secret: secret))
+            try await fixture.service.perform(.handOverSecret(epicID: Self.epicID, taskID: "h1", goalVersion: 3, secret: secret))
         }
+        // 見たときの版（2）と今の版（3）が違う: Secrets の名前が変わっているかもしれないので送らない
+        await #expect(throws: ClientServiceError.self) {
+            try await fixture.service.perform(.handOverSecret(epicID: Self.epicID, taskID: "h3", goalVersion: 2, secret: secret))
+        }
+        #expect(try await sentEnvelopes(in: fixture).isEmpty)
         // 公開鍵の形が違えば暗号化しない
         #expect(HumanTaskView.encrypt("value", with: SecretsPublicKey(keyId: "1", key: "AAAA", readAt: key.readAt)) == nil)
         #expect(HumanTaskView.encrypt("", with: key) == nil)

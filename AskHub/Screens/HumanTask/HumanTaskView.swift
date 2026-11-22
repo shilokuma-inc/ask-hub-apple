@@ -212,13 +212,21 @@ struct HumanTaskView: View {
 
     /// 値を暗号化して送る。暗号化できたら、入れた値はすぐ消す
     private func handOver(_ epic: Epic, _ task: HumanTask, key: SecretsPublicKey) {
+        guard Data(secretValue.utf8).count <= EncryptedSecret.maximumValueLength else {
+            secretNotice = "値が大きすぎます。GitHub の Secrets には \(EncryptedSecret.maximumValueLength / 1024) KB までの値を入れられます"
+            return
+        }
+        guard let goalVersion = epic.goal?.version else {
+            secretNotice = "ゴールを読めていません。取り直してから送ってください"
+            return
+        }
         guard let secret = Self.encrypt(secretValue, with: key) else {
             secretNotice = "値を暗号化できませんでした。公開鍵を読み直してください"
             return
         }
         secretValue = ""
         secretNotice = nil
-        Task { await store.send(.handOverSecret(epicID: epic.id, taskID: task.id, secret: secret)) }
+        Task { await store.send(.handOverSecret(epicID: epic.id, taskID: task.id, goalVersion: goalVersion, secret: secret)) }
     }
 
     /// 値を公開鍵で暗号化した暗号文（sealed box）。鍵の形が違う・値が大きすぎるときは nil

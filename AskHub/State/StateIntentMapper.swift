@@ -30,7 +30,7 @@ struct StateIntentMapper {
              let .instructFinal(epicID, _, _):
             index.epics[epicID]?.final != nil
 
-        case let .completeHumanTask(epicID, taskID, _), let .handOverSecret(epicID, taskID, _):
+        case let .completeHumanTask(epicID, taskID, _), let .handOverSecret(epicID, taskID, _, _):
             index.epics[epicID]?.humanTasks[taskID] != nil
 
         case .pause(let epicID):
@@ -260,8 +260,8 @@ struct StateIntentMapper {
         case let .completeHumanTask(epicID, taskID, file):
             try humanTaskDraft(epicID: epicID, taskID: taskID, file: file)
 
-        case let .handOverSecret(epicID, taskID, secret):
-            try secretDraft(epicID: epicID, taskID: taskID, secret: secret)
+        case let .handOverSecret(epicID, taskID, goalVersion, secret):
+            try secretDraft(epicID: epicID, taskID: taskID, goalVersion: goalVersion, secret: secret)
 
         default:
             throw Self.unsupported
@@ -277,12 +277,21 @@ struct StateIntentMapper {
         return (HumanTaskTarget(repo: epic.repo, epic: epic.id, task: taskID, goalVersion: version), handover)
     }
 
-    /// Secrets に入れる作業を、暗号文を渡して終える（暗号文の形は司令塔と同じ決まりで確かめる）
-    private func secretDraft(epicID: Epic.ID, taskID: HumanTask.ID, secret: EncryptedSecret) throws(ClientServiceError) -> IntentDraft {
-        let (target, handover) = try humanTask(epicID, taskID)
+    /// Secrets に入れる作業を、暗号文を渡して終える（暗号文の形は司令塔と同じ決まりで確かめる）。
+    /// 対象は、Secrets の名前を出したときのゴールの版に結びつける（今の版と違えば送らない。司令塔も断る）
+    private func secretDraft(
+        epicID: Epic.ID,
+        taskID: HumanTask.ID,
+        goalVersion: Int,
+        secret: EncryptedSecret
+    ) throws(ClientServiceError) -> IntentDraft {
+        let (current, handover) = try humanTask(epicID, taskID)
         guard handover == .secret else { throw ClientServiceError(message: "この作業では、Secrets の値を渡しません") }
+        guard current.goalVersion == goalVersion else {
+            throw ClientServiceError(message: "ゴールが直されました。作業を見直してから、値を入れ直してください")
+        }
         if let problem = secret.problem { throw ClientServiceError(message: "暗号化した値が決まりに合いません（\(problem)）") }
-        return .humanTaskDone(target, secret: secret)
+        return .humanTaskDone(current, secret: secret)
     }
 
     private func humanTaskDraft(epicID: Epic.ID, taskID: HumanTask.ID, file: HandoverFile?) throws(ClientServiceError) -> IntentDraft {
