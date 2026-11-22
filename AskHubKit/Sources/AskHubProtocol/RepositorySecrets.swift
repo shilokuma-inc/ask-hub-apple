@@ -2,7 +2,7 @@ import Foundation
 
 /// GitHub の Secrets に入れる値の暗号文（人がする作業の `secret`。`humanTaskDone` の payload の `secret`）。
 /// クライアントがリポジトリの公開鍵で暗号化したもので、平文は含まない（`docs/renewal/security.md` の「管理用のトークン」）
-public struct EncryptedSecret: Codable, Equatable, Sendable {
+public struct EncryptedSecret: Codable, Hashable, Sendable {
     /// GitHub の Secrets の値の上限（48 KB）
     public static let maximumValueLength = 48 * 1024
     /// sealed box が値より長くなる分（使い捨ての公開鍵 32 バイトとタグ 16 バイト）
@@ -36,7 +36,7 @@ public struct EncryptedSecret: Codable, Equatable, Sendable {
 
 /// リポジトリの GitHub Actions の Secrets の公開鍵（`repo.json` の `secretsKey`）。司令塔が、人の意図（`readSecretsKey`）を処理するときに
 /// 管理用のトークンで読んで書く。クライアントは、これで Secrets に入れる値を暗号化する（クライアントのトークンは状態リポジトリしか読めないため）
-public struct SecretsPublicKey: Codable, Equatable, Sendable {
+public struct SecretsPublicKey: Codable, Hashable, Sendable {
     /// GitHub の `key_id`
     public var keyId: String
     /// X25519 の公開鍵（base64 で 32 バイト）
