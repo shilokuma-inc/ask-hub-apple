@@ -14,8 +14,8 @@ struct HumanTaskView: View {
     @State private var pickedFile: HandoverFile?
     /// 選んだファイルを渡せない理由
     @State private var pickNotice: String?
-    /// Secrets に入れる値。送ったらすぐ消す（暗号化した後の暗号文だけを送る。平文は端末の外に出さない）
-    @State private var secretValue = ""
+    /// Secrets に入れる値と、入れ始めたときのゴールの版。送ったらすぐ消す（暗号化した後の暗号文だけを送る。平文は端末の外に出さない）
+    @State private var secretEntry = SecretEntry()
     /// 値を暗号化できなかった理由
     @State private var secretNotice: String?
 
@@ -28,6 +28,16 @@ struct HumanTaskView: View {
     }
 
     private func content(_ epic: Epic, _ task: HumanTask) -> some View {
+        taskList(epic, task)
+            // 入れている間にゴールが直されたら、Secrets の名前が変わったかもしれないので値を消す
+            .onChange(of: epic.goal?.version) { _, version in
+                if secretEntry.goalChanged(to: version) {
+                    secretNotice = "ゴールが直されたので、入れた値を消しました。作業を見直してから入れ直してください"
+                }
+            }
+    }
+
+    private func taskList(_ epic: Epic, _ task: HumanTask) -> some View {
         List {
             CardSection {
                 AppHeaderView(repository: store.repository(epic.repositoryID), subtitle: epic.title, iconSize: 40)
@@ -160,7 +170,7 @@ struct HumanTaskView: View {
                 }
             }
             if let key {
-                SecureField("値", text: $secretValue, prompt: Text("値を貼る"))
+                SecureField("値", text: secretValue(epic), prompt: Text("値を貼る"))
                     .autocorrectionDisabled()
                     #if os(iOS)
                     .textInputAutocapitalization(.never)
@@ -169,7 +179,7 @@ struct HumanTaskView: View {
                 Button("暗号化して渡す", systemImage: "lock.fill") {
                     handOver(epic, task, key: key)
                 }
-                .disabled(secretValue.isEmpty)
+                .disabled(secretEntry.value.isEmpty)
                 .accessibilityIdentifier("human-task-secret-send")
             } else {
                 Button("GitHub の公開鍵を読む", systemImage: "key") {
@@ -210,21 +220,31 @@ struct HumanTaskView: View {
         }
     }
 
+    /// 入れる値。入れ始めたときのゴールの版を覚える
+    private func secretValue(_ epic: Epic) -> Binding<String> {
+        Binding {
+            secretEntry.value
+        } set: { text in
+            secretEntry.edit(text, goalVersion: epic.goal?.version)
+        }
+    }
+
     /// 値を暗号化して送る。暗号化できたら、入れた値はすぐ消す
     private func handOver(_ epic: Epic, _ task: HumanTask, key: SecretsPublicKey) {
-        guard Data(secretValue.utf8).count <= EncryptedSecret.maximumValueLength else {
+        guard Data(secretEntry.value.utf8).count <= EncryptedSecret.maximumValueLength else {
             secretNotice = "値が大きすぎます。GitHub の Secrets には \(EncryptedSecret.maximumValueLength / 1024) KB までの値を入れられます"
             return
         }
-        guard let goalVersion = epic.goal?.version else {
-            secretNotice = "ゴールを読めていません。取り直してから送ってください"
+        // 入れ始めたときのゴールの版で送る（送るまでに版が変わっていれば、司令塔が断る）
+        guard let goalVersion = secretEntry.goalVersion else {
+            secretNotice = "ゴールを読めていません。取り直してから入れ直してください"
             return
         }
-        guard let secret = Self.encrypt(secretValue, with: key) else {
+        guard let secret = Self.encrypt(secretEntry.value, with: key) else {
             secretNotice = "値を暗号化できませんでした。公開鍵を読み直してください"
             return
         }
-        secretValue = ""
+        secretEntry.clear()
         secretNotice = nil
         Task { await store.send(.handOverSecret(epicID: epic.id, taskID: task.id, goalVersion: goalVersion, secret: secret)) }
     }
