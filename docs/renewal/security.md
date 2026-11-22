@@ -116,6 +116,13 @@ Claude とビルド・テストは、ワーカーと同じ macOS のユーザー
 
 - ワーカーのトークンに Workflows の書き込み権限を持たせない。ワークフローのファイルを含む push は GitHub が断る
 - Secrets は Environment の Secrets にし、使えるブランチを develop・`release/**`・main に限る
+  - 例外: 人がする作業の `secret` で AskHub が入れる Secrets は、今はリポジトリの Actions の Secrets に入れる（2026-11-22 にユーザーが決めた。まだどのリポジトリにも Environment が無く、移すのは #1067）。
+    リポジトリの Secrets は、ブランチで絞れない。ワーカーが push した作業ブランチで動くワークフロー（push・`workflow_dispatch`）がその Secret を参照すると、
+    ワーカーの変更したビルドのスクリプトや道具から値が読める
+  - 防ぎ方: ワーカーはワークフローのファイルを変えられないので、Secret を参照するワークフローは人が書いて承認したものだけになる。
+    そのワークフローで Secret を渡すジョブは、`if:` で develop・`release/**`・main の ref に限る（作業ブランチでは Secret を渡さない）。
+    AskHub が入れた Secret を新しく参照するワークフローの変更は、自動マージの手動の条件（ワークフローの変更）で人が確かめる
+  - #1067 で Environment を作ったら、`secret` の入れ先を Environment の Secrets に切り替え、リポジトリの Secrets に入れたものは移して消す
 - 自動マージの手動の条件に、ワークフロー・道具・ビルドのスクリプトの変更を入れる（[flows.md](flows.md) の「マージの規則」）
 - 共通リポジトリのワークフローは、動くタグではなく固定したコミットで呼び、版はクライアントから上げる（または、タグを保護する）
 - Claude に渡すレビューの指摘は、決まった書き手（CodeRabbit など）のものだけにする。public のリポジトリには誰でもコメントを書けるため
