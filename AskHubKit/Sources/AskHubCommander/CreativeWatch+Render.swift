@@ -11,13 +11,20 @@ extension CreativeWatch {
         guard let spec = draft.spec else { return }
         let key = Self.creativeKey(file.repo, revision: draft.revision)
         let base = Self.creativeBase(settings)
+        // 待てば直る失敗（上限・GitHub の障害）の後は、決めた時刻まで GitHub に送らない
+        if let until = notBefore[key], context.now() < until { return }
         guard let run = draft.run else {
             await startCreativeRender(file, draft: draft, spec: spec, base: base)
             return
         }
         if let checked = checkedAt[key], context.now().timeIntervalSince(checked) < Self.creativeRunCheckInterval { return }
         if run.isCompleted {
-            startCreativeImport(file, draft: draft, run: run)
+            // 一覧から見つけ直した実行も、書き出せた（success）ときだけ取り込む
+            if run.conclusion == "success" {
+                startCreativeImport(file, draft: draft, run: run)
+            } else {
+                await finishCreativeRun(file.repo, draft: draft, run: run, conclusion: run.conclusion)
+            }
             return
         }
         checkedAt[key] = context.now()
@@ -34,22 +41,25 @@ extension CreativeWatch {
         let now = context.timestamp
         let after: Int
         var reuse: Int?
-        do {
-            let existing = try await github { () throws(PullRequestError) in
-                try await self.hosting.dispatchedRuns(repo, workflow: Self.creativeWorkflow, branch: base)
-            }
+        do throws(PullRequestError) {
+            let existing = try await hosting.dispatchedRuns(repo, workflow: Self.creativeWorkflow, branch: base)
             after = ReleaseWatch.matching(existing, workflow: Self.creativeWorkflow, branch: base).map(\.id).max() ?? 0
             if let previous = draft.screenshotsRun {
-                let artifacts = try await github { () throws(PullRequestError) in
-                    try await self.hosting.runArtifacts(repo, runID: previous)
+                do throws(PullRequestError) {
+                    let artifacts = try await hosting.runArtifacts(repo, runID: previous)
+                    reuse = artifacts.contains { $0.name == Self.creativeScreenshotsArtifact && !$0.expired } ? previous : nil
+                } catch .notFound {
+                    // 前の実行が消された。使い回さずに撮り直す
+                    reuse = nil
                 }
-                reuse = artifacts.contains { $0.name == Self.creativeScreenshotsArtifact && !$0.expired } ? previous : nil
             }
-        } catch let problem as ReleaseStepProblem where problem.needsHuman {
-            await failCreativeDraft(repo, revision: draft.revision, problem.message)
-            return
         } catch {
-            report("\(repo) のクリエイティブアセットの書き出しを起動できない（\(error)）。次の見回りでやり直す")
+            // ワークフローが無い（404）などは起動と同じわけで止め、待てば直る失敗は時刻を空けてやり直す
+            if let reason = Self.lastingCreativeDispatchFailure(error) {
+                await failCreativeDraft(repo, revision: draft.revision, reason)
+            } else {
+                holdCreative(repo, revision: draft.revision, after: error)
+            }
             return
         }
         let screenshots = reuse
@@ -84,7 +94,7 @@ extension CreativeWatch {
             dispatched = try await hosting.dispatchWorkflow(repo, workflow: Self.creativeWorkflow, ref: base, inputs: inputs)
         } catch {
             guard let reason = Self.lastingCreativeDispatchFailure(error) else {
-                report("\(repo) のクリエイティブアセットの書き出しを起動できない（\(error)）。次の見回りでやり直す")
+                holdCreative(repo, revision: draft.revision, after: error)
                 return
             }
             await failCreativeDraft(repo, revision: draft.revision, reason)
@@ -133,6 +143,12 @@ extension CreativeWatch {
             await failCreativeDraft(repo, revision: draft.revision, "書き出しの実行を見分けられない（起動の後に、同じワークフローの実行が \(list) とほかにもある）")
         case .none:
             guard context.now().timeIntervalSince(run.dispatchedAt.date) >= Self.creativeRedispatchAfter else { return }
+            // 送り直しても見つからないまま、案を書き終えてから打ち切りの時間がたったら、送り直すのをやめる（見つけていない実行は取り消せない）
+            if let drafted = draft.draftedAt, context.now().timeIntervalSince(drafted.date) >= Self.creativeRunTimeout {
+                let hours = Int(Self.creativeRunTimeout / 3600)
+                await failCreativeDraft(repo, revision: draft.revision, "書き出しの実行が \(hours) 時間たっても見つからない（起動が届いていない）。案を作り直す")
+                return
+            }
             let now = context.timestamp
             let marked = await updateCreativeDraft(repo, revision: draft.revision, message: "\(repo) のクリエイティブアセットの書き出しを送り直す") { draft in
                 guard draft.state == .rendering, draft.run == run else { return false }
@@ -313,6 +329,16 @@ extension CreativeWatch {
             await report("\(repo) のクリエイティブアセットの記録を書けない（\(error)）。次の見回りでやり直す")
             return nil
         }
+    }
+
+    /// 待てば直る失敗の後、GitHub に送らない時刻を決める（上限なら GitHub の示した時間、ほかは読む間隔）
+    func holdCreative(_ repo: RepositoryFullName, revision: Int, after error: PullRequestError) {
+        var wait = Self.creativeRunCheckInterval
+        if case let .rateLimited(retryAfter) = error {
+            wait = max(wait, TimeInterval(retryAfter.components.seconds))
+        }
+        notBefore[Self.creativeKey(repo, revision: revision)] = context.now().addingTimeInterval(wait)
+        report("\(repo) のクリエイティブアセットの書き出しを起動できない（\(error)）。\(Int(wait / 60)) 分あけてやり直す")
     }
 
     /// 今の案を `failed` にする（人は直してほしいことを書いてやり直せる）

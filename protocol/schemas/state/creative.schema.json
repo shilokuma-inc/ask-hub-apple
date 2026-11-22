@@ -4,26 +4,63 @@
   "title": "creative.json（クリエイティブアセットの案と反映）",
   "description": "司令塔だけが書く。人が案を頼む（draftCreativeAssets）と Claude が案を書き、司令塔が書き出しのワークフローで画像にして見本を書く。人が承認（approveCreativeAssets）した案は、次のリリースの「審査に出す」で版の言語に置く。Swift は CreativeFile",
   "type": "object",
-  "required": ["v", "repo", "placed", "updatedAt"],
+  "required": [
+    "v",
+    "repo",
+    "placed",
+    "updatedAt"
+  ],
   "additionalProperties": false,
   "properties": {
-    "v": { "const": 1 },
-    "repo": { "$ref": "../common.schema.json#/$defs/repositoryFullName" },
+    "v": {
+      "const": 1
+    },
+    "repo": {
+      "$ref": "../common.schema.json#/$defs/repositoryFullName"
+    },
     "draft": {
       "description": "今の案（人が確かめる番か、作っている途中）。まだ頼まれていなければ無い",
-      "anyOf": [{ "$ref": "#/$defs/draft" }, { "type": "null" }]
+      "anyOf": [
+        {
+          "$ref": "#/$defs/draft"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "previous": {
       "description": "前の案（今の案と見比べるため）",
-      "anyOf": [{ "$ref": "#/$defs/rendition" }, { "type": "null" }]
+      "anyOf": [
+        {
+          "$ref": "#/$defs/rendition"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "approved": {
       "description": "人が承認した案（次のリリースで置く）",
-      "anyOf": [{ "$ref": "#/$defs/approval" }, { "type": "null" }]
+      "anyOf": [
+        {
+          "$ref": "#/$defs/approval"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "live": {
       "description": "配信中の版に置かれている画像（今の App Store）",
-      "anyOf": [{ "$ref": "#/$defs/live" }, { "type": "null" }]
+      "anyOf": [
+        {
+          "$ref": "#/$defs/live"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "placed": {
       "description": "審査に出すときに置いた記録（新しい順。10 件まで）",
@@ -31,155 +68,446 @@
       "maxItems": 10,
       "items": {
         "type": "object",
-        "required": ["version", "revision", "at"],
+        "required": [
+          "version",
+          "revision",
+          "at"
+        ],
         "additionalProperties": false,
         "properties": {
-          "version": { "$ref": "release.schema.json#/$defs/marketingVersion" },
-          "revision": { "type": "integer", "minimum": 1 },
-          "at": { "$ref": "../common.schema.json#/$defs/timestamp" }
+          "version": {
+            "$ref": "release.schema.json#/$defs/marketingVersion"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "at": {
+            "$ref": "../common.schema.json#/$defs/timestamp"
+          }
         }
       }
     },
     "problem": {
       "description": "進められなかった理由（ワークフローが無いなど。人が直す）",
-      "anyOf": [{ "type": "string", "minLength": 1, "maxLength": 1000 }, { "type": "null" }]
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
-    "updatedAt": { "$ref": "../common.schema.json#/$defs/timestamp" }
+    "updatedAt": {
+      "$ref": "../common.schema.json#/$defs/timestamp"
+    }
   },
   "$defs": {
-    "kind": { "enum": ["productPageHeader", "searchResults"] },
-    "locale": { "type": "string", "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8}){0,2}$" },
+    "kind": {
+      "enum": [
+        "productPageHeader",
+        "searchResults"
+      ]
+    },
+    "locale": {
+      "type": "string",
+      "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8}){0,2}$"
+    },
     "problem": {
       "description": "書き出しを止めない問題。code は app-kit の report.json と同じ（text-overflow・outside-safe-area・image-missing・forbidden-url・low-contrast など）",
       "type": "object",
-      "required": ["code", "message"],
+      "required": [
+        "code",
+        "message"
+      ],
       "additionalProperties": false,
       "properties": {
-        "code": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,39}$" },
-        "message": { "type": "string", "minLength": 1, "maxLength": 500 }
+        "code": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,39}$"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
       }
     },
     "image": {
       "type": "object",
-      "required": ["locale", "kind", "md5", "preview", "problems"],
+      "required": [
+        "locale",
+        "kind",
+        "md5",
+        "preview",
+        "problems"
+      ],
       "additionalProperties": false,
       "properties": {
-        "locale": { "$ref": "#/$defs/locale" },
-        "kind": { "$ref": "#/$defs/kind" },
-        "md5": { "description": "元の画像（常時オンの Mac に置く）の MD5", "type": "string", "pattern": "^[0-9a-f]{32}$" },
+        "locale": {
+          "$ref": "#/$defs/locale"
+        },
+        "kind": {
+          "$ref": "#/$defs/kind"
+        },
+        "md5": {
+          "description": "元の画像（常時オンの Mac に置く）の MD5",
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
         "preview": {
           "description": "見本（幅 600 の JPEG を base64 にした文字）のパス（repos/<owner>/<repo>/creative/<案の版>/<言語>/<種類>.b64）",
           "type": "string",
-          "pattern": "^repos/[^/]+/[^/]+/creative/[1-9][0-9]*/[a-z]{2,3}(-[A-Za-z0-9]{2,8}){0,2}/(productPageHeader|searchResults)\\.b64$"
+          "pattern": "^repos/[A-Za-z0-9][A-Za-z0-9-]{0,38}/(?!\\.{1,2}/)[A-Za-z0-9._-]{1,100}/creative/[1-9][0-9]*/[a-z]{2,3}(-[A-Za-z0-9]{2,8}){0,2}/(productPageHeader|searchResults)\\.b64$"
         },
-        "problems": { "type": "array", "items": { "$ref": "#/$defs/problem" } }
+        "problems": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/problem"
+          }
+        }
       }
     },
     "run": {
       "description": "書き出しのワークフロー（app-store-creative.yml）の実行。形は submission.json の screenshots.run と同じ",
       "type": "object",
-      "required": ["dispatchedAt"],
+      "required": [
+        "dispatchedAt"
+      ],
       "additionalProperties": false,
       "properties": {
-        "id": { "anyOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }] },
-        "url": { "anyOf": [{ "type": "string", "pattern": "^https://github\\.com/", "maxLength": 400 }, { "type": "null" }] },
-        "dispatchedAt": { "$ref": "../common.schema.json#/$defs/timestamp" },
-        "status": { "anyOf": [{ "type": "string", "pattern": "^[a-z_]{1,40}$" }, { "type": "null" }] },
-        "conclusion": { "anyOf": [{ "type": "string", "pattern": "^[a-z_]{1,40}$" }, { "type": "null" }] },
-        "after": { "anyOf": [{ "type": "integer", "minimum": 0 }, { "type": "null" }] }
+        "id": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^https://github\\.com/",
+              "maxLength": 400
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "dispatchedAt": {
+          "$ref": "../common.schema.json#/$defs/timestamp"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-z_]{1,40}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "conclusion": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-z_]{1,40}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "after": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
       }
     },
     "draft": {
       "type": "object",
-      "required": ["revision", "request", "state", "images", "problems"],
+      "required": [
+        "revision",
+        "request",
+        "state",
+        "images",
+        "problems"
+      ],
       "additionalProperties": false,
       "properties": {
-        "revision": { "description": "案の版（1 から。頼まれるたびに上げる）。人の意図の targetVersion", "type": "integer", "minimum": 1 },
+        "revision": {
+          "description": "案の版（1 から。頼まれるたびに上げる）。人の意図の targetVersion",
+          "type": "integer",
+          "minimum": 1
+        },
         "request": {
           "type": "object",
-          "required": ["approval", "at"],
+          "required": [
+            "approval",
+            "at"
+          ],
           "additionalProperties": false,
           "properties": {
-            "approval": { "$ref": "../common.schema.json#/$defs/intentReference" },
-            "comment": { "anyOf": [{ "type": "string", "minLength": 1, "maxLength": 2000 }, { "type": "null" }] },
-            "at": { "$ref": "../common.schema.json#/$defs/timestamp" }
+            "approval": {
+              "$ref": "../common.schema.json#/$defs/intentReference"
+            },
+            "comment": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "at": {
+              "$ref": "../common.schema.json#/$defs/timestamp"
+            }
           }
         },
         "state": {
           "description": "drafting（Claude が案を書いている）・rendering（GitHub Actions で書き出している）・rendered（人が確かめる番）・failed（failure に理由）",
-          "enum": ["drafting", "rendering", "rendered", "failed"]
+          "enum": [
+            "drafting",
+            "rendering",
+            "rendered",
+            "failed"
+          ]
         },
-        "spec": { "anyOf": [{ "$ref": "../creative-spec.schema.json" }, { "type": "null" }] },
-        "reason": { "description": "Claude の案の説明", "anyOf": [{ "type": "string", "minLength": 1, "maxLength": 2000 }, { "type": "null" }] },
-        "draftedAt": { "anyOf": [{ "$ref": "../common.schema.json#/$defs/timestamp" }, { "type": "null" }] },
-        "run": { "anyOf": [{ "$ref": "#/$defs/run" }, { "type": "null" }] },
+        "spec": {
+          "anyOf": [
+            {
+              "$ref": "../creative-spec.schema.json"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "description": "Claude の案の説明",
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "draftedAt": {
+          "anyOf": [
+            {
+              "$ref": "../common.schema.json#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "run": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/run"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "screenshotsRun": {
           "description": "6.9 inch の画面を撮った実行の id（次の案で使い回す）",
-          "anyOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }]
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
-        "images": { "type": "array", "items": { "$ref": "#/$defs/image" } },
-        "problems": { "description": "案ぜんたいの書き出しを止めない問題（Apple の決まりに合わない文言・低いコントラスト）", "type": "array", "items": { "$ref": "#/$defs/problem" } },
-        "failure": { "anyOf": [{ "type": "string", "minLength": 1, "maxLength": 1000 }, { "type": "null" }] }
+        "images": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/image"
+          }
+        },
+        "problems": {
+          "description": "案ぜんたいの書き出しを止めない問題（Apple の決まりに合わない文言・低いコントラスト）",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/problem"
+          }
+        },
+        "failure": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
       }
     },
     "rendition": {
       "type": "object",
-      "required": ["revision", "spec", "images"],
+      "required": [
+        "revision",
+        "spec",
+        "images"
+      ],
       "additionalProperties": false,
       "properties": {
-        "revision": { "type": "integer", "minimum": 1 },
-        "spec": { "$ref": "../creative-spec.schema.json" },
-        "images": { "type": "array", "items": { "$ref": "#/$defs/image" } }
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "spec": {
+          "$ref": "../creative-spec.schema.json"
+        },
+        "images": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/image"
+          }
+        }
       }
     },
     "approval": {
       "type": "object",
-      "required": ["revision", "spec", "images", "approval", "at"],
+      "required": [
+        "revision",
+        "spec",
+        "images",
+        "approval",
+        "at"
+      ],
       "additionalProperties": false,
       "properties": {
-        "revision": { "type": "integer", "minimum": 1 },
-        "spec": { "$ref": "../creative-spec.schema.json" },
-        "images": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/image" } },
-        "approval": { "$ref": "../common.schema.json#/$defs/intentReference" },
-        "at": { "$ref": "../common.schema.json#/$defs/timestamp" },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "spec": {
+          "$ref": "../creative-spec.schema.json"
+        },
+        "images": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/image"
+          }
+        },
+        "approval": {
+          "$ref": "../common.schema.json#/$defs/intentReference"
+        },
+        "at": {
+          "$ref": "../common.schema.json#/$defs/timestamp"
+        },
         "library": {
           "description": "App Store Connect のライブラリに上げた様子（total は上げる画像の数・ready は置ける状態になった数・sentAt は上げ始めた時刻）",
           "anyOf": [
             {
               "type": "object",
-              "required": ["total", "ready", "sentAt"],
+              "required": [
+                "total",
+                "ready",
+                "sentAt"
+              ],
               "additionalProperties": false,
               "properties": {
-                "total": { "type": "integer", "minimum": 0 },
-                "ready": { "type": "integer", "minimum": 0 },
-                "sentAt": { "$ref": "../common.schema.json#/$defs/timestamp" }
+                "total": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "ready": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "sentAt": {
+                  "$ref": "../common.schema.json#/$defs/timestamp"
+                }
               }
             },
-            { "type": "null" }
+            {
+              "type": "null"
+            }
           ]
         }
       }
     },
     "live": {
       "type": "object",
-      "required": ["images", "readAt"],
+      "required": [
+        "images",
+        "readAt"
+      ],
       "additionalProperties": false,
       "properties": {
-        "version": { "anyOf": [{ "$ref": "release.schema.json#/$defs/marketingVersion" }, { "type": "null" }] },
+        "version": {
+          "anyOf": [
+            {
+              "$ref": "release.schema.json#/$defs/marketingVersion"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "images": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["locale", "kind", "url"],
+            "required": [
+              "locale",
+              "kind",
+              "url"
+            ],
             "additionalProperties": false,
             "properties": {
-              "locale": { "$ref": "#/$defs/locale" },
-              "kind": { "$ref": "#/$defs/kind" },
-              "url": { "type": "string", "pattern": "^https://", "maxLength": 2000 }
+              "locale": {
+                "$ref": "#/$defs/locale"
+              },
+              "kind": {
+                "$ref": "#/$defs/kind"
+              },
+              "url": {
+                "type": "string",
+                "pattern": "^https://",
+                "maxLength": 2000
+              }
             }
           }
         },
-        "readAt": { "$ref": "../common.schema.json#/$defs/timestamp" }
+        "readAt": {
+          "$ref": "../common.schema.json#/$defs/timestamp"
+        }
       }
     }
   }
