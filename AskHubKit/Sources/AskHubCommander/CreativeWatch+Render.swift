@@ -122,15 +122,7 @@ extension CreativeWatch {
         base: String
     ) async {
         let repo = file.repo
-        let runs: [WorkflowRunDetail]
-        do {
-            runs = try await github { () throws(PullRequestError) in
-                try await self.hosting.dispatchedRuns(repo, workflow: Self.creativeWorkflow, branch: base)
-            }
-        } catch {
-            report("\(repo) のクリエイティブアセットの書き出しの実行を探せない（\(error)）。次の見回りでやり直す")
-            return
-        }
+        guard let runs = await creativeRuns(repo, draft: draft, base: base) else { return }
         switch ReleaseWatch.dispatchedRun(in: runs, workflow: Self.creativeWorkflow, branch: base, run: run) {
         case let .found(found):
             await updateCreativeDraft(repo, revision: draft.revision, message: "\(repo) のクリエイティブアセットの書き出しの実行") { draft in
@@ -157,6 +149,28 @@ extension CreativeWatch {
             }
             guard let markedDraft = marked?.draft, markedDraft.run?.dispatchedAt == now else { return }
             await dispatchCreativeRender(file, draft: markedDraft, spec: spec, base: base)
+        }
+    }
+
+    /// 既定のブランチの書き出しの実行の一覧。読めなければ nil（人が直す失敗は、案を書き終えてから打ち切りの時間がたったら案を `failed` にする。
+    /// ほかは時間をあけてやり直す）
+    private func creativeRuns(_ repo: RepositoryFullName, draft: CreativeFile.Draft, base: String) async -> [WorkflowRunDetail]? {
+        do {
+            return try await github { () throws(PullRequestError) in
+                try await self.hosting.dispatchedRuns(repo, workflow: Self.creativeWorkflow, branch: base)
+            }
+        } catch let problem as ReleaseStepProblem where problem.needsHuman {
+            // 探せないまま（ワークフローが消された・トークンで読めない）だと、打ち切りの時間に届かず `rendering` に残るため
+            if let drafted = draft.draftedAt, context.now().timeIntervalSince(drafted.date) >= Self.creativeRunTimeout {
+                await failCreativeDraft(repo, revision: draft.revision, "書き出しの実行を探せない（\(problem.message)）。案を作り直す")
+            } else {
+                report("\(repo) のクリエイティブアセットの書き出しの実行を探せない（\(problem.message)）。次の見回りでやり直す")
+            }
+            return nil
+        } catch {
+            let wait = hold(Self.creativeKey(repo, revision: draft.revision), after: error, interval: Self.creativeRunCheckInterval)
+            report("\(repo) のクリエイティブアセットの書き出しの実行を探せない（\(error)）。\(Int(wait / 60)) 分あけてやり直す")
+            return nil
         }
     }
 
