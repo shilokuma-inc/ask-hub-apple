@@ -1,0 +1,22 @@
+{
+  "description": "クリエイティブアセットの案を承認する人の意図の payload の例。read は、封筒の repo・target・targetVersion が正しいときに、読む側が承認として読めるか",
+  "schema": "payloads/approveCreativeAssets.schema.json",
+  "cases": [
+    {
+      "name": "approve",
+      "payload": {},
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "unknown-field",
+      "payload": {
+        "locales": [
+          "ja"
+        ]
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    }
+  ]
+}
