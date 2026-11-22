@@ -161,11 +161,12 @@ extension ReleaseWatch {
         version: MarketingVersion,
         current: ReleaseFile.NextVersion?,
         settings: RepositoryFile,
-        reason: String
+        reason: String,
+        hotfix: (base: String, next: MarketingVersion)? = nil
     ) async throws -> ReleaseFile.NextVersion? {
-        let base = settings.build?.baseBranch ?? "develop"
+        let base = hotfix?.base ?? settings.build?.baseBranch ?? "develop"
         guard var next = current else {
-            return try await openNextVersion(repo, version: version, base: base, reason: reason)
+            return try await openNextVersion(repo, version: version, base: base, reason: reason, next: hotfix?.next)
         }
         guard next.state == .open, let number = next.pullRequest else { return nil }
         let pull = try await github { () throws(PullRequestError) in try await hosting.pullRequest(repo, number: number) }
@@ -175,7 +176,7 @@ extension ReleaseWatch {
             return next
         }
         guard pull.state == .open else {
-            throw ReleaseStepProblem("版を上げる PR #\(number) が、マージされずに閉じられた。人が develop の MARKETING_VERSION を上げる", needsHuman: true)
+            throw ReleaseStepProblem("版を上げる PR #\(number) が、マージされずに閉じられた。人が \(base) の MARKETING_VERSION を上げる", needsHuman: true)
         }
         // ビルドの設定が無ければ、すべてのチェックを待つ（空の集合は「何も待たない」になり、CI を待たずにマージしてしまう）
         let required = settings.build.map { Set($0.finalChecks) }
@@ -199,12 +200,14 @@ extension ReleaseWatch {
         }
     }
 
-    /// develop の版がもう大きければ上げない。そうでなければ、版を上げるコミットのブランチと PR を作る
+    /// develop の版がもう大きければ上げない。そうでなければ、版を上げるコミットのブランチと PR を作る。
+    /// `next` は hotfix の版（release ブランチの `version` の行を `next` に上げる）。nil なら次のマイナー
     func openNextVersion(
         _ repo: RepositoryFullName,
         version: MarketingVersion,
         base: String,
-        reason: String
+        reason: String,
+        next hotfix: MarketingVersion? = nil
     ) async throws -> ReleaseFile.NextVersion {
         let snapshot: MarketingVersionSnapshot
         do {
@@ -219,25 +222,31 @@ extension ReleaseWatch {
             log("\(repo) の \(base) の版（\(current)）は \(version) より大きいので、上げない")
             return .init(version: current, state: .skipped, at: context.timestamp)
         }
-        let next = version.nextMinor
+        let next = hotfix ?? version.nextMinor
         var files: [String: String] = [:]
         for source in snapshot.files {
             if let edited = MarketingVersionEdit.replacing(in: source.content, atMost: version, with: next) {
                 files[source.path] = edited
             }
         }
-        let branch = "askhub/version-\(next)"
+        // hotfix の版を上げるブランチは、develop の版を上げるブランチと名前を分ける
+        let branch = hotfix == nil ? "askhub/version-\(next)" : "askhub/hotfix-version-\(next)"
         let author = await authors.author(for: repo.owner)
         let now = context.now()
         let title = "MARKETING_VERSION を \(next) に上げる"
         let message = "[chore] \(title)"
         let commit = VersionCommit(files: files, snapshot: snapshot, message: message, author: author, date: now, branch: branch)
         _ = try await github { () throws(PullRequestError) in try await hosting.commitFiles(repo, commit) }
-        let body = """
+        let body = hotfix == nil ? """
             \(reason)、\(base) の `MARKETING_VERSION` を次の版（\(next)）に上げます。
             \(version) のままだと、\(base) の Upload が \(version) のビルドを上げ続けるためです（配信した後は App Store Connect に断られます）。
 
             チェックが通ったら AskHub がマージします。大きく上げたい（2.0.0 など）ときは、この PR を閉じて手で上げてください。
+            """ : """
+            \(reason)、hotfix の release ブランチ \(base) の `MARKETING_VERSION` を \(next) に上げます。
+            配信中の版（\(version)）のタグから作ったので、上げないと Upload が \(version) のビルドを上げようとして App Store Connect に断られます。
+
+            チェックが通ったら AskHub がマージします。
             """
         let pull = try await github { () throws(PullRequestError) in
             try await hosting.openPullRequest(repo, PullRequestDraft(base: base, head: branch, title: "【CHORE】\(title)", body: body))
