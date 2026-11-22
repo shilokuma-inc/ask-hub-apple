@@ -256,6 +256,8 @@ public struct MachinePaths: Sendable {
     public var claudeConfig: URL { root.appendingPathComponent("claude/config", isDirectory: true) }
     public var claudeHome: URL { root.appendingPathComponent("claude/home", isDirectory: true) }
     public var claudeTemporary: URL { root.appendingPathComponent("claude/tmp", isDirectory: true) }
+    /// 共通リポジトリ app-kit の bare の写し（司令塔が版の中身を読む。`GitAppKitSource`）
+    public var appKit: URL { workRoot.appendingPathComponent("app-kit.git", isDirectory: true) }
     /// epic ごとの DerivedData と結果のバンドル（`AskHubBuild` の `BuildDirectories`）
     public var builds: URL { workRoot.appendingPathComponent("builds", isDirectory: true) }
     /// ビルドとテストの TMPDIR
