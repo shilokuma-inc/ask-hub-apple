@@ -219,6 +219,10 @@
   中身のパスが重ならなければ、`separate-directories: false`（既定）で 1 つのフォルダに重なる（2026-11-23、#1233）
 - ジョブの `defaults.run.working-directory` は checkout の前の `run` の手順にも効き、そのディレクトリがまだ無いと「An error occurred trying to start process '/usr/bin/bash' with working directory …」で失敗する。
   checkout の前の手順には `working-directory: .` を付ける（app-kit の撮影の plan で、`working-directory` にサブディレクトリを渡したときに起きた。2026-11-23、app-kit#14）
+- API で起動した `workflow_dispatch` では、`type: number` の入力も `inputs` に文字列で入る。そのまま再利用ワークフローの `type: number` の入力に渡すと、
+  実行がジョブを 1 つも作らずに「This run likely failed because of a workflow file issue」で落ちる（理由は「evaluate reusable workflow inputs: … Unexpected value '1'」）。
+  `${{ fromJSON(inputs.x) }}` で数にして渡す。boolean の入力はそのまま渡せる（2026-11-23、app-kit#18）
+- 実行がジョブを作らずに落ちたときの理由（注記）は、REST の実行・check run・GraphQL の check suite からは読めない（check run が 0 個）。public のリポジトリなら、実行の画面の HTML に注記の文がある（2026-11-23、app-kit#18）
 - public のリポジトリは、コミットを指定した浅い fetch（`git init --bare` の後に `git fetch --depth 1 --no-tags <URL> <40 桁の sha>`）を受け付け、`git show <sha>:<path>`・`git ls-tree`・2 つの浅いコミットのあいだの `git diff --name-only` が読める。タグの一覧は `git ls-remote --tags <URL>` で読め、注釈つきのタグは `refs/tags/v1.0.0`（タグのオブジェクト）と `refs/tags/v1.0.0^{}`（指すコミット）の 2 行で返る。どれも REST の上限に数えない（2026-11-22、app-kit を読む `GitAppKitSource`）
 
 ## ビルド・テスト
