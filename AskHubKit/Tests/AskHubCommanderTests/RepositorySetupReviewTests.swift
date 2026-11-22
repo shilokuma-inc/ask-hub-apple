@@ -1,10 +1,11 @@
 @testable import AskHubCommander
 import AskHubProtocol
 import AskHubPullRequests
+import AskHubStateStore
 import Foundation
 import Testing
 
-/// 加えるときの準備で、ワークフローを読み違えない
+/// 加えるときの準備で、ワークフローを読み違えない・失敗しても準備の PR の記録を消さない
 extension RepositorySetupTests {
     /// 待つチェックの名前は、ジョブの id だけでなく表示名（`jobs.<id>.name`）とも照らす
     @Test func matchesWaitedChecksByJobDisplayName() {
@@ -83,5 +84,31 @@ extension RepositorySetupTests {
               build:
                 runs-on: macos-26
             """)
+    }
+
+    /// 準備が途中で失敗しても、前に出した準備の PR の記録は残す（消すと、その PR の承認を断ることになる）
+    @Test func failedSetupKeepsWorkflowPullRequestRecord() async throws {
+        let previous = WorkflowSetup(state: .open, pullRequest: 12, head: Self.commit)
+        // 管理用のトークンが無い
+        let missing = try await registered(previous)
+        let none = AdminGitHub(tokens: AdminTokens { _ in nil }, transport: StubTransport([]))
+        try await RepositorySetupStep(admin: none).run(for: Self.repo, in: context(missing))
+        #expect(try await repository(in: missing)?.setup?.workflows == previous)
+        // リポジトリの設定を読めない・ワークフローの直しで失敗した
+        for replies in [
+            [StubTransport.Reply.json(500, "{}")],
+            [
+                .json(200, #"{"default_branch":"develop","private":false,"has_discussions":true}"#),
+                .data(#"{"repository":{"discussionCategories":{"nodes":[{"name":"Ideas"}]}}}"#),
+                .json(500, "{}")
+            ]
+        ] {
+            let store = try await registered(previous)
+            let admin = AdminGitHub(tokens: AdminTokens { _ in ProtectionTests.adminToken }, transport: StubTransport(replies))
+            try await RepositorySetupStep(admin: admin).run(for: Self.repo, in: context(store))
+            let setup = try #require(try await repository(in: store)?.setup)
+            #expect(setup.workflows == previous)
+            #expect(setup.problems?.isEmpty == false)
+        }
     }
 }
