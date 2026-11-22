@@ -126,6 +126,27 @@ struct SecretHandoverTests {
         #expect(try await goal().humanTasks[2].state == .pending)
     }
 
+    /// repo.json の鍵が、同じ keyId なのに GitHub の鍵と違う（書き換えられたおそれ）なら、入れずに断り、GitHub の鍵を書き直す
+    @Test func refusesWhenRecordedKeyWasReplaced() async throws {
+        try await prepare()
+        let path = StatePath.repository(Self.repo)
+        var file = try await repository()
+        let forged = Data(repeating: 7, count: 32).base64EncodedString()
+        file.secretsKey = SecretsPublicKey(keyId: Self.keyId, key: forged, readAt: Timestamp(Self.now))
+        await store.put(path, data: try StateFileCoder.encode(file))
+        let transport = StubTransport([Self.publicKeyReply])
+        let secret = EncryptedSecret(keyId: Self.keyId, encryptedValue: Self.encrypted)
+        let decision = try await HumanTaskDoneHandler(admin: admin(transport)).handle(envelope("h3", secret: secret), in: context)
+        guard case let .reject(reason) = decision else {
+            Issue.record("断っていない")
+            return
+        }
+        #expect(reason.contains("書き換えられたおそれ"))
+        #expect(transport.requests.count == 1)
+        #expect(try await repository().secretsKey?.key == Self.key)
+        #expect(try await goal().humanTasks[2].state == .pending)
+    }
+
     /// Secrets に入れる作業でないものに暗号文があれば断る。管理用のトークンを持たない処理は、暗号文を断る
     @Test func refusesSecretForOtherTasksAndWithoutAdmin() async throws {
         try await prepare()

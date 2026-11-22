@@ -37,7 +37,8 @@ struct SecretHandover {
     var admin: AdminGitHub?
 
     /// 暗号文を Secrets の `name` に入れる。入れられなければ断る理由。暗号化した鍵が今の公開鍵と違えば、新しい鍵を `repo.json` に書いて断る
-    /// （クライアントが新しい鍵で入れ直す）
+    /// （クライアントが新しい鍵で入れ直す）。`repo.json` の鍵が、同じ `keyId` なのに GitHub の鍵と中身が違えば、書き換えられた鍵で暗号化された
+    /// おそれがあるので入れずに断り、GitHub の鍵を書き直す（値が漏れたおそれを知らせる）
     func put(
         _ secret: EncryptedSecret,
         name: String,
@@ -49,10 +50,11 @@ struct SecretHandover {
         case let .success(made): github = made
         case let .failure(refusal): return refusal.reason
         }
+        let recorded = try await context.read(RepositoryFile.self, at: StatePath.repository(repo))?.secretsKey
         let current: (keyId: String, key: String)
         do throws(PullRequestError) {
             current = try await github.secretsPublicKey()
-            if current.keyId == secret.keyId {
+            if current.keyId == secret.keyId, recorded.map({ $0.keyId != current.keyId || $0.key == current.key }) ?? true {
                 try await github.putSecret(name: name, encryptedValue: secret.encryptedValue, keyId: secret.keyId)
                 return nil
             }
@@ -61,6 +63,10 @@ struct SecretHandover {
             return RepositorySetupRunner.reason("Secrets の \(name) に入れられない", error)
         }
         try await record(SecretsPublicKey(keyId: current.keyId, key: current.key, readAt: context.timestamp), for: repo, in: context)
+        if current.keyId == secret.keyId {
+            return "状態リポジトリの公開鍵が GitHub の鍵と違っていた（書き換えられたおそれ）。Secrets には入れなかった。"
+                + "値が漏れたおそれがあるので、発行元で値を作り直し、新しい値を入れ直して送る"
+        }
         return "GitHub の Secrets の公開鍵が変わっていた。新しい鍵を読んだので、値を入れ直して送る"
     }
 
