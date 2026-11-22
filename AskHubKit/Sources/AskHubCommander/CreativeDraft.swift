@@ -298,6 +298,12 @@ public struct ClaudeCreativeDrafter: CreativeDrafting {
                 人が直してほしいこと: \(request.comment ?? "（書かれていない。前の案より良くする）")
                 前の案を元に、直してほしいことに沿って直してください。直してほしいことに無い所は、前の案のままにしてかまいません
                 """
+        } else if let comment = request.comment {
+            // 最初の案に付いた頼み（前の案は無い）
+            revision = """
+
+                人が案に望むこと: \(comment)
+                """
         }
         return """
             \(request.appName)（\(request.repo.rawValue)）の App Store のクリエイティブアセット（iOS 27 以降の、プロダクトページのヘッダーと検索結果の画像）の案を書いてください。\
