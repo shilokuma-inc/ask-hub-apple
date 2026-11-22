@@ -6,6 +6,24 @@ public enum TaskState: String, Codable, Sendable, CaseIterable {
     case locked
     case running
     case done
+    /// 人が飛ばした（ワーカーにできない・やらない）。済んだものとして先へ進む
+    case skipped
+
+    /// 済んだ（実装した・人が飛ばした）。依存するタスクを始められ、すべてが済めば最終 PR の段取りに進む
+    public var isSettled: Bool {
+        switch self {
+        case .done, .skipped: true
+        case .pending, .locked, .running: false
+        }
+    }
+}
+
+/// タスクを飛ばした理由
+public enum TaskSkipReason: String, Codable, Sendable, CaseIterable {
+    /// 人が別にやる（別のリポジトリの PR など、ワーカーの作業場所の外の作業）
+    case handledElsewhere
+    /// やらない
+    case notNeeded
 }
 
 public enum HumanTaskState: String, Codable, Sendable, CaseIterable {
@@ -45,13 +63,42 @@ public struct GoalFile: StateFile {
         /// ほかのタスクと、人がする作業の id
         public var dependsOn: [String]
         public var state: TaskState
+        /// 飛ばした記録。`skipped` のタスクだけが持つ
+        public var skip: Skip?
 
-        public init(id: String, title: String, detail: String? = nil, dependsOn: [String] = [], state: TaskState = .pending) {
+        public init(
+            id: String,
+            title: String,
+            detail: String? = nil,
+            dependsOn: [String] = [],
+            state: TaskState = .pending,
+            skip: Skip? = nil
+        ) {
             self.id = id
             self.title = title
             self.detail = detail
             self.dependsOn = dependsOn
             self.state = state
+            self.skip = skip
+        }
+    }
+
+    /// タスクを飛ばした記録（司令塔が `skipTask` の意図を受け付けたときに書く）
+    public struct Skip: Codable, Equatable, Sendable {
+        public var reason: TaskSkipReason
+        /// 人のメモ。無ければ nil
+        public var note: String?
+        public var intent: IntentReference
+        public var at: Timestamp
+        /// 飛ばしたときに開いていた子 PR（レビュー・直しのジョブの子 PR）。最終 PR を出すときに閉じる。子 PR を作る前なら nil
+        public var pullRequest: Int?
+
+        public init(reason: TaskSkipReason, note: String? = nil, intent: IntentReference, at: Timestamp, pullRequest: Int? = nil) {
+            self.reason = reason
+            self.note = note
+            self.intent = intent
+            self.at = at
+            self.pullRequest = pullRequest
         }
     }
 
@@ -153,13 +200,22 @@ public struct GoalFile: StateFile {
         if version < 1 { violations.append("version は 1 以上") }
         if summary.isEmpty || doneWhen.isEmpty || tasks.isEmpty { violations.append("summary・doneWhen・tasks が空") }
         if notApplied?.contains(where: \.isEmpty) == true { violations.append("notApplied に空の行がある") }
-        for task in tasks where task.title.isEmpty {
-            violations.append("\(task.id): title が空")
+        for task in tasks {
+            violations += Self.problems(of: task)
         }
         for humanTask in humanTasks {
             violations += Self.problems(of: humanTask)
         }
         return violations
+    }
+
+    private static func problems(of task: Task) -> [String] {
+        var problems: [String] = []
+        if task.title.isEmpty { problems.append("\(task.id): title が空") }
+        if (task.state == .skipped) != (task.skip != nil) { problems.append("\(task.id): 飛ばした記録は skipped のタスクだけが持つ") }
+        if task.skip?.note?.isEmpty == true { problems.append("\(task.id): 飛ばしたときのメモが空（無ければ書かない）") }
+        if let number = task.skip?.pullRequest, number < 1 { problems.append("\(task.id): 飛ばしたときの子 PR の番号が 1 より小さい") }
+        return problems
     }
 
     private static func problems(of humanTask: HumanTask) -> [String] {

@@ -25,7 +25,25 @@
           "title": { "type": "string", "minLength": 1 },
           "detail": { "anyOf": [{ "type": "string" }, { "type": "null" }] },
           "dependsOn": { "type": "array", "items": { "$ref": "../common.schema.json#/$defs/localId" }, "uniqueItems": true },
-          "state": { "enum": ["pending", "locked", "running", "done"] }
+          "state": { "enum": ["pending", "locked", "running", "done", "skipped"], "description": "skipped は人が飛ばした（済んだものとして先へ進む）" },
+          "skip": {
+            "description": "飛ばした記録（司令塔が skipTask の意図を受け付けたときに書く）。state が skipped のタスクだけが持つ（読む側で確かめる）",
+            "anyOf": [
+              {
+                "type": "object",
+                "required": ["reason", "intent", "at"],
+                "additionalProperties": false,
+                "properties": {
+                  "reason": { "enum": ["handledElsewhere", "notNeeded"] },
+                  "note": { "anyOf": [{ "type": "string", "minLength": 1, "maxLength": 2000 }, { "type": "null" }] },
+                  "intent": { "$ref": "../common.schema.json#/$defs/intentReference" },
+                  "at": { "$ref": "../common.schema.json#/$defs/timestamp" },
+                  "pullRequest": { "anyOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }], "description": "飛ばしたときに開いていた子 PR。最終 PR を出すときに閉じる" }
+                }
+              },
+              { "type": "null" }
+            ]
+          }
         }
       }
     },
