@@ -93,6 +93,10 @@ struct CreativeDraftTests {
         let prompt = ClaudeCreativeDrafter.prompt(request, config: config)
         #expect(prompt.contains("使える画面（撮影の画面の名前。撮る順）: 01_home"))
         #expect(prompt.contains("素数を当てるゲーム") && prompt.contains("人が直してほしいこと: 見出しを短く"))
+        // 最初の案に付いた頼みも渡す
+        var first = request
+        first.previous = nil
+        #expect(ClaudeCreativeDrafter.prompt(first, config: config).contains("人が案に望むこと: 見出しを短く"))
         guard case let .object(schema) = ClaudeCreativeDrafter.schema(locales: ["ja"], screens: ["01_home"]),
               case let .object(properties)? = schema["properties"] else {
             Issue.record("schema の形が違う")
