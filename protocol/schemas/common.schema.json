@@ -89,6 +89,18 @@
           "maxLength": 500
         }
       }
+    },
+    "appKitVersion": {
+      "description": "共通リポジトリ app-kit の版（タグ）。v<major>.<minor>.<patch> で、数は先頭に 0 を付けず 4 桁まで",
+      "type": "string",
+      "pattern": "^v(0|[1-9][0-9]{0,3})\\.(0|[1-9][0-9]{0,3})\\.(0|[1-9][0-9]{0,3})$",
+      "maxLength": 15
+    },
+    "commitSha": {
+      "description": "git のコミット（40 桁の 16 進。小文字）",
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$",
+      "maxLength": 40
     }
   }
 }

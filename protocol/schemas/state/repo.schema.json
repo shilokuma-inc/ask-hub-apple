@@ -12,16 +12,8 @@
     "platform": { "enum": ["apple"] },
     "maxConcurrentEpics": { "type": "integer", "minimum": 1, "description": "同時に回す epic の上限（最初の版は 1）" },
     "appKit": {
-      "description": "呼ぶ共通リポジトリの版。共通リポジトリのワークフローを入れる前は null",
-      "anyOf": [
-        {
-          "type": "object",
-          "required": ["ref"],
-          "additionalProperties": false,
-          "properties": { "ref": { "type": "string", "minLength": 1, "description": "固定したコミットか、保護したタグ" } }
-        },
-        { "type": "null" }
-      ]
+      "description": "呼ぶ共通リポジトリ app-kit の版。司令塔が入れ替え・版の上げの PR をマージしたときに書き、写すファイルのずれを点検して drift に書く。入れる前は null",
+      "anyOf": [{ "$ref": "#/$defs/appKit" }, { "type": "null" }]
     },
     "protection": {
       "description": "ブランチの保護（ルールセット askhub-protect）。司令塔が applyProtection を処理して書き、掛けた後のずれを定期的に点検して drift に書く",
@@ -44,18 +36,7 @@
         },
         "drift": {
           "description": "掛けた後のずれ。ずれていない・まだ確かめていなければ書かない（null と同じ）",
-          "anyOf": [
-            {
-              "type": "object",
-              "required": ["foundAt", "problems"],
-              "additionalProperties": false,
-              "properties": {
-                "foundAt": { "$ref": "../common.schema.json#/$defs/timestamp", "description": "今のずれを見つけた時刻（中身が変わったときだけ書き直す）" },
-                "problems": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1, "maxLength": 500 }, "description": "人が読むずれの説明" }
-              }
-            },
-            { "type": "null" }
-          ]
+          "anyOf": [{ "$ref": "#/$defs/drift" }, { "type": "null" }]
         }
       }
     },
@@ -111,10 +92,52 @@
                         "required": ["kind", "path"],
                         "additionalProperties": false,
                         "properties": {
-                          "kind": { "enum": ["removeLegacy", "removePathFilters"] },
-                          "path": { "type": "string", "minLength": 1, "maxLength": 1000 }
+                          "kind": {
+                            "enum": ["removeLegacy", "removePathFilters", "adoptAppKit", "removeReplaced"],
+                            "description": "removeLegacy は今の仕組みのワークフローを外す、removePathFilters は待つチェックのワークフローの paths・paths-ignore を外す、adoptAppKit は app-kit の写すファイルを版の中身にする・.github/app-kit.json を足す、removeReplaced は app-kit に置き換わるファイル（manifest.json の replaces）を外す"
+                          },
+                          "path": { "type": "string", "minLength": 1, "maxLength": 1000 },
+                          "lines": { "anyOf": [{ "type": "integer", "minimum": 0 }, { "type": "null" }], "description": "外すファイルの行の数（人が差分の大きさを見る）" },
+                          "steps": {
+                            "anyOf": [{ "type": "array", "minItems": 1, "maxItems": 50, "items": { "type": "string", "minLength": 1, "maxLength": 200 } }, { "type": "null" }],
+                            "description": "外すワークフローにしか無い手順の名前（app-kit の再利用ワークフローに同じ名前の手順が無いもの）"
+                          }
                         }
                       }
+                    },
+                    "appKit": {
+                      "description": "app-kit に入れ替える PR なら、入れる版と、名前が変わる待つチェック。changes に adoptAppKit があるときだけ書く",
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": ["version", "ref"],
+                          "additionalProperties": false,
+                          "properties": {
+                            "version": { "$ref": "../common.schema.json#/$defs/appKitVersion" },
+                            "ref": { "$ref": "../common.schema.json#/$defs/commitSha" },
+                            "renamedChecks": {
+                              "description": "入れ替えで名前が変わる待つチェック。承認されたら、司令塔がマージの前にルールセットの必須のチェックとビルドの設定の childChecks・finalChecks を新しい名前に替える",
+                              "anyOf": [
+                                {
+                                  "type": "array",
+                                  "minItems": 1,
+                                  "items": {
+                                    "type": "object",
+                                    "required": ["from", "to"],
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "from": { "type": "string", "minLength": 1, "maxLength": 200, "description": "今の名前" },
+                                      "to": { "type": "string", "minLength": 1, "maxLength": 200, "description": "入れ替えた後の名前" }
+                                    }
+                                  }
+                                },
+                                { "type": "null" }
+                              ]
+                            }
+                          }
+                        },
+                        { "type": "null" }
+                      ]
                     }
                   }
                 },
@@ -160,6 +183,29 @@
     }
   },
   "$defs": {
+    "appKit": {
+      "type": "object",
+      "required": ["ref"],
+      "additionalProperties": false,
+      "properties": {
+        "ref": { "$ref": "../common.schema.json#/$defs/commitSha", "description": "呼ぶ版のコミット（呼ぶ側の uses: の @ の後ろと app-kit-ref）" },
+        "version": { "anyOf": [{ "$ref": "../common.schema.json#/$defs/appKitVersion" }, { "type": "null" }], "description": "版のタグ。分からなければ null（タグの無いコミットを呼んでいる）" },
+        "installedAt": { "anyOf": [{ "$ref": "../common.schema.json#/$defs/timestamp" }, { "type": "null" }], "description": "入れた時刻（入れ替え・版の上げの PR をマージした時刻）" },
+        "drift": {
+          "description": "写すファイル・呼ぶ版・.github/app-kit.json のずれ（protection.drift と同じ形）。ずれていない・まだ確かめていなければ書かない（null と同じ）",
+          "anyOf": [{ "$ref": "#/$defs/drift" }, { "type": "null" }]
+        }
+      }
+    },
+    "drift": {
+      "type": "object",
+      "required": ["foundAt", "problems"],
+      "additionalProperties": false,
+      "properties": {
+        "foundAt": { "$ref": "../common.schema.json#/$defs/timestamp", "description": "今のずれを見つけた時刻（中身が変わったときだけ書き直す）" },
+        "problems": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1, "maxLength": 500 }, "description": "人が読むずれの説明" }
+      }
+    },
     "existingProtection": {
       "type": "object",
       "required": ["kind", "name"],
