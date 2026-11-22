@@ -170,6 +170,12 @@ struct AskHubClientTests {
         let release = AppKitReleaseTarget(version: AppKitVersion(rawValue: "v1.0.1")!, ref: head)
         #expect(try RolloutAppKitIntent(envelope: envelope(.rolloutAppKit(release))).release == release)
         #expect(try StopAppKitRolloutIntent(envelope: envelope(.stopAppKitRollout(release))).release == release)
+        // クリエイティブアセットの意図は、封筒の repo と、人が見た案の版に結びつける
+        let draft = try DraftCreativeAssetsIntent(envelope: envelope(.draftCreativeAssets(Self.repo, revision: 2, comment: "短く")))
+        #expect(draft.repo == Self.repo && draft.revision == 2 && draft.comment == "短く")
+        let first = try DraftCreativeAssetsIntent(envelope: envelope(.draftCreativeAssets(Self.repo, revision: 0, comment: nil)))
+        #expect(first.comment == nil)
+        #expect(try ApproveCreativeAssetsIntent(envelope: envelope(.approveCreativeAssets(Self.repo, revision: 3))).revision == 3)
     }
 
     @Test func intentWrittenBeforeLostResponseIsSent() async throws {
