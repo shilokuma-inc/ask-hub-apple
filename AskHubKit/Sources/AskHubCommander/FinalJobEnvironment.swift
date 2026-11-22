@@ -181,7 +181,8 @@ extension FinalJobEnvironment {
             throw .state(error)
         }
         guard let settings else { throw .fail(.unexpected, "\(job.repo) の repo.json に build（ビルドの設定）が無い") }
-        return FinalTarget(epic: epic, goal: goal, settings: settings, branches: FinalBranches(base: settings.baseBranch, epic: epic))
+        let branches = FinalBranches(base: epic.base(repository: settings.baseBranch), epic: epic)
+        return FinalTarget(epic: epic, goal: goal, settings: settings, branches: branches)
     }
 
     /// epic の作業場所を借りて `body` を流す（タスクのジョブと同じ排他）
