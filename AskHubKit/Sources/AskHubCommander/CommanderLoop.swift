@@ -147,6 +147,7 @@ public actor CommanderLoop {
         protection: ProtectionWatch? = nil,
         candidates: RepositoryCandidatesWatch? = nil,
         admin: AdminGitHub? = nil,
+        appKit: (any AppKitSource)? = nil,
         cleanup: CleanupService? = nil
     ) {
         self.context = context
@@ -168,7 +169,7 @@ public actor CommanderLoop {
         self.releases = releases
         self.protection = protection
         self.candidates = candidates
-        handlers = Self.handlers(admin: admin)
+        handlers = Self.handlers(admin: admin, appKit: appKit)
         self.cleanup = cleanup
         let kinds = Self.claudeKinds.union(epicWorkspace == nil ? [] : [.prepareWorkspace]).union(taskRunners.keys)
         slots = JobSlots(mac: context.mac, capacity: settings.capacity, kinds: kinds, log: log)
