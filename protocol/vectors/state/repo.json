@@ -1717,6 +1717,130 @@
       },
       "schemaValid": false,
       "read": "malformed"
+    },
+    {
+      "name": "created-from-template",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "created": {
+          "template": "ios",
+          "appName": "CreateCheck",
+          "bundleId": "jp.shilokuma.CreateCheck",
+          "visibility": "public",
+          "renameCommit": "0123456789abcdef0123456789abcdef01234567",
+          "intent": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-22T13:00:00Z"
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "created-before-rename",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "created": {
+          "template": "ios",
+          "appName": "CreateCheck",
+          "bundleId": "jp.shilokuma.CreateCheck",
+          "visibility": "public",
+          "intent": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-22T13:00:00Z"
+        }
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "created-bad-app-name",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "created": {
+          "template": "ios",
+          "appName": "create-check",
+          "bundleId": "jp.shilokuma.CreateCheck",
+          "visibility": "public",
+          "renameCommit": "0123456789abcdef0123456789abcdef01234567",
+          "intent": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-22T13:00:00Z"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "created-bad-rename-commit",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "created": {
+          "template": "ios",
+          "appName": "CreateCheck",
+          "bundleId": "jp.shilokuma.CreateCheck",
+          "visibility": "public",
+          "renameCommit": "abc",
+          "intent": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-22T13:00:00Z"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "created-unknown-template",
+      "value": {
+        "v": 1,
+        "repo": "shilokuma-inc/askhub-sandbox",
+        "platform": "apple",
+        "maxConcurrentEpics": 1,
+        "protection": {},
+        "addedAt": "2026-11-03T10:00:00Z",
+        "created": {
+          "template": "quiz",
+          "appName": "CreateCheck",
+          "bundleId": "jp.shilokuma.CreateCheck",
+          "visibility": "public",
+          "renameCommit": "0123456789abcdef0123456789abcdef01234567",
+          "intent": {
+            "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+            "nonce": "01JCN0NCE00000000000000001"
+          },
+          "at": "2026-11-22T13:00:00Z"
+        }
+      },
+      "schemaValid": false,
+      "read": "malformed"
     }
   ]
 }

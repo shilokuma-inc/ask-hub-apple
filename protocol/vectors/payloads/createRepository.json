@@ -1,0 +1,94 @@
+{
+  "description": "テンプレートから新しいアプリのリポジトリを作る人の意図の payload の例。read は、repo が作るリポジトリで target・targetVersion が無いときに、読む側が作る意図として読めるか",
+  "schema": "payloads/createRepository.schema.json",
+  "cases": [
+    {
+      "name": "ios",
+      "payload": {
+        "template": "ios",
+        "visibility": "public",
+        "appName": "CreateCheck",
+        "bundleId": "jp.shilokuma.CreateCheck"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "visionos-private",
+      "payload": {
+        "template": "visionos",
+        "visibility": "private",
+        "appName": "Planetarium2",
+        "bundleId": "jp.shilokuma.vision-planetarium"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "unknown-template",
+      "payload": {
+        "template": "quiz",
+        "visibility": "public",
+        "appName": "Quiz",
+        "bundleId": "jp.shilokuma.Quiz"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "app-name-starts-with-digit",
+      "payload": {
+        "template": "ios",
+        "visibility": "public",
+        "appName": "1Memo",
+        "bundleId": "jp.shilokuma.Memo"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "app-name-with-hyphen",
+      "payload": {
+        "template": "ios",
+        "visibility": "public",
+        "appName": "memo-app",
+        "bundleId": "jp.shilokuma.Memo"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "bundle-id-single-part",
+      "payload": {
+        "template": "ios",
+        "visibility": "public",
+        "appName": "Memo",
+        "bundleId": "Memo"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "missing-bundle-id",
+      "payload": {
+        "template": "ios",
+        "visibility": "public",
+        "appName": "Memo"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "template-repository-is-not-accepted",
+      "payload": {
+        "template": "ios",
+        "visibility": "public",
+        "appName": "Memo",
+        "bundleId": "jp.shilokuma.Memo",
+        "templateRepository": "someone/evil-template"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    }
+  ]
+}

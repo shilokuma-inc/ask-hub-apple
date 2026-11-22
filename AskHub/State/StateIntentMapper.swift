@@ -17,7 +17,7 @@ struct StateIntentMapper {
     /// 実機確認への答えは、マージした epic の、まだ答えていない項目だけ送れる
     func supports(_ intent: HumanIntent) -> Bool {
         switch intent {
-        case .answer, .requestExplanation, .reviseGoal, .start, .decideSplit, .request, .addRepository:
+        case .answer, .requestExplanation, .reviseGoal, .start, .decideSplit, .request, .addRepository, .createRepository:
             true
 
         case .resolveBlocker, .skipTask:
@@ -100,8 +100,8 @@ struct StateIntentMapper {
         case .reviseGoal, .start, .decideSplit, .discard:
             return try epicDraft(intent)
 
-        case .request, .addRepository, .removeRepository, .configureRepository, .applyProtection, .approveSetup, .cleanUp,
-             .findCleanupCandidates:
+        case .request, .addRepository, .createRepository, .removeRepository, .configureRepository, .applyProtection, .approveSetup,
+             .cleanUp, .findCleanupCandidates:
             return try repositoryDraft(intent)
 
         case .resolveBlocker, .skipTask:

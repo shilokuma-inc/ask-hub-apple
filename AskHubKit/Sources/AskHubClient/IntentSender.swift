@@ -80,6 +80,23 @@ public struct IntentDraft: Equatable, Sendable {
         Self(kind: AddRepositoryIntent.kind, repo: repo, payload: ["platform": .string(platform.rawValue)])
     }
 
+    /// テンプレートから新しいアプリのリポジトリを作り、対象に加える（司令塔が管理用のトークンで作る）
+    public static func createRepository(
+        _ repo: RepositoryFullName,
+        template: RepositoryTemplate,
+        visibility: RepositoryVisibility,
+        appName: String,
+        bundleId: String
+    ) -> Self {
+        let payload: [String: JSONValue] = [
+            "template": .string(template.rawValue),
+            "visibility": .string(visibility.rawValue),
+            "appName": .string(appName),
+            "bundleId": .string(bundleId)
+        ]
+        return Self(kind: CreateRepositoryIntent.kind, repo: repo, payload: payload)
+    }
+
     /// 対象から外す（終わっていない epic があれば司令塔が断る。状態リポジトリのファイルは残る）
     public static func removeRepository(_ repo: RepositoryFullName) -> Self {
         Self(kind: RemoveRepositoryIntent.kind, repo: repo)

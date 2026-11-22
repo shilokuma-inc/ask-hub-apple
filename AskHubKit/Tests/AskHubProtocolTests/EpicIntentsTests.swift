@@ -62,7 +62,8 @@ struct EpicIntentsTests {
         Kind(vectors: "payloads/instructFinal.json", kind: "instructFinal", target: finalTarget, targetVersion: head) {
             try InstructFinalIntent(envelope: $0).payload
         }
-    ] + pauseKinds + releaseKinds + submissionKinds + verifyKinds + repositoryKinds + protectionKinds + cleanupKinds + appStoreSetupKinds
+    ] + pauseKinds + releaseKinds + submissionKinds + verifyKinds + repositoryKinds + protectionKinds + creationKinds + cleanupKinds
+        + appStoreSetupKinds
     static let head = String(repeating: "a", count: 40)
     static let finalTarget = IntentEnvelope.Target(type: "finalPullRequest", epic: epic)
     static let decisionTarget = IntentEnvelope.Target(type: "decision", epic: epic, id: "d1")

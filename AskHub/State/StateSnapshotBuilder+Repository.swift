@@ -4,7 +4,7 @@ import Foundation
 // MARK: - 対象に加える・外す
 
 extension StateSnapshotBuilder {
-    /// 対象に加える・外す。外したリポジトリを加え直すときは、外したものから戻す（アイコンなどはそのまま）
+    /// 対象に加える・外す・テンプレートから作る。外したリポジトリを加え直すときは、外したものから戻す（アイコンなどはそのまま）
     func applyRepositoryIntent(
         _ envelope: IntentEnvelope,
         repositories: inout [TargetRepository],
@@ -26,7 +26,9 @@ extension StateSnapshotBuilder {
         guard index.repositories[id] == nil else {
             return
         }
-        let restored = removed.first { $0.id == id } ?? Self.repository(repo)
+        var restored = removed.first { $0.id == id } ?? Self.repository(repo)
+        // テンプレートから作るものは、司令塔が作る前から、選んだアプリ名で出す
+        if let create = try? CreateRepositoryIntent(envelope: envelope) { restored.appName = create.appName }
         removed.removeAll { $0.id == id }
         repositories.append(restored)
         index.repositories[id] = index.removedRepositories.removeValue(forKey: id) ?? repo
@@ -58,6 +60,9 @@ extension StateSnapshotBuilder {
         switch envelope.kind {
         case AddRepositoryIntent.kind:
             "対象に加える（\(envelope.repo?.rawValue ?? "")）"
+
+        case CreateRepositoryIntent.kind:
+            "新しいアプリ（\(envelope.repo?.rawValue ?? "")）"
 
         case RemoveRepositoryIntent.kind:
             "対象から外す（\(envelope.repo?.rawValue ?? "")）"
