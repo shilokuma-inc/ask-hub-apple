@@ -195,7 +195,9 @@ public struct CreativeSpec: Codable, Equatable, Sendable {
             if !Self.isFolder(localization.screenshots) { problems.append("\(code) の screenshots の形が違う") }
             if let chips = localization.search.chips, chips.count > 3 { problems.append("\(code) の search.chips は 3 つまで") }
             for field in Self.texts(of: localization) {
-                problems += Self.textProblems(field.text, name: "\(code).\(field.name)", allowEmpty: field.allowEmpty)
+                problems += Self.textProblems(
+                    field.text, name: "\(code).\(field.name)", allowEmpty: field.allowEmpty, emphasis: field.name != "appName"
+                )
             }
         }
         return problems
@@ -206,20 +208,25 @@ public struct CreativeSpec: Codable, Equatable, Sendable {
         var cautions: [CreativeProblem] = []
         for localization in locales {
             for field in Self.texts(of: localization) {
-                for rule in Self.forbidden where rule.matches(field.text) {
+                // 強調の * は画像に出ないので、除いた文字で確かめる（アプリ名は * をそのまま描く）
+                let shown = field.name == "appName" ? field.text : field.text.replacing("*", with: "")
+                for rule in Self.forbidden where rule.matches(shown) {
                     let message = "\(localization.locale).\(field.name) に\(rule.what)らしい文字があります（App Store の決まりで入れられません）"
                     cautions.append(.init(code: rule.code, message: message))
                 }
             }
         }
+        let highlight = colors.highlight ?? colors.accent
         for background in Set([colors.background, colors.background2 ?? colors.background]).sorted() {
-            guard Self.isColor(colors.text), Self.isColor(background) else { continue }
-            let ratio = Self.contrast(colors.text, background)
-            if ratio < 4.5 {
-                cautions.append(.init(
-                    code: "low-contrast",
-                    message: "文字の色と背景の色 \(background) のコントラストが \(String(format: "%.1f", ratio)) で、4.5 より低いです"
-                ))
+            for (name, color) in [("文字", colors.text), ("強調とアプリ名", highlight)] {
+                guard Self.isColor(color), Self.isColor(background) else { continue }
+                let ratio = Self.contrast(color, background)
+                if ratio < 4.5 {
+                    let value = String(format: "%.1f", ratio)
+                    cautions.append(.init(
+                        code: "low-contrast", message: "\(name)の色 \(color) と背景の色 \(background) のコントラストが \(value) で、4.5 より低いです"
+                    ))
+                }
             }
         }
         return cautions
@@ -262,7 +269,7 @@ public struct CreativeSpec: Codable, Equatable, Sendable {
         return texts
     }
 
-    static func textProblems(_ text: String, name: String, allowEmpty: Bool) -> [String] {
+    static func textProblems(_ text: String, name: String, allowEmpty: Bool, emphasis: Bool = true) -> [String] {
         let limitName = name.split(separator: ".", maxSplits: 1).last.map { String($0).replacing(#/\[\d+\]/#, with: "") } ?? name
         let limit = limits[limitName] ?? 30
         let newlines = newlineLimits[limitName] ?? 0
@@ -272,7 +279,7 @@ public struct CreativeSpec: Codable, Equatable, Sendable {
         let control = text.unicodeScalars.contains { ($0.value < 0x20 && $0 != "\n") || $0.value == 0x7F }
         if control { problems.append("\(name) に制御文字がある") }
         if text.filter({ $0 == "\n" }).count > newlines { problems.append("\(name) の改行は \(newlines) つまで") }
-        if !text.filter({ $0 == "*" }).count.isMultiple(of: 2) { problems.append("\(name) の強調の * が閉じていない") }
+        if emphasis, !text.filter({ $0 == "*" }).count.isMultiple(of: 2) { problems.append("\(name) の強調の * が閉じていない") }
         return problems
     }
 
