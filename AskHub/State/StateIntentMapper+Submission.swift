@@ -26,6 +26,9 @@ extension StateIntentMapper {
         case let .abandonRelease(repositoryID, version):
             return index.submissions[Submission.id(repositoryID, version)]?.canAbandon == true
 
+        case let .retakeScreenshots(repositoryID, version, _, _):
+            return index.submissions[Submission.id(repositoryID, version)]?.canRetakeScreenshots == true
+
         default:
             return false
         }
@@ -54,7 +57,9 @@ extension StateIntentMapper {
                 whatsNew: try Self.whatsNew(request.whatsNew, locales: entry.locales),
                 releaseType: Self.releaseType(request.releaseType),
                 earliestReleaseDate: try Self.releaseDate(request.releaseType),
-                listing: try Self.listing(request.listing, current: entry.listing)
+                listing: try Self.listing(request.listing, current: entry.listing),
+                appReview: try Self.appReview(request.appReview, available: entry.hasAppReview),
+                screenshots: try Self.screenshots(request.screenshotKeep, entry: entry)
             )
 
         case let .distributeRelease(repositoryID, version):
@@ -68,6 +73,12 @@ extension StateIntentMapper {
         case let .abandonRelease(repositoryID, version):
             let entry = try entry(repositoryID, version, \.canAbandon, unavailable: "このリリースは、いまはやめられません（審査中か、審査に通っています）")
             return .abandonRelease(entry.target)
+
+        case let .retakeScreenshots(repositoryID, version, displayTypes, locales):
+            let entry = try entry(
+                repositoryID, version, \.canRetakeScreenshots, unavailable: "この版は、いまはスクショを撮り直せません（審査に出した後か、撮っている途中）"
+            )
+            return .retakeScreenshots(entry.target, displayTypes: displayTypes, locales: locales)
 
         default:
             throw Self.unsupported
@@ -136,6 +147,34 @@ extension StateIntentMapper {
             if !text.isEmpty { texts.append(text) }
         }
         return texts
+    }
+
+    /// 人が確かめた App Review の情報の直し。前後の空白を除き、司令塔と同じく、メモは UTF-8 のバイトで数える。パスワードは扱わない
+    private static func appReview(_ change: Submission.ReviewInfo?, available: Bool) throws(ClientServiceError) -> ReviewInformation? {
+        guard let change, !change.isEmpty else { return nil }
+        guard available else { throw ClientServiceError(message: "App Review の情報の案がまだありません。取り直してから送ってください") }
+        let notes = change.notes?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = change.demoAccountName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let notes, notes.utf8.count > Submission.ReviewInfo.notesLimit {
+            throw ClientServiceError(message: "審査メモは 4,000 バイトまでで書いてください")
+        }
+        if let name, name.unicodeScalars.count > Submission.ReviewInfo.nameLimit || name.contains(where: \.isNewline) {
+            throw ClientServiceError(message: "デモアカウントの名前は、改行の無い \(Submission.ReviewInfo.nameLimit) 文字までで書いてください")
+        }
+        return ReviewInformation(notes: notes, demoAccountRequired: change.demoAccountRequired, demoAccountName: name)
+    }
+
+    /// 人が確かめたスクショ。前のままにする画面は、撮って比べた差のある画面だけ
+    private static func screenshots(
+        _ keep: [Submission.ShotKey]?,
+        entry: StateIndex.SubmissionEntry
+    ) throws(ClientServiceError) -> SubmissionFile.ScreenshotDecision? {
+        guard let keep, let commit = entry.screenshotCommit, !entry.changedShots.isEmpty else { return nil }
+        guard keep.allSatisfy(entry.changedShots.contains) else {
+            throw ClientServiceError(message: "前のままにするスクショが、差のある画面と合いません。取り直してから送ってください")
+        }
+        let references = keep.map { SubmissionFile.ShotReference(displayType: $0.displayType, locale: $0.locale, index: $0.index) }
+        return SubmissionFile.ScreenshotDecision(commit: commit, keep: references)
     }
 
     private static func releaseType(_ type: Submission.ReleaseType) -> AppStoreReleaseType {

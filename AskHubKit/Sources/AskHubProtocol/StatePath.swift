@@ -73,6 +73,32 @@ public enum StatePath {
         "\(submissions(repo))/\(version.rawValue).json"
     }
 
+    /// リリースを始めた版の App Store のスクショの見本（差のある画面だけ。人が確かめる。元の画像は常時オンの Mac に置く）。
+    /// 中身は JPEG を base64 にした文字（1 回の撮影の見本を 1 つのコミットでまとめて書くため。`docs/renewal/store-screenshots.md` の「見本の書き方」）。
+    /// 撮ったコミットをパスに入れ、撮り直しても前の見本を上書きしない
+    public static func storeScreenshot(
+        _ repo: RepositoryFullName,
+        _ version: MarketingVersion,
+        commit: String,
+        shot: SubmissionFile.ShotReference
+    ) -> String {
+        "\(repositoryDirectory(repo))/store-screenshots/\(version.rawValue)/\(commit)/\(shot.displayType)/\(shot.locale)/\(shot.index).b64"
+    }
+
+    /// リリースを始めた版の App Store のスクショの見本のパスか（`..` や絶対パスを含まない）。前の形（コミットなし・JPEG のまま。`.jpg`）も読む
+    public static func isStoreScreenshotPath(_ path: String) -> Bool {
+        let parts = path.split(separator: "/", omittingEmptySubsequences: false)
+        let shaped = (path.hasSuffix(".b64") && parts.count == 9) || (path.hasSuffix(".jpg") && parts.count == 8)
+        return path.hasPrefix("repos/") && shaped && parts[3] == "store-screenshots"
+            && !parts.contains { $0.isEmpty || $0 == "." || $0 == ".." }
+    }
+
+    /// 見本の中身を画像のデータにする（`.b64` は base64 を戻す。前の形の `.jpg` はそのまま）。読めなければ nil
+    public static func storeScreenshotImage(_ data: Data, path: String) -> Data? {
+        guard path.hasSuffix(".b64") else { return data }
+        return Data(base64Encoded: data, options: .ignoreUnknownCharacters)
+    }
+
     /// 新しいアプリを App Store に載せる準備（チェックリスト）
     public static func appStoreSetup(_ repo: RepositoryFullName) -> String {
         "\(repositoryDirectory(repo))/app-store.json"

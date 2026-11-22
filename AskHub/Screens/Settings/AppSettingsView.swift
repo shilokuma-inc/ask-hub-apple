@@ -1,13 +1,15 @@
 import SwiftUI
 
-/// 設定。スワイプの持ち手と、データ（状態リポジトリ・GitHub のトークン・この端末の鍵・通知、またはデモの場面）と、このアプリのバージョン
+/// 設定。テーマと、スワイプの持ち手と、データ（状態リポジトリ・GitHub のトークン・この端末の鍵・通知、またはデモの場面）と、このアプリのバージョン
 struct AppSettingsView: View {
+    @AppStorage(ThemePreferences.themeKey) private var theme: AppTheme = .system
     @AppStorage(SwipePreferences.handKey) private var hand: Handedness = .right
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             Form {
+                themeSection
                 Section {
                     Picker("スマホを持つ手", selection: $hand) {
                         ForEach(Handedness.allCases, id: \.self) { hand in
@@ -35,6 +37,24 @@ struct AppSettingsView: View {
                 }
             }
             #endif
+        }
+    }
+
+    /// この端末だけに保存し、アプリ全体（macOS は設定のウィンドウも）にすぐ反映する（AskHub の preferredColorScheme）
+    private var themeSection: some View {
+        Section {
+            Picker("テーマ", selection: $theme) {
+                ForEach(AppTheme.allCases, id: \.self) { theme in
+                    Text(theme.label).tag(theme)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .accessibilityIdentifier("settings.theme")
+        } header: {
+            Text("テーマ")
+        } footer: {
+            Text("システムは端末の外観の設定に従います")
         }
     }
 

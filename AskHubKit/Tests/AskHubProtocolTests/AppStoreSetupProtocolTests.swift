@@ -93,6 +93,55 @@ struct AppStoreSetupProtocolTests {
         #expect(!AppStoreSettings().problems.isEmpty)
     }
 
+    @Test func versionSettingsNeedSupportURLForMarketingURL() {
+        let settings = AppStoreSettings(
+            supportUrl: "https://example.com/support",
+            marketingUrl: "https://example.com",
+            copyright: "2026 Shilokuma Inc."
+        )
+        #expect(settings.items == [.supportUrl, .copyright])
+        #expect(settings.problems.isEmpty)
+        // マーケティング URL は任意なので項目を持たず、サポート URL と一緒にだけ送れる
+        #expect(!AppStoreSettings(marketingUrl: "https://example.com").problems.isEmpty)
+        #expect(AppStoreSettings(copyright: "2026 Shilokuma Inc.").problems.isEmpty)
+    }
+
+    @Test func checksCopyrightShape() {
+        #expect(AppStoreSettings.isCopyright("2026 Shilokuma Inc."))
+        #expect(AppStoreSettings.isCopyright("© 2026 しろくま"))
+        #expect(!AppStoreSettings.isCopyright(""))
+        #expect(!AppStoreSettings.isCopyright(" 2026 Shilokuma Inc."))
+        #expect(!AppStoreSettings.isCopyright("2026\nShilokuma Inc."))
+        #expect(!AppStoreSettings.isCopyright(String(repeating: "a", count: AppStoreSettings.copyrightLimit + 1)))
+    }
+
+    @Test func versionItemsAreCheckedOnlyWithVersionSlots() {
+        #expect(AppStoreSetupFile.ItemKind.allCases.filter(\.isVersionItem) == [.supportUrl, .copyright, .reviewContact])
+        #expect(AppStoreSetupFile.ItemKind.supportUrl.isWritable && AppStoreSetupFile.ItemKind.copyright.isWritable)
+        // 連絡先は値を持たずに、ほかのアプリから写す
+        #expect(AppStoreSetupFile.ItemKind.reviewContact.isVerifiable && AppStoreSetupFile.ItemKind.reviewContact.isWritable)
+        #expect(AppStoreSettings(reviewContact: .copyFromOtherApp).items == [.reviewContact])
+        // 版の項目は、初めての版を審査に出すまでに要る（アプリを作るまでの項目ではない）
+        let setup = file(items: [item(.app, .done), item(.supportUrl, .todo), item(.reviewContact, .todo)])
+        #expect(setup.pendingItems(firstRelease: false).isEmpty)
+        #expect(setup.pendingItems(firstRelease: true).map(\.id) == [.supportUrl, .reviewContact])
+    }
+
+    @Test func recordsReviewContactSourceOnlyAfterCopying() {
+        let source = AppStoreSetupFile.SourceApp(id: "6740000002", name: "推し活カウントダウン")
+        let settings = AppStoreSettings(reviewContact: .copyFromOtherApp)
+        var setup = file(items: [item(.app, .done), item(.reviewContact, .todo)])
+        setup.settingsRequest = .init(approval: Self.reference, at: Self.at, settings: settings, doneAt: Self.at, reviewContactFrom: source)
+        #expect(setup.violations.isEmpty)
+        // 送り終える前・連絡先を写さない書き込みには持たない
+        setup.settingsRequest?.doneAt = nil
+        #expect(!setup.violations.isEmpty)
+        setup.settingsRequest = .init(
+            approval: Self.reference, at: Self.at, settings: .init(price: .free), doneAt: Self.at, reviewContactFrom: source
+        )
+        #expect(!setup.violations.isEmpty)
+    }
+
     @Test func refusesTargetsAndOtherKinds() {
         let target = IntentEnvelope.Target(type: "repository", id: "x")
         #expect(throws: MalformedIntent.self) {

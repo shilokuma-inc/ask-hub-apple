@@ -10,6 +10,10 @@ struct SubmitReviewSheet: View {
     /// 言語ごとの、変える掲載文の欄と文（無い欄は変えない）。開いたときに案を入れる
     @State private var listing: [String: [Submission.ListingField: String]] = [:]
     @State private var loadedListing = false
+    /// App Review の情報の直し（nil なら変えない）。開いたときに案を入れる
+    @State private var appReview: Submission.ReviewInfo?
+    /// 前のままにするスクショ
+    @State private var screenshotKeep: Set<Submission.ShotKey> = []
     /// 案を入れたときの準備の版。開いている間に司令塔が案を書き直したら、送るときに断られる（古い案のまま出さない）
     @State private var loadedRevision: Int?
     @State private var platforms: Set<String> = []
@@ -62,6 +66,13 @@ struct SubmitReviewSheet: View {
                     }
                 }
                 listingSection
+                // 案があるときだけ出す（変わったときだけ人が直す）
+                if let review = submission.appReview, review.draft != nil {
+                    AppReviewEditor(review: review, change: $appReview)
+                }
+                if let screenshots = submission.screenshots {
+                    StoreScreenshotsSection(screenshots: screenshots, keep: $screenshotKeep)
+                }
                 Section {
                     Picker("配信の方式", selection: $kind) {
                         Text("承認後すぐ").tag(Kind.afterApproval)
@@ -93,13 +104,14 @@ struct SubmitReviewSheet: View {
             .confirmationDialog("App Store の審査に出しますか？", isPresented: $isConfirming, titleVisibility: .visible) {
                 Button("審査に出す") { submit() }
             } message: {
-                Text("司令塔が App Store Connect に、版・ビルド・What's New・掲載文の直しを書いて提出します。審査を待っている・審査中なら取り下げられます")
+                Text("司令塔が App Store Connect に、版・ビルド・What's New・掲載文と App Review の情報の直し・スクショを書いて提出します。審査を待っている・審査中なら取り下げられます")
             }
             .onAppear {
                 if platforms.isEmpty { platforms = Set(submission.builds.map(\.platform)) }
                 if !loadedListing {
                     loadedListing = true
                     loadedRevision = submission.revision
+                    appReview = submission.appReview?.draft
                     for draft in submission.listing?.drafts ?? [] { listing[draft.locale] = draft.values }
                 }
             }
@@ -122,7 +134,7 @@ struct SubmitReviewSheet: View {
             return !text.isEmpty && text.unicodeScalars.count <= 4_000
         }
         let listingIsValid = listing.values.allSatisfy { values in values.allSatisfy { field, text in field.accepts(text) } }
-        return !platforms.isEmpty && whatsNew && listingIsValid
+        return !platforms.isEmpty && whatsNew && listingIsValid && AppReviewEditor.accepts(appReview)
     }
 
     /// 掲載文の案。言語ごとに開いて、欄ごとに変えるかを選んで直す
@@ -191,7 +203,9 @@ struct SubmitReviewSheet: View {
             listing: (submission.listing?.current ?? []).compactMap { current in
                 guard let values = listing[current.locale], !values.isEmpty else { return nil }
                 return Submission.ListingTexts(locale: current.locale, values: values)
-            }
+            },
+            appReview: appReview,
+            screenshotKeep: submission.screenshots?.state == .captured ? Array(screenshotKeep) : nil
         )
         let intent = HumanIntent.submitForReview(repositoryID: submission.repositoryID, version: submission.version, request: request)
         if sending.submit(intent, in: store) { onClose() }

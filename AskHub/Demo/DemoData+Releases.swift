@@ -64,13 +64,42 @@ extension DemoData {
                 .init(locale: "en-US", text: Self.recipeWhatsNewEnglish)
             ],
             listing: Self.recipeListing,
-            revision: 3,
+            appReview: .init(
+                current: .init(notes: "ログインは不要です。レシピは右上の＋から足せます。", demoAccountRequired: false),
+                draft: .init(notes: "ログインは不要です。レシピは右上の＋から足せます。レシピの画面の「人数」を変えると、材料の分量が変わります。"),
+                reason: "人数に合わせた分量の計算は見つけにくいので、試し方を審査メモに足す案です"
+            ),
+            revision: 4,
             createdAt: ago(minutes: 60 * 3),
             updatedAt: ago(minutes: 25)
         )
+        submission.screenshots = Self.recipeScreenshots
         submission.awaitsSubmission = true
         submission.canAbandon = true
-        return [submission]
+        submission.canRetakeScreenshots = true
+        // おこづかい帳の初めての版。App Store の準備の残り（初めての版の項目を含む）を、あなたの番に出す
+        var first = Submission(
+            repositoryID: Self.repositoryID("pocket-budget-ios"),
+            version: "1.0.0",
+            startedInAskHub: true,
+            branch: "release/1.0.0",
+            nextVersion: .init(version: "1.1.0", state: .merged, pullRequest: 12),
+            drafts: [],
+            revision: 1,
+            slots: [.init(platform: "iOS")],
+            createdAt: ago(minutes: 60),
+            updatedAt: ago(minutes: 30)
+        )
+        first.canAbandon = true
+        // 初めての版なので、撮った画面はすべて新しい。App Store Connect のライブラリに先に上げ、取り込みを待っている
+        first.screenshots = Submission.StoreScreenshots(
+            state: .capturing,
+            commit: String(repeating: "d", count: 40),
+            sets: [],
+            skipped: [],
+            progress: "App Store Connect の取り込みを待っています（2 / 5 枚）"
+        )
+        return [submission, first]
     }
 
     /// レシピ帳の掲載文の案（人数に合わせた分量の計算を、日本語の説明文とキーワード・英語のキーワードに入れる）
@@ -96,8 +125,65 @@ extension DemoData {
         reason: "人数に合わせて分量を計算できるようにしたので、日本語の説明文に一文足し、キーワードに「分量」を足す案です"
     )
 
+    /// レシピ帳のスクショ（2 枚目のレシピの画面に、人数の欄が増えた）
+    static let recipeScreenshots: Submission.StoreScreenshots = {
+        let list = DemoScreen(title: "レシピ", toolbarItem: "plus", elements: [
+            .search(highlighted: false),
+            .row("鶏の照り焼き", detail: "20 分", highlighted: false),
+            .row("具だくさん豚汁", detail: "30 分", highlighted: false)
+        ])
+        let before = DemoScreen(title: "鶏の照り焼き", elements: [
+            .section("材料", highlighted: false),
+            .row("鶏もも肉", detail: "300 g", highlighted: false),
+            .row("しょうゆ", detail: "大さじ 2", highlighted: false)
+        ])
+        let after = DemoScreen(title: "鶏の照り焼き", elements: [
+            .section("人数", highlighted: true),
+            .row("4 人分", detail: nil, highlighted: true),
+            .section("材料", highlighted: false),
+            .row("鶏もも肉", detail: "600 g", highlighted: false),
+            .row("しょうゆ", detail: "大さじ 4", highlighted: false)
+        ])
+        // 前回の App Store に無い位置（増えた画面）。Before が無く、「載せない」を選べる
+        let added = DemoScreen(title: "買い物リスト", elements: [
+            .row("鶏もも肉", detail: "600 g", highlighted: false),
+            .row("しょうゆ", detail: "1 本", highlighted: false)
+        ])
+        // App Store Connect が受け付けなかった画面（前のままにするしかない）
+        let settings = DemoScreen(title: "設定", elements: [.row("単位", detail: "g", highlighted: false)])
+        let settingsAfter = DemoScreen(title: "設定", elements: [
+            .row("単位", detail: "g", highlighted: false),
+            .row("人数の初期値", detail: "2 人分", highlighted: true)
+        ])
+        let settingsArea = CGRect(x: 0, y: 0.2, width: 1, height: 0.1)
+        let area = CGRect(x: 0, y: 0.12, width: 1, height: 0.22)
+        func set(_ locale: String) -> Submission.ScreenshotSet {
+            let shots: [Submission.Shot] = [
+                .init(index: 1, name: "01-レシピ", changed: false, before: .demo(list)),
+                .init(index: 2, name: "02-材料", changed: true, before: .demo(before), after: .demo(after), area: area),
+                .init(index: 3, name: "03-買い物リスト", changed: true, after: .demo(added)),
+                .init(
+                    index: 4,
+                    name: "04-設定",
+                    changed: true,
+                    before: .demo(settings),
+                    after: .demo(settingsAfter),
+                    area: settingsArea,
+                    rejected: "App Store Connect が受け付けなかった（IMAGE_INCORRECT_DIMENSIONS: 画像の大きさが表示サイズに合わない）"
+                )
+            ]
+            return Submission.ScreenshotSet(displayType: "IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE", locale: locale, shots: shots, removed: 0)
+        }
+        return Submission.StoreScreenshots(
+            state: .captured,
+            commit: String(repeating: "c", count: 40),
+            sets: [set("ja"), set("en-US")],
+            skipped: [.init(displayType: "IPAD_13_PROFILE", reason: "撮り方の設定（build.storeScreenshots.displayTypes）にこの表示サイズの機種が無い")]
+        )
+    }()
+
     /// App Store に載せる準備。家事シェアは App Store Connect にアプリがまだ無く（あなたの番に出る）、
-    /// おこづかい帳はアプリを作った後で、初めての版に要る設定が残っている（リリースを始めるまでは、あなたの番に出さない）
+    /// おこづかい帳はアプリを作り、初めての版（1.0.0）のリリースを始めて、初めての版に要る設定が残っている（あなたの番に出る）
     func appStoreSetups() -> [AppStoreSetup] {
         [
             AppStoreSetup(
@@ -131,7 +217,10 @@ extension DemoData {
                     .init(kind: .availability, state: .todo, confirmed: false),
                     .init(kind: .ageRating, state: .todo, note: "答えていない質問が 6 個ある", confirmed: false),
                     .init(kind: .appPrivacy, state: .unknown, note: "API が無い。「App のプライバシー」で答えて公開する", confirmed: false),
-                    .init(kind: .digitalServicesAct, state: .unknown, note: "API が無い。「App 情報」で DSA の申告をする", confirmed: true)
+                    .init(kind: .digitalServicesAct, state: .unknown, note: "API が無い。「App 情報」で DSA の申告をする", confirmed: true),
+                    .init(kind: .supportUrl, state: .todo, note: "まだ書いていない言語: ja・en-US", confirmed: false),
+                    .init(kind: .copyright, state: .todo, confirmed: false),
+                    .init(kind: .reviewContact, state: .todo, note: "まだ入れていない欄: 電話番号", confirmed: false)
                 ],
                 isExcluded: false,
                 updatedAt: ago(minutes: 90)

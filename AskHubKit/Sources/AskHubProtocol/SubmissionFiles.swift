@@ -194,38 +194,6 @@ public struct SubmissionFile: StateFile {
         }
     }
 
-    /// 人が「審査に出す」を押した中身（`submitForReview`）。司令塔が App Store Connect に出し終えたら、`review` に `submittedAt` が付く
-    public struct Submit: Codable, Equatable, Sendable {
-        public var approval: IntentReference
-        public var at: Timestamp
-        public var builds: [BuildChoice]
-        /// 人が確かめた What's New（言語ごと）
-        public var whatsNew: [LocalizedText]
-        public var releaseType: AppStoreReleaseType
-        /// `scheduled` のときの配信の日時（これより前には配信しない）
-        public var earliestReleaseDate: Timestamp?
-        /// 人が確かめた掲載文の直し（変える言語だけ。nil の欄は変えない）。nil は掲載文を扱う前に受け付けたもの
-        public var listing: [ListingText]?
-
-        public init(
-            approval: IntentReference,
-            at: Timestamp,
-            builds: [BuildChoice],
-            whatsNew: [LocalizedText],
-            releaseType: AppStoreReleaseType,
-            earliestReleaseDate: Timestamp? = nil,
-            listing: [ListingText]? = nil
-        ) {
-            self.approval = approval
-            self.at = at
-            self.builds = builds
-            self.whatsNew = whatsNew
-            self.releaseType = releaseType
-            self.earliestReleaseDate = earliestReleaseDate
-            self.listing = listing
-        }
-    }
-
     /// 1 つのプラットフォームの審査の状態（司令塔が App Store Connect で読んだもの）
     public struct Review: Codable, Equatable, Sendable {
         public var platform: AppStorePlatform
@@ -291,6 +259,7 @@ public struct SubmissionFile: StateFile {
         case integration
         case appStoreVersion
         case listing
+        case screenshots
     }
 
     /// 進められなかった理由（進められたら消す）
@@ -321,6 +290,10 @@ public struct SubmissionFile: StateFile {
     public var whatsNew: WhatsNew?
     /// 掲載文（説明文・キーワード・プロモーションテキスト）の案
     public var listing: Listing?
+    /// App Review の情報の案（掲載文の案と一緒に書く）。初めての版・App Review の情報を扱う前に書いた案は nil
+    public var appReview: AppReview?
+    /// App Store のスクショを撮って比べた結果。まだ撮り始めていなければ nil
+    public var screenshots: StoreScreenshots?
     /// ビルド・What's New の下書き・掲載文の案が変わるたびに上げる。審査に出す人の意図の `targetVersion`（人が見たものを出す）
     public var revision: Int
     public var submit: Submit?
@@ -346,6 +319,8 @@ public struct SubmissionFile: StateFile {
         builds: [Build] = [],
         whatsNew: WhatsNew? = nil,
         listing: Listing? = nil,
+        appReview: AppReview? = nil,
+        screenshots: StoreScreenshots? = nil,
         revision: Int = 0,
         submit: Submit? = nil,
         review: [Review] = [],
@@ -367,6 +342,8 @@ public struct SubmissionFile: StateFile {
         self.builds = builds
         self.whatsNew = whatsNew
         self.listing = listing
+        self.appReview = appReview
+        self.screenshots = screenshots
         self.revision = revision
         self.submit = submit
         self.review = review
@@ -385,8 +362,11 @@ public struct SubmissionFile: StateFile {
 
     public var isEnded: Bool { end != nil }
 
-    /// 審査に出す準備（What's New の下書き・掲載文の案と、release ブランチから上げたビルド）がそろった
-    public var isPrepared: Bool { origin == .askhub && whatsNew != nil && listing != nil && !builds.isEmpty }
+    /// 審査に出す準備（What's New の下書き・掲載文の案・スクショの撮影と、release ブランチから上げたビルド）がそろった
+    public var isPrepared: Bool {
+        origin == .askhub && whatsNew != nil && listing != nil && screenshots?.state.isSettled == true && screenshots?.awaitsRetake != true
+            && !builds.isEmpty
+    }
 
     /// 審査に出してから配信までの間のプラットフォームがある
     public var hasReviewInFlight: Bool { review.contains { $0.state.isInFlight } }
@@ -434,8 +414,8 @@ public struct SubmissionFile: StateFile {
             if start == nil { violations.append("AskHub で始めた記録に start が無い") }
         case .appStoreConnect:
             if start != nil || branch != nil || nextVersion != nil || !builds.isEmpty
-                || whatsNew != nil || listing != nil || submit != nil {
-                violations.append("手で出した版の記録は、準備の欄（start・branch・nextVersion・builds・whatsNew・listing・submit）を持たない")
+                || whatsNew != nil || listing != nil || appReview != nil || screenshots != nil || submit != nil {
+                violations.append("手で出した版の記録は、準備の欄（start・branch・nextVersion・builds・whatsNew・listing・appReview・screenshots・submit）を持たない")
             }
         }
         if let branch {
@@ -455,6 +435,8 @@ public struct SubmissionFile: StateFile {
         if builds.contains(where: { !ReleaseFile.isBuildNumber($0.build) }) { violations.append("builds の build の形が違う") }
         if let whatsNew { violations += LocalizedText.problems(of: whatsNew.drafts, name: "whatsNew の drafts") }
         if let listing { violations += Listing.problems(of: listing, name: "listing") }
+        if let appReview { violations += AppReview.problems(of: appReview, name: "appReview") }
+        if let screenshots { violations += screenshots.problems }
         if revision < 0 { violations.append("revision は 0 以上") }
         if let submit {
             if submit.builds.isEmpty { violations.append("submit の builds が空") }
@@ -464,6 +446,11 @@ public struct SubmissionFile: StateFile {
             }
             violations += LocalizedText.problems(of: submit.whatsNew, name: "submit の whatsNew")
             if let changes = submit.listing { violations += ListingText.problems(of: changes, name: "submit の listing") }
+            if let decision = submit.screenshots { violations += decision.problems }
+            if let change = submit.appReview {
+                violations += ReviewInformation.problems(of: change, name: "submit の appReview")
+                if change.isEmpty { violations.append("submit の appReview に変える欄が無い") }
+            }
             if (submit.releaseType == .scheduled) != (submit.earliestReleaseDate != nil) {
                 violations.append("earliestReleaseDate は、配信の方式が scheduled のときだけ持つ")
             }

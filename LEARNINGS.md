@@ -33,7 +33,9 @@
   修飾子を 1 つも付けないと GitHub 全体を検索するので、organization が空なら検索しない
 - CodeRabbit の無料枠は 1 時間に 1 回のレビューで、上限に当たった PR には「Review rate limited」と出る。上限が戻っても自動ではレビューされないので、
   PR に `@coderabbitai review` とコメントして頼む（1 回で 1 本の PR を使い切る。上限中に push した続きのコミットは、そのまま未レビューで残る）
-- `workflow_dispatch`（`POST /repos/{owner}/{repo}/actions/workflows/{file}/dispatches`）は 204 を返すだけで run の id を返さず、直後に `runs?branch=` を読んでも新しい run はまだ一覧に出ない（数秒かかる）。アプリでは「起動した」状態を持ち、少し後に取り直す。
+- `workflow_dispatch`（`POST /repos/{owner}/{repo}/actions/workflows/{file}/dispatches`）は、本文に `return_run_details: true` を付けると 200 で `workflow_run_id`・`run_url`・`html_url` を返す
+  （2026-02-19 から。付けないと今までどおり 204 で何も返さない。gh v2.87.0 以降の `gh workflow run` も既定でこれを使う。GitHub の告知と REST の文書で 2026-11-22 に確かめた。#1194）。
+  id が返らなかったとき（古い形・送った後に落ちた）に一覧（`runs?branch=`）から探すなら、新しい run は一覧に出るまで数秒かかる。
   run の `run_started_at` / `created_at` は秒精度なので、起動時刻（サブ秒）との比較で新旧を判定するときは同じ秒内の run に注意する
 - コミットの `statusCheckRollup.contexts` は check run（`CheckRun`。GitHub Actions など）と commit status（`StatusContext`。CodeRabbit など）が混ざった connection。
   `__typename` で見分け、GitHub Actions の check run は `checkSuite.app.slug == "github-actions"` で選ぶ。`CheckRun.conclusion` は実行中なら `null`、
@@ -202,6 +204,8 @@
 - Git Data API でディレクトリを移す（`git/trees` に `base_tree` と「元のパスを消す・先のパスに同じ blob を置く」を並べ、`git/commits`・`PATCH git/refs/heads/<branch>`）とき、
   消すほうは `"sha": null` を明示する（欄を省くと消えない）。Swift の合成の `Encodable` は nil の欄を省くので、`encode(to:)` を自前で書く。
   ブランチの更新を `force: false` にすると、読んだ後にほかの書き手が書いていれば 422（早送りにならない）になるので、読み直してやり直す（2026-11-18、終わった epic の `archive/`）
+- 司令塔の clone は `--filter=blob:none` の partial clone。`git diff --raw` は、名前の変更の検出（既定で有効）のときだけ blob を GitHub から取りに行き、`--no-renames` なら tree だけで済む。
+  `git cat-file -s`・`cat-file blob` は、無い blob をその場で取りに行く。手元で試すときは、元のリポジトリに `uploadpack.allowFilter=true` を設定しないと `file://` の clone で filter が無視される（2026-11-21、#1181）
 
 ## ビルド・テスト
 
@@ -513,6 +517,9 @@
   使っていない Simulator を日数で見分けるときは `lastUsedAt` を使い、無いものは日数では決めない（書かない版の Xcode もあり得る）（2026-11-18、枠の Simulator の見回り）
 - CI の SwiftLint は `lint --strict` なので、行の長さ（140 字）・型の本体の長さ（300 行）・入れ子の型（2 段）・`String(decoding:as:)` も error になる。
   テストの struct が 300 行を超えたら、足したテストを同じファイルの `extension` に移す（`private` の補助はそのまま使える）。PR の前に手元の DerivedData の `swiftlint` で `lint --strict` を流す（2026-11-18）
+- swiftlint が PATH に無い Mac でも、アプリをビルドしたことがあれば、SwiftLintPlugins が取った実行ファイル
+  （DerivedData の `AskHub-*/SourcePackages/artifacts/swiftlintplugins/SwiftLintBinary/SwiftLintBinary.artifactbundle/macos/swiftlint`）で
+  `DEVELOPER_DIR=<Xcode.app>/Contents/Developer <そのパス> lint --strict` を流せる（2026-11-21、#1184）
 
 ## Keychain
 
@@ -790,6 +797,9 @@
   撮影でシートを開いておくときは `-demoSheet start` のように起動引数で `@State` の初期値を決める（`DemoLaunch.initialSheet`）（2026-11-14、開始のシート）
 - デモのクライアント（`DemoClientService`）は `supports` を実装しておらず、`ClientService` の既定でいつも true を返す。
   状態によって出し分けるボタンは、`store.supports` だけでなく画面用のモデルの印（`Submission.awaitsSubmission` など）でも決めないと、デモと撮影で全部のボタンが出る（2026-11-18、#1142）
+- iOS の設定のシート（`AppSettingsView`）は、`-demoSheet settings` で起動のときに開ける（`AskHub.init` で `AppNavigator.isShowingSettings` を決める。macOS は設定のウィンドウなので開かない）。
+  `@AppStorage` は起動引数の領域（`-<キー> <値>`）も読むので、テーマは `-appTheme dark` のように渡すと、保存された値によらずその見た目で撮れる。
+  ただし起動引数の値が優先されるので、その起動の間は画面で選び直しても見た目が変わらない（2026-11-21、テーマのセグメント）
 - PR のスクショを `NSHostingView` の `cacheDisplay(in:to:)` で撮ると、`safeAreaBar(edge: .bottom)` にガラスのボタンを置いた画面は、中身ごと白く描かれる。
   iOS のテスト（Simulator）で、`UIWindow(windowScene:)`（シーンに付けないと白くなる）に `UIHostingController` を載せ、`drawHierarchy(in:afterScreenUpdates:)` で PNG にすれば描ける。
   状態リポジトリの組み立て（`StateClientService` + `InMemoryStateStore`）を通したデータを、develop とブランチの両方で同じテストから撮れば、同じ条件の Before / After になる（2026-11-18、片付けの候補）
@@ -825,5 +835,30 @@
 - App Store Connect の API の文書の入れ子の型（作成の要求の `data`・`attributes`・`relationships`）は、DocC の JSON の slug に `/data-data.dictionary/attributes-data.dictionary` のように足すと読める（例: `appavailabilityv2createrequest/data-data.dictionary/relationships-data.dictionary.json`）。
   App のプライバシー（データの収集の申告）・DSA の申告・契約と税と口座の API は無い。スクショの `appScreenshotSets`・`appScreenshots` は 4.5.1 で非推奨になり、App Asset Library（`appAssetLibraryImages`・`appAssetLibraryPlacements`）に替わった。
   App Manager のチームの鍵で Provisioning（`bundleIds`）を使えるかは文書に無い（役割の表では App Manager は Certificates, Identifiers & Profiles のアクセスを与えられたときだけ）（2026-11-20、#1157）
+- UI テストの添付（`XCTAttachment`）は、`xcrun xcresulttool export attachments --path <xcresult> --output-path <フォルダ>` で取り出せる（Xcode 26.6）。フォルダに画像と `manifest.json`（`[{testIdentifier, attachments: [{exportedFileName, suggestedHumanReadableName, isAssociatedWithFailure, timestamp, …}]}]`）が書かれ、
+  名前は `01-ホーム_0_<UUID>.png` のように番号と UUID が足される。並びは `timestamp` で決める。テストに環境変数を渡すには、xcodebuild に `TEST_RUNNER_<名前>=<値>` を付ける（2026-11-20、#1167）
 - App Store Connect の API の応答の関係（`relationships.<名前>.data`）は、`include` でその関係を求めたときだけ相手の id が入り、求めないと `links` だけになる。
   `GET /v1/apps/{id}/appInfos` の `primaryCategory` を `include` しないと、カテゴリを決めてあっても無いと読む（2026-11-20、#1168。反映後に deki-roulette のカテゴリが「まだ」になって分かった）
+- App Asset Library（API 4.5.1）の表示サイズは、`screenshotDisplayType` の代わりの「配置グループ」（`placementGroup`。列挙でなく文字列）で、
+  一覧は `GET /v1/appAssetLibraryRefData` の `placementProfileGroups`（`placementProfileGroupId`・`platform`・`displayClassId`）にしか無い。
+  文書の例は 6.9 インチの `IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE`（表示クラス `IPHONE_DYNAMIC_ISLAND_LARGE_DISPLAY`）・`MAC_PROFILE` だけで、iPhone Duo は表示クラス `IPHONE_DUO`。
+  画像の終わりの知らせ（`PATCH /v1/appAssetLibraryImages/{id}`）は `uploaded: true` だけで `sourceFileChecksum` が無く、応答にも MD5 が無い（AskHub は参照名 `askhub-<MD5>` に入れる）。
+  配置は作った後に変えられず、差し替えは消して作って並べ直す（並べるのは `POST /v1/appAssetLibraryPlacementOrderingRequests`。並び順は `sort=placementGroupPosition` の応答の順だけで分かる）。
+  版の組は 10 枚までなので、作る前に余った配置を消す。配置の残る画像は消せない（409 `STATE_ERROR.ASSET_HAS_PLACEMENTS`）。
+  古い appScreenshotSets で上げたスクショが配置として読めるかは文書に無い（2026-11-21、#1184）
+- `GET /v1/appStoreVersions/{id}/appStoreVersionLocalizations` の言語の並びは、読むたびに変わることがある。読んだ並びのまま記録と比べると、文が同じでも書き直してしまうので、言語の順に並べてから比べる（OshiCon の配信の記録で、並びだけが違う書き直しが続いた。#1180）。
+
+## ワーカー・司令塔の運用
+
+- アドホック署名のワーカーを自分の Mac で入れ替える手順: 手元で `scripts/machine/build.sh askhub-worker` → `scp` で `askhub-worker.new` に送り、`shasum -a 256` と `askhub-worker.new version` で照らし合わせる → 前のものを `askhub-worker.prev` に残して差し替え →
+  その Mac の画面の端末で `"$HOME/Library/Application Support/AskHub/bin/askhub-worker" check` を流し、Keychain の確認を項目ごとに「常に許可」にする → ssh から `launchctl kickstart -k gui/$(id -u)/jp.shilokuma.askhub.worker`。
+  ssh から読み込み直した gui の常駐も、許可した後は Keychain を読めた（2026-11-12・2026-11-21、MacBook Pro）。`askhub-worker` は PATH に無く、`bin` のフォルダの中でも zsh は今のフォルダを探さないので、`./askhub-worker` かフルパスで流してもらう
+- resident と manual の切り替えは `setup` の流し直しだけで済む（すでに置いたトークンは、聞かれたら空の Enter で今のまま）。manual にするときは `launchctl bootout gui/$(id -u)/jp.shilokuma.askhub.worker` → `setup … --kind manual` → 端末で `run`。
+  resident に戻すときは `run` を Control-C → `setup … --kind resident` → `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/jp.shilokuma.askhub.worker.plist`（定義のファイルは残っている）。manual のワーカーはログを端末に出し、`worker.log` には書かないので、遠隔では状態リポジトリの試行で進みを見る
+- ワーカーを止めて確かめるときは `launchctl bootout` を使う（`kill` は `KeepAlive` で起動し直される）。司令塔もワーカーも SIGTERM を扱わないので、止める・入れ替えると試行が実行中のまま残る。
+  #1114・#1116 の後は、起動して最初に（ワーカーは生きている印を書く前に）自分の残った試行を「Mac がオフライン」で閉じるので、時間切れに数えない
+- ジョブの途中で Mac がオフラインになったときの判定は、試行の印が 15 分・Mac の印が 30 分で古いとみなす。#1114 の前は、15 分の時点で Mac の印がまだ新しいので時間切れ（`running` → `assigned`）になり、一時停止（`paused`）にならなかった（2026-11-13 の実地の確かめ）。
+  オフラインを実地で確かめるときは、止めてから 30 分以上待つ
+- 人の一時停止の間は、動いているジョブは最後まで終わり、次のジョブは「止められる」のではなく作られない（実装の後のレビューが作られない）。確かめるときは、ジョブの一覧ではなく epic の `pause` と状態リポジトリの git log を見る
+- 実地の確かめで「実装の途中で一時停止・引き継ぎ」を合図で押してもらう段取りは、取り逃しやすい（askhub-sandbox の小さなタスクでは、レビューは 30 秒〜数分、実装は 2〜4 分で終わり、2 回逃した）。
+  開始した直後に一時停止すれば、作業場所の用意（`prepareWorkspace`）が動く前に `paused` で止まるので、そこで引き継ぐ → 再開すれば確実に確かめられる（引き継いだ先が作業場所の用意から行う）。見張りは状態リポジトリの git fetch を 15〜20 秒ごとにし、テストや PR の直しなどの重い作業と並べない

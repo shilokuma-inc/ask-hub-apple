@@ -2,6 +2,7 @@ import AskHubProtocol
 import AskHubPullRequests
 import AskHubStateStore
 import Foundation
+import os
 
 /// App Store での配信を見つけ、リリースの後作業を進める（`docs/renewal/release.md` の「配信の検知と後作業」）。
 ///
@@ -20,16 +21,30 @@ public actor ReleaseWatch {
     nonisolated let whatsNew: (any WhatsNewDrafting)?
     /// 掲載文の案。nil なら案を作れない（準備の問題として出す）
     nonisolated let listing: (any ListingDrafting)?
+    /// App Store のスクショを撮る道具。nil なら撮れない（撮り方のあるリポジトリでは、撮れなかったとして記録する）
+    nonisolated let screenshots: (any StoreScreenshotCapturing)?
+    /// 撮影のワークフローの artifact を取り出す道具（`capture: actions`）
+    nonisolated let artifacts: any StoreScreenshotArtifactExtracting
     nonisolated let authors: any CommitAuthors
     nonisolated let log: @Sendable (String) -> Void
     /// 1 つのリポジトリの App Store Connect を読む間隔
     nonisolated let detectInterval: TimeInterval
+    /// `wake()` で起こし、まだ終わっていない見回りの数（テストで、裏で始まる見回りの終わりを待つ）
+    nonisolated let pendingWakes = OSAllocatedUnfairLock(initialState: 0)
 
     var detectedAt: [RepositoryFullName: Date] = [:]
     /// 見つけたアプリと、それを読める鍵（`stores` の番号）。起動し直したら探し直す
     var apps: [RepositoryFullName: (store: Int, app: AppStoreApp)] = [:]
     /// 最後に読んだ、リポジトリの base のビルドの設定の Bundle ID（App Store に載せる準備の記録に書く）
     var bundleIdentifiers: [RepositoryFullName: [String]] = [:]
+    /// App Store に載せる準備の初めての版の項目を、最後に確かめたときの版の枠の id（枠が変わったら、待たずに確かめ直す）
+    var checkedSlots: [RepositoryFullName: [String]] = [:]
+    /// スクショを撮っている版（`<owner>/<repo>/<版>`）。見回りの外の Task で撮っている間は、撮り始めない
+    var capturing: Set<String> = []
+    /// 撮っている Task（テストで終わりを待つ）
+    var captureTasks: [String: Task<Void, Never>] = [:]
+    /// 撮影のワークフローの実行を最後に読んだ時刻（`<owner>/<repo>/<版>`）。見回りのたびに読まず、5 分空ける
+    var screenshotRunsCheckedAt: [String: Date] = [:]
     /// ログに出した知らせ（同じものを見回りのたびに出さない）
     private var reported: Set<String> = []
     private var running = false
@@ -46,6 +61,8 @@ public actor ReleaseWatch {
         drafter: any ReleaseNotesDrafting,
         whatsNew: (any WhatsNewDrafting)? = nil,
         listing: (any ListingDrafting)? = nil,
+        screenshots: (any StoreScreenshotCapturing)? = nil,
+        artifacts: any StoreScreenshotArtifactExtracting = UnzipArtifactExtractor(),
         authors: any CommitAuthors,
         log: @escaping @Sendable (String) -> Void,
         detectInterval: Duration = .seconds(30 * 60)
@@ -57,6 +74,8 @@ public actor ReleaseWatch {
         self.drafter = drafter
         self.whatsNew = whatsNew
         self.listing = listing
+        self.screenshots = screenshots
+        self.artifacts = artifacts
         self.authors = authors
         self.log = log
         self.detectInterval = TimeInterval(detectInterval.components.seconds)
@@ -65,19 +84,6 @@ public actor ReleaseWatch {
     /// 見回りを周の外で始める。前に始めたものが終わっていなければ、何もしない
     nonisolated public func start() {
         Task { await refresh() }
-    }
-
-    /// リリースの操作の人の意図を受け付けたときに、生きている印を待たずに見回る。見回っている最中なら、終わった後にもう一度見回る
-    nonisolated public func wake() {
-        Task { await wakeUp() }
-    }
-
-    private func wakeUp() async {
-        if running {
-            wokenWhileRunning = true
-            return
-        }
-        await refresh()
     }
 
     /// 対象のリポジトリを 1 つずつ見回る。見回っているときに呼ばれたら、何もしない
@@ -116,7 +122,11 @@ public actor ReleaseWatch {
             waiting += submissions.flatMap { submission in
                 Blocker.waiting(on: submission) + Blocker.reviewNotices(on: submission, now: now) + Blocker.keptSlots(on: submission)
             }
-            if let setup = await advanceSetup(repo, settings: file) {
+            if var setup = await advanceSetup(repo, settings: file) {
+                // リリースを始めて版の枠を作った・やめて消したら、初めての版の項目を待たずに確かめ直す
+                if let rechecked = await recheckSetupIfSlotsChanged(repo, setup: setup, submissions: submissions, settings: file) {
+                    setup = rechecked
+                }
                 // 配信中の版が無いアプリで始めたリリース（準備の記録があるのは、配信中の版が無いアプリだけ）
                 let firstRelease = submissions.first { !$0.isEnded }?.version
                 waiting += Blocker.waiting(on: setup, firstRelease: firstRelease)
@@ -350,7 +360,32 @@ public actor ReleaseWatch {
             }
         }
     }
+}
 
+extension ReleaseWatch {
+    /// リリースの操作の人の意図を受け付けたときに、生きている印を待たずに見回る。見回っている最中なら、終わった後にもう一度見回る
+    nonisolated public func wake() {
+        pendingWakes.withLock { $0 += 1 }
+        Task {
+            await wakeUp()
+            pendingWakes.withLock { $0 -= 1 }
+        }
+    }
+
+    private func wakeUp() async {
+        if running {
+            wokenWhileRunning = true
+            return
+        }
+        await refresh()
+    }
+
+    /// 見回り（`wake()` が裏で始めたものも）が終わるのを待つ（テスト）
+    func waitForRefresh() async {
+        while running || pendingWakes.withLock({ $0 > 0 }) { try? await Task.sleep(for: .milliseconds(1)) }
+    }
+
+    /// 同じ知らせは 1 回だけログに出す
     func report(_ note: String) {
         if reported.insert(note).inserted { log(note) }
     }

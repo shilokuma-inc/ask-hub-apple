@@ -125,6 +125,58 @@ extension StateClientServiceTests {
     }
 
     @Test
+    func writesFirstVersionSettingsOnlyAfterVersionItemsAreChecked() async throws {
+        // 版の枠が無い（版の項目が記録に無い）うちは、サポート URL と著作権表示を送れない
+        let before = try makeService(files: Self.firstReleaseFiles())
+        _ = try await before.service.fetchSnapshot()
+        let copyright = AppStoreSettingsRequest(copyright: "2026 Example Inc.")
+        #expect(!before.service.supports(.applyAppStoreSettings(repositoryID: setupRepositoryID, request: copyright)))
+
+        let setup = """
+            {"v":1,"repo":"\(Self.repo)","bundleIds":["jp.example.Sample"],
+             "app":{"id":"6740000002","name":"サンプル","bundleId":"jp.example.Sample","primaryLocale":"ja"},
+             "items":[{"id":"bundleId","state":"done","checkedAt":"2027-01-20T01:00:00Z"},
+                      {"id":"app","state":"done","checkedAt":"2027-01-20T01:00:00Z"},
+                      {"id":"supportUrl","state":"todo","note":"まだ書いていない言語: ja","checkedAt":"2027-01-20T01:00:00Z"},
+                      {"id":"copyright","state":"todo","checkedAt":"2027-01-20T01:00:00Z"},
+                      {"id":"reviewContact","state":"todo","checkedAt":"2027-01-20T01:00:00Z"}],
+             "settingsRequest":{"approval":{"keyId":"\(String(repeating: "k", count: 43))","nonce":"01JCN0NCE00000000000000008"},
+                                "at":"2027-01-20T01:00:00Z","settings":{"reviewContact":"copyFromOtherApp"},
+                                "doneAt":"2027-01-20T01:10:00Z","reviewContactFrom":{"id":"6740000009","name":"ほかのアプリ"}},
+             "checkedAt":"2027-01-20T01:00:00Z","createdAt":"2027-01-20T01:00:00Z","updatedAt":"2027-01-20T01:00:00Z"}
+            """
+        let fixture = try makeService(files: Self.askingEpic(extra: [Self.setupPath: setup]))
+        let service = fixture.service
+        let snapshot = try await fixture.service.fetchSnapshot()
+        // 連絡先は値を持たずに、ほかのアプリの版から写す（写したアプリの名前だけを出す）
+        let loaded = try #require(snapshot.appStoreSetup(of: setupRepositoryID))
+        #expect(loaded.writableItems.map(\.kind) == [.supportUrl, .copyright, .reviewContact])
+        #expect(loaded.settingsRequest?.reviewContactFrom == "ほかのアプリ")
+        // マーケティング URL だけは送れない（サポート URL と一緒に書く）
+        await #expect(throws: ClientServiceError.self) {
+            try await service.perform(.applyAppStoreSettings(
+                repositoryID: setupRepositoryID,
+                request: .init(marketingURL: "https://example.com", copyright: "2026 Example Inc.")
+            ))
+        }
+        let request = AppStoreSettingsRequest(
+            supportURL: " https://example.com/support ",
+            marketingURL: "https://example.com",
+            copyright: " 2026 Example Inc. ",
+            copyReviewContact: true
+        )
+        try await service.perform(.applyAppStoreSettings(repositoryID: setupRepositoryID, request: request))
+        let envelope = try await sentEnvelope(in: fixture.store, key: fixture.key)
+        let apply = try ApplyAppStoreSettingsIntent(envelope: envelope)
+        #expect(apply.settings == AppStoreSettings(
+            supportUrl: "https://example.com/support",
+            marketingUrl: "https://example.com",
+            copyright: "2026 Example Inc.",
+            reviewContact: .copyFromOtherApp
+        ))
+    }
+
+    @Test
     func confirmationAndExclusionAreShownBeforeTheCommanderReadsThem() async throws {
         let fixture = try makeService(files: Self.firstReleaseFiles())
         let service = fixture.service

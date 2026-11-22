@@ -13,6 +13,28 @@ final class FakeAppStore: AppStoreConnecting {
         var others: [AppStoreVersionInfo] = []
         var builds: [AppStoreBuild] = []
         var localizations: [String: [AppStoreLocalization]] = [:]
+        /// 版の id ごとの App Review の情報
+        var reviewDetails: [String: AppStoreReviewDetail] = [:]
+        /// 掲載文の id ごとのスクショの組（配置を作る・消すと変わる）
+        var screenshotSets: [String: [AppStoreScreenshotSet]] = [:]
+        /// 表示サイズ（配置グループ）ごとのプラットフォーム
+        var displayTypePlatforms: [String: AppStorePlatform] = [
+            "IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE": .iOS, "IPHONE_DUO_PROFILE": .iOS, "MAC_PROFILE": .macOS
+        ]
+        /// ライブラリの画像（参照名ごと。上げると足す）
+        var libraryImages: [String: [AppStoreLibraryImage]] = [:]
+        /// 上げた画像の、上げた直後の処理の様子（既定はすぐ置ける）
+        var sentState = "PREPARE_FOR_SUBMISSION"
+        /// 決めると、ライブラリの画像を読めずにこれを投げる
+        var libraryFailure: AppStoreConnectError?
+        /// 決めると、アプリを探せずにこれを投げる
+        var appsFailure: AppStoreConnectError?
+        /// 決めると、上げた画像の処理の様子（id で読む）を読めずにこれを投げる
+        var sentImageFailure: AppStoreConnectError?
+        /// 作った配置の数（配置の id の番号）
+        var placementCount = 0
+        /// スクショの画像（URL ごと）
+        var images: [URL: Data] = [:]
         var submissions: [AppStoreReviewSubmission] = []
         /// 書き込みの記録（「createVersion 1.4.0」など）
         var writes: [String] = []
@@ -25,13 +47,20 @@ final class FakeAppStore: AppStoreConnecting {
         var bundleIDRefusal: AppStoreConnectError?
         /// アプリの準備の様子（書き込むと変わる）
         var setup = AppStoreSetupState()
+        /// 版の枠ごとの、初めての版の項目の様子（書き込むと変わる）
+        var versionSetups: [String: AppStoreVersionSetupState] = [:]
+        /// ほかのアプリの版（アプリの id ごと）。無いアプリは `others` と配信中の版を返す
+        var versionsByApp: [String: [AppStoreVersionInfo]] = [:]
+        /// 版ごとの App Review の連絡先（写すもと）
+        var reviewContacts: [String: AppStoreReviewContact] = [:]
     }
 
     let keyID = "ABCDE12345"
     let state = OSAllocatedUnfairLock(initialState: State())
 
     func apps(bundleIDs: [String]) async throws(AppStoreConnectError) -> [AppStoreApp] {
-        state.withLock { $0.apps.filter { bundleIDs.contains($0.bundleId) } }
+        if let failure = state.withLock({ $0.appsFailure }) { throw failure }
+        return state.withLock { $0.apps.filter { bundleIDs.contains($0.bundleId) } }
     }
 
     func liveVersions(of appID: String) async throws(AppStoreConnectError) -> [LiveAppVersion] {
@@ -44,6 +73,7 @@ final class FakeAppStore: AppStoreConnecting {
     func versions(of appID: String) async throws(AppStoreConnectError) -> [AppStoreVersionInfo] {
         state.withLock { state in
             state.reads += 1
+            if let versions = state.versionsByApp[appID] { return versions }
             return state.others + state.versions.enumerated().map { index, live in
                 AppStoreVersionInfo(
                     id: "live-\(index)",
@@ -101,6 +131,115 @@ final class FakeAppStore: AppStoreConnecting {
     func updateListing(_ localizationID: String, _ text: ListingText) async throws(AppStoreConnectError) {
         let fields = ListingText.Field.allCases.compactMap { field in text[field].map { "\(field.rawValue)=\($0)" } }
         try write("updateListing \(localizationID) \(fields.joined(separator: " "))")
+    }
+
+    func reviewDetail(of versionID: String) async throws(AppStoreConnectError) -> AppStoreReviewDetail? {
+        state.withLock { $0.reviewDetails[versionID] }
+    }
+
+    func writeReviewDetail(_ detailID: String?, versionID: String, _ information: ReviewInformation) async throws(AppStoreConnectError) {
+        var fields: [String] = []
+        if let notes = information.notes { fields.append("notes=\(notes)") }
+        if let required = information.demoAccountRequired { fields.append("demoAccountRequired=\(required)") }
+        if let name = information.demoAccountName { fields.append("demoAccountName=\(name)") }
+        try write("writeReviewDetail \(detailID ?? "new:\(versionID)") \(fields.joined(separator: " "))")
+    }
+
+    func screenshotSets(of localizationID: String) async throws(AppStoreConnectError) -> [AppStoreScreenshotSet] {
+        state.withLock { $0.screenshotSets[localizationID] ?? [] }
+    }
+
+    func downloadScreenshot(_ url: URL) async throws(AppStoreConnectError) -> Data {
+        guard let data = state.withLock({ $0.images[url] }) else { throw .refused(status: 404, detail: "画像が無い") }
+        return data
+    }
+
+    func displayTypePlatforms() async throws(AppStoreConnectError) -> [String: AppStorePlatform] {
+        state.withLock { $0.displayTypePlatforms }
+    }
+
+    func assetLibrary(of appID: String) async throws(AppStoreConnectError) -> String {
+        "library-\(appID)"
+    }
+
+    func libraryImages(in libraryID: String, referenceName: String) async throws(AppStoreConnectError) -> [AppStoreLibraryImage] {
+        let (images, failure) = state.withLock { ($0.libraryImages[referenceName] ?? [], $0.libraryFailure) }
+        if let failure { throw failure }
+        return images
+    }
+
+    func sendImage(
+        to libraryID: String,
+        fileName: String,
+        referenceName: String,
+        data: Data
+    ) async throws(AppStoreConnectError) -> String {
+        try write("sendImage \(fileName)")
+        return state.withLock { state in
+            let image = AppStoreLibraryImage(id: "image-\(fileName)", state: state.sentState)
+            state.libraryImages[referenceName, default: []].append(image)
+            return image.id
+        }
+    }
+
+    func libraryImage(_ id: String) async throws(AppStoreConnectError) -> AppStoreLibraryImage {
+        if let failure = state.withLock({ $0.sentImageFailure }) { throw failure }
+        guard let image = state.withLock({ $0.libraryImages.values.flatMap(\.self).first { $0.id == id } }) else {
+            throw .refused(status: 404, detail: "画像が無い")
+        }
+        return image
+    }
+
+    /// 参照名の画像の処理の様子を変える（Apple の処理が進んだ・失敗した）
+    func setLibraryState(_ referenceName: String, _ newState: String, details: String? = nil) {
+        state.withLock { state in
+            state.libraryImages[referenceName] = (state.libraryImages[referenceName] ?? []).map {
+                AppStoreLibraryImage(id: $0.id, state: newState, details: details)
+            }
+        }
+    }
+
+    func deleteImage(_ id: String) async throws(AppStoreConnectError) {
+        try write("deleteImage \(id)")
+    }
+
+    func placeScreenshot(_ imageID: String, on localizationID: String, displayType: String) async throws(AppStoreConnectError) -> String {
+        try write("placeScreenshot \(imageID) \(localizationID)")
+        return state.withLock { state in
+            // 同じ画像を言語ごとに置いても、配置の id は配置ごとに違う
+            state.placementCount += 1
+            let shot = AppStoreScreenshot(id: "placement-\(state.placementCount)", imageID: imageID, checksum: nil, imageURL: nil)
+            var sets = state.screenshotSets[localizationID] ?? []
+            if let index = sets.firstIndex(where: { $0.displayType == displayType }) {
+                sets[index].screenshots.append(shot)
+            } else {
+                sets.append(AppStoreScreenshotSet(displayType: displayType, screenshots: [shot]))
+            }
+            state.screenshotSets[localizationID] = sets
+            return shot.id
+        }
+    }
+
+    func deletePlacement(_ id: String) async throws(AppStoreConnectError) {
+        try write("deletePlacement \(id)")
+        state.withLock { state in
+            for (localization, sets) in state.screenshotSets {
+                state.screenshotSets[localization] = sets.map { set in
+                    AppStoreScreenshotSet(displayType: set.displayType, screenshots: set.screenshots.filter { $0.id != id })
+                }
+            }
+        }
+    }
+
+    func orderScreenshots(on localizationID: String, displayType: String, ids: [String]) async throws(AppStoreConnectError) {
+        try write("orderScreenshots \(localizationID) \(ids.joined(separator: ","))")
+        state.withLock { state in
+            state.screenshotSets[localizationID] = (state.screenshotSets[localizationID] ?? []).map { set in
+                guard set.displayType == displayType else { return set }
+                let ordered = ids.compactMap { id in set.screenshots.first { $0.id == id } }
+                return AppStoreScreenshotSet(displayType: displayType, screenshots: ordered)
+            }
+        }
     }
 
     func reviewSubmissions(of appID: String, platform: AppStorePlatform) async throws(AppStoreConnectError) -> [AppStoreReviewSubmission] {
@@ -190,5 +329,48 @@ final class FakeAppStore: AppStoreConnecting {
     func setAvailableEverywhere(of appID: String) async throws(AppStoreConnectError) {
         try write("setAvailableEverywhere")
         state.withLock { $0.setup.hasAvailability = true }
+    }
+
+    func versionSetupState(of versionID: String) async throws(AppStoreConnectError) -> AppStoreVersionSetupState {
+        state.withLock { $0.versionSetups[versionID] ?? AppStoreVersionSetupState(missingReviewContact: ReviewContactField.allCases) }
+    }
+
+    func setCopyright(_ text: String, versionID: String) async throws(AppStoreConnectError) {
+        try write("setCopyright \(versionID) \(text)")
+        state.withLock { $0.versionSetups[versionID, default: .init()].copyright = text }
+    }
+
+    func allApps() async throws(AppStoreConnectError) -> [AppStoreApp] {
+        state.withLock { $0.apps }
+    }
+
+    func reviewContact(of versionID: String) async throws(AppStoreConnectError) -> AppStoreReviewContact? {
+        state.withLock { $0.reviewContacts[versionID] }
+    }
+
+    /// 書き込みの記録には、欄の名前だけを残す（値は残さない）
+    func writeReviewContact(
+        _ contact: ReviewContact,
+        fields: [ReviewContactField],
+        detailID: String?,
+        versionID: String
+    ) async throws(AppStoreConnectError) {
+        try write("writeReviewContact \(versionID) \(fields.map(\.rawValue).joined(separator: ",")) \(detailID ?? "-")")
+        state.withLock { state in
+            let written = fields.filter { contact.values[$0] != nil }
+            state.versionSetups[versionID, default: .init()].missingReviewContact.removeAll(where: written.contains)
+            state.versionSetups[versionID]?.reviewDetailID = detailID ?? "detail-\(versionID)"
+        }
+    }
+
+    func setVersionURLs(support: String?, marketing: String?, localizationID: String) async throws(AppStoreConnectError) {
+        try write("setVersionURLs \(localizationID) \(support ?? "-") \(marketing ?? "-")")
+        state.withLock { state in
+            for (versionID, setup) in state.versionSetups {
+                guard let index = setup.localizations.firstIndex(where: { $0.id == localizationID }) else { continue }
+                if let support { state.versionSetups[versionID]?.localizations[index].supportUrl = support }
+                if let marketing { state.versionSetups[versionID]?.localizations[index].marketingUrl = marketing }
+            }
+        }
     }
 }

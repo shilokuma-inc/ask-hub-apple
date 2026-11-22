@@ -75,7 +75,8 @@ public struct RegisterBundleIdIntent: Equatable, Sendable {
 }
 
 /// 決まった値を App Store Connect に書く人の意図（`kind` が `applyAppStoreSettings`）。payload は `AppStoreSettings` の形で、書く欄だけを持つ
-/// （価格は無料・配信の地域はすべて・カテゴリ・コンテンツの権利・プライバシーポリシーの URL）。人がチェックリストで値を確かめて押す
+/// （価格は無料・配信の地域はすべて・カテゴリ・コンテンツの権利・プライバシーポリシーの URL、初めての版のサポート URL・マーケティング URL・著作権表示・
+/// App Review の連絡先をほかのアプリから写す）。人がチェックリストで値を確かめて押す
 public struct ApplyAppStoreSettingsIntent: Equatable, Sendable {
     public static let kind = "applyAppStoreSettings"
 

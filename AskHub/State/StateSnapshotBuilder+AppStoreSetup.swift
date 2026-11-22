@@ -34,7 +34,11 @@ extension StateSnapshotBuilder {
             app: file.app.map { .init(id: $0.id, name: $0.name, bundleID: $0.bundleId, primaryLocale: $0.primaryLocale) },
             items: file.items.compactMap(item),
             bundleIDRequest: file.bundleIdRequest.map { request(at: $0.at, doneAt: $0.doneAt, failures: $0.failures) },
-            settingsRequest: file.settingsRequest.map { request(at: $0.at, doneAt: $0.doneAt, failures: $0.failures) },
+            settingsRequest: file.settingsRequest.map { settings in
+                var request = request(at: settings.at, doneAt: settings.doneAt, failures: settings.failures)
+                request.reviewContactFrom = settings.reviewContactFrom?.name
+                return request
+            },
             isExcluded: file.isExcluded,
             releasedAt: file.releasedAt?.date,
             problem: file.problem.map { .init(message: $0.message, needsHuman: $0.needsHuman) },

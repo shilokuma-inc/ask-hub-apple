@@ -134,7 +134,9 @@ public struct IntentDraft: Equatable, Sendable {
         whatsNew: [LocalizedText],
         releaseType: AppStoreReleaseType,
         earliestReleaseDate: Timestamp? = nil,
-        listing: [ListingText] = []
+        listing: [ListingText] = [],
+        appReview: ReviewInformation? = nil,
+        screenshots: SubmissionFile.ScreenshotDecision? = nil
     ) -> Self {
         Self(
             kind: SubmitForReviewIntent.kind,
@@ -142,7 +144,13 @@ public struct IntentDraft: Equatable, Sendable {
             target: target.target,
             targetVersion: String(revision),
             payload: SubmitForReviewIntent.payload(
-                builds: builds, whatsNew: whatsNew, releaseType: releaseType, earliestReleaseDate: earliestReleaseDate, listing: listing
+                builds: builds,
+                whatsNew: whatsNew,
+                releaseType: releaseType,
+                earliestReleaseDate: earliestReleaseDate,
+                listing: listing,
+                appReview: appReview,
+                screenshots: screenshots
             )
         )
     }
@@ -176,6 +184,14 @@ public struct IntentDraft: Equatable, Sendable {
     /// 審査を取り下げる
     public static func withdrawSubmission(_ target: SubmissionTarget) -> Self {
         Self(kind: WithdrawSubmissionIntent.kind, repo: target.repo, target: target.target)
+    }
+
+    /// スクショを撮り直す（審査に出す前だけ）。`displayTypes`・`locales` が空なら、すべての組
+    public static func retakeScreenshots(_ target: SubmissionTarget, displayTypes: [String] = [], locales: [String] = []) -> Self {
+        var payload: [String: JSONValue] = [:]
+        if !displayTypes.isEmpty { payload["displayTypes"] = .array(displayTypes.map(JSONValue.string)) }
+        if !locales.isEmpty { payload["locales"] = .array(locales.map(JSONValue.string)) }
+        return Self(kind: RetakeScreenshotsIntent.kind, repo: target.repo, target: target.target, payload: payload)
     }
 
     /// このリリースをやめる（release ブランチ・App Store Connect の版は消さない）

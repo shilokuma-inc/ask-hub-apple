@@ -81,7 +81,7 @@ public struct RegisterBundleIdHandler: IntentHandler {
 }
 
 /// 決まった値を書く（`applyAppStoreSettings`）を受け付け、`settingsRequest` に写す。
-/// App Store Connect にアプリが無い・前の書き込みを送っている途中なら断る
+/// App Store Connect にアプリが無い・前の書き込みを送っている途中・初めての版の項目をまだ確かめていない（版の枠が無い）なら断る
 public struct ApplyAppStoreSettingsHandler: IntentHandler {
     public init() {}
 
@@ -114,6 +114,11 @@ public struct ApplyAppStoreSettingsHandler: IntentHandler {
         if !file.isActive { return "\(apply.repo) は App Store に出さない・もう配信した" }
         if file.app == nil { return "App Store Connect にアプリが無い。先に App Store Connect でアプリを作る" }
         if let request = file.settingsRequest, request.doneAt == nil { return "前の書き込みを送っている途中" }
+        let unchecked = apply.settings.items.filter { $0.isVersionItem && file.item($0) == nil }
+        if !unchecked.isEmpty {
+            let names = unchecked.map(\.rawValue).joined(separator: "・")
+            return "初めての版の項目（\(names)）をまだ確かめていない。初めての版のリリースを始めて、App Store Connect に版の枠ができてから書く"
+        }
         return nil
     }
 }

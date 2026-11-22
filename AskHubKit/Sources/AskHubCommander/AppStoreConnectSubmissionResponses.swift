@@ -57,6 +57,22 @@ struct AppStoreConnectLocalizationsResponse: Decodable {
     var data: [AppStoreConnectResource<Attributes>]
 }
 
+struct AppStoreConnectReviewDetailResponse: Decodable {
+    struct Attributes: Decodable {
+        var notes: String?
+        var demoAccountRequired: Bool?
+        var demoAccountName: String?
+    }
+
+    struct Item: Decodable {
+        var id: String
+        var attributes: Attributes?
+    }
+
+    /// 版に App Review の情報が無ければ null
+    var data: Item?
+}
+
 struct AppStoreConnectSubmissionsResponse: Decodable {
     struct Attributes: Decodable {
         var platform: String?

@@ -69,7 +69,9 @@ public struct StartReleaseIntent: Equatable, Sendable {
 /// 審査に出す人の意図（`kind` が `submitForReview`）。`targetVersion` は人が見たときの準備の版（`revision`）。
 /// `builds` は出すビルド（プラットフォームごと）、`whatsNew` は人が確かめた What's New（言語ごと。初めての版は空）、
 /// `releaseType` は審査に通った後の配信の方式、`earliestReleaseDate` は `scheduled` のときの配信の日時、
-/// `listing` は人が確かめた掲載文の直し（変える言語だけ。nil の欄は変えない。無ければ掲載文を変えない）
+/// `listing` は人が確かめた掲載文の直し（変える言語だけ。nil の欄は変えない。無ければ掲載文を変えない）、
+/// `appReview` は人が確かめた App Review の情報の直し（nil の欄は変えない。無ければ変えない。パスワードは持たない）、
+/// `screenshots` は人が確かめたスクショ（撮影のコミットと、前のままにする画面。無ければスクショを変えない）
 public struct SubmitForReviewIntent: Equatable, Sendable {
     public static let kind = "submitForReview"
     /// 一度に出せるプラットフォームの数の上限
@@ -82,6 +84,8 @@ public struct SubmitForReviewIntent: Equatable, Sendable {
     public var releaseType: AppStoreReleaseType
     public var earliestReleaseDate: Timestamp?
     public var listing: [ListingText]
+    public var appReview: ReviewInformation?
+    public var screenshots: SubmissionFile.ScreenshotDecision?
     public var intent: IntentReference
 
     public init(
@@ -92,6 +96,8 @@ public struct SubmitForReviewIntent: Equatable, Sendable {
         releaseType: AppStoreReleaseType,
         earliestReleaseDate: Timestamp? = nil,
         listing: [ListingText] = [],
+        appReview: ReviewInformation? = nil,
+        screenshots: SubmissionFile.ScreenshotDecision? = nil,
         intent: IntentReference
     ) {
         self.target = target
@@ -101,6 +107,8 @@ public struct SubmitForReviewIntent: Equatable, Sendable {
         self.releaseType = releaseType
         self.earliestReleaseDate = earliestReleaseDate
         self.listing = listing
+        self.appReview = appReview
+        self.screenshots = screenshots
         self.intent = intent
     }
 
@@ -110,6 +118,8 @@ public struct SubmitForReviewIntent: Equatable, Sendable {
         var releaseType: AppStoreReleaseType
         var earliestReleaseDate: Timestamp?
         var listing: [ListingText]?
+        var appReview: ReviewInformation?
+        var screenshots: SubmissionFile.ScreenshotDecision?
     }
 
     public init(envelope: IntentEnvelope) throws(MalformedIntent) {
@@ -125,6 +135,23 @@ public struct SubmitForReviewIntent: Equatable, Sendable {
         guard let encoded = try? JSONValue(parsing: JSONEncoder().encode(payload)), value.isContained(in: encoded) else {
             throw .init(detail: "payload に知らない欄がある")
         }
+        try Self.validate(payload)
+        self.init(
+            target: target,
+            revision: revision ?? 0,
+            builds: payload.builds,
+            whatsNew: payload.whatsNew,
+            releaseType: payload.releaseType,
+            earliestReleaseDate: payload.earliestReleaseDate,
+            listing: payload.listing ?? [],
+            appReview: payload.appReview,
+            screenshots: payload.screenshots,
+            intent: IntentReference(keyId: envelope.keyId, nonce: envelope.nonce)
+        )
+    }
+
+    /// payload の欄どうしの決まり（ビルド・What's New・配信の方式と日時・掲載文・App Review の情報）
+    private static func validate(_ payload: Payload) throws(MalformedIntent) {
         if payload.builds.isEmpty || payload.builds.count > Self.buildLimit { throw .init(detail: "builds は 1〜\(Self.buildLimit) 個") }
         if Set(payload.builds.map(\.platform)).count != payload.builds.count { throw .init(detail: "builds のプラットフォームが重複している") }
         if payload.builds.contains(where: { !ReleaseFile.isBuildNumber($0.build) }) { throw .init(detail: "builds の build の形が違う") }
@@ -133,26 +160,27 @@ public struct SubmitForReviewIntent: Equatable, Sendable {
         if (payload.releaseType == .scheduled) != (payload.earliestReleaseDate != nil) {
             throw .init(detail: "earliestReleaseDate は、配信の方式が scheduled のときだけ持つ")
         }
-        let listing = payload.listing ?? []
-        let listingProblems = ListingText.problems(of: listing, name: "listing")
+        let listingProblems = ListingText.problems(of: payload.listing ?? [], name: "listing")
         if !listingProblems.isEmpty { throw .init(detail: listingProblems.joined(separator: "、")) }
-        self.init(
-            target: target,
-            revision: revision ?? 0,
-            builds: payload.builds,
-            whatsNew: payload.whatsNew,
-            releaseType: payload.releaseType,
-            earliestReleaseDate: payload.earliestReleaseDate,
-            listing: listing,
-            intent: IntentReference(keyId: envelope.keyId, nonce: envelope.nonce)
-        )
+        if let appReview = payload.appReview {
+            if appReview.isEmpty { throw .init(detail: "appReview に変える欄が無い") }
+            let problems = ReviewInformation.problems(of: appReview, name: "appReview")
+            if !problems.isEmpty { throw .init(detail: problems.joined(separator: "、")) }
+        }
+        if let problems = payload.screenshots?.problems, !problems.isEmpty { throw .init(detail: problems.joined(separator: "、")) }
     }
 
     public var targetVersion: String { String(revision) }
 
     public var payload: [String: JSONValue] {
         Self.payload(
-            builds: builds, whatsNew: whatsNew, releaseType: releaseType, earliestReleaseDate: earliestReleaseDate, listing: listing
+            builds: builds,
+            whatsNew: whatsNew,
+            releaseType: releaseType,
+            earliestReleaseDate: earliestReleaseDate,
+            listing: listing,
+            appReview: appReview,
+            screenshots: screenshots
         )
     }
 
@@ -162,14 +190,18 @@ public struct SubmitForReviewIntent: Equatable, Sendable {
         whatsNew: [LocalizedText],
         releaseType: AppStoreReleaseType,
         earliestReleaseDate: Timestamp?,
-        listing: [ListingText] = []
+        listing: [ListingText] = [],
+        appReview: ReviewInformation? = nil,
+        screenshots: SubmissionFile.ScreenshotDecision? = nil
     ) -> [String: JSONValue] {
         let payload = Payload(
             builds: builds,
             whatsNew: whatsNew,
             releaseType: releaseType,
             earliestReleaseDate: earliestReleaseDate,
-            listing: listing.isEmpty ? nil : listing
+            listing: listing.isEmpty ? nil : listing,
+            appReview: appReview,
+            screenshots: screenshots
         )
         guard case let .object(fields)? = (try? JSONEncoder().encode(payload)).flatMap({ try? JSONValue(parsing: $0) }) else { return [:] }
         return fields
@@ -218,6 +250,58 @@ public struct WithdrawSubmissionIntent: Equatable, Sendable {
     }
 
     public var payload: [String: JSONValue] { [:] }
+}
+
+/// スクショを撮り直す人の意図（`kind` が `retakeScreenshots`。`docs/renewal/store-screenshots.md` の「撮り直す」）。審査に出す前だけ。
+/// 今の release ブランチの先頭で撮り直す。`displayTypes`（配置グループ）・`locales`（App Store Connect の言語）で撮り直す組を選べ、空ならすべて
+public struct RetakeScreenshotsIntent: Equatable, Sendable {
+    public static let kind = "retakeScreenshots"
+    /// 選べる表示サイズ・言語の数の上限
+    public static let limit = 50
+
+    public var target: SubmissionTarget
+    public var displayTypes: [String]
+    public var locales: [String]
+    public var intent: IntentReference
+
+    public init(target: SubmissionTarget, displayTypes: [String] = [], locales: [String] = [], intent: IntentReference) {
+        self.target = target
+        self.displayTypes = displayTypes
+        self.locales = locales
+        self.intent = intent
+    }
+
+    public init(envelope: IntentEnvelope) throws(MalformedIntent) {
+        let (target, _) = try SubmissionTarget.read(envelope, kind: Self.kind, revisioned: false)
+        let reader = try PayloadReader(envelope.payload, allowed: ["displayTypes", "locales"])
+        let displayTypes = try Self.strings(reader.payload["displayTypes"], field: "displayTypes")
+        let locales = try Self.strings(reader.payload["locales"], field: "locales")
+        guard displayTypes.allSatisfy(StoreScreenshotSettings.isDisplayType) else {
+            throw .init(detail: "displayTypes は App Store Connect の表示サイズ（配置グループ）")
+        }
+        guard locales.allSatisfy(LocalizedText.isLocale) else { throw .init(detail: "locales は App Store Connect の言語") }
+        let intent = IntentReference(keyId: envelope.keyId, nonce: envelope.nonce)
+        self.init(target: target, displayTypes: displayTypes, locales: locales, intent: intent)
+    }
+
+    public var payload: [String: JSONValue] {
+        var payload: [String: JSONValue] = [:]
+        if !displayTypes.isEmpty { payload["displayTypes"] = .array(displayTypes.map(JSONValue.string)) }
+        if !locales.isEmpty { payload["locales"] = .array(locales.map(JSONValue.string)) }
+        return payload
+    }
+
+    /// 重ならない文字列の並び（無ければ空）
+    private static func strings(_ value: JSONValue?, field: String) throws(MalformedIntent) -> [String] {
+        guard let value else { return [] }
+        guard case let .array(items) = value, items.count <= limit else { throw .init(detail: "\(field) は \(limit) 個までの並び") }
+        var strings: [String] = []
+        for item in items {
+            guard case let .string(text) = item, !strings.contains(text) else { throw .init(detail: "\(field) は重ならない文字列") }
+            strings.append(text)
+        }
+        return strings
+    }
 }
 
 /// このリリースをやめる人の意図（`kind` が `abandonRelease`）。審査に出す前・取り下げた後・断られた後だけ。記録に終わりの印を付けるだけで、

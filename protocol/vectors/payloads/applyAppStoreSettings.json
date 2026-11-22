@@ -32,6 +32,33 @@
       "read": "valid"
     },
     {
+      "name": "first-version",
+      "payload": {
+        "supportUrl": "https://example.com/support",
+        "marketingUrl": "https://example.com",
+        "copyright": "2026 Shilokuma Inc.",
+        "reviewContact": "copyFromOtherApp"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "copyright-only",
+      "payload": {
+        "copyright": "© 2026 しろくま"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "review-contact-only",
+      "payload": {
+        "reviewContact": "copyFromOtherApp"
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
       "name": "empty",
       "payload": {},
       "schemaValid": false,
@@ -73,6 +100,57 @@
       "name": "paid",
       "payload": {
         "price": "paid"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "marketing-only",
+      "payload": {
+        "marketingUrl": "https://example.com"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "http-support-url",
+      "payload": {
+        "supportUrl": "http://example.com/support"
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "copyright-with-newline",
+      "payload": {
+        "copyright": "2026\nShilokuma Inc."
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "copyright-with-trailing-space",
+      "payload": {
+        "copyright": "2026 Shilokuma Inc. "
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "empty-copyright",
+      "payload": {
+        "copyright": ""
+      },
+      "schemaValid": false,
+      "read": "malformed"
+    },
+    {
+      "name": "review-contact-values",
+      "payload": {
+        "reviewContact": {
+          "contactFirstName": "Taro",
+          "contactEmail": "taro@example.com"
+        }
       },
       "schemaValid": false,
       "read": "malformed"

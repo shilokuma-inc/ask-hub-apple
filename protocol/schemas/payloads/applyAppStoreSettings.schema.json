@@ -2,6 +2,6 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/applyAppStoreSettings.schema.json",
   "title": "決まった値を App Store Connect に書く人の意図（kind が applyAppStoreSettings）の payload",
-  "description": "封筒の repo が対象のリポジトリ。target・targetVersion は書かない。書く欄だけを持つ（contentRights・primaryCategory・primarySubcategory・privacyPolicyUrl・price・availability。1 つ以上）。知らない欄のある payload は読まない",
+  "description": "封筒の repo が対象のリポジトリ。target・targetVersion は書かない。書く欄だけを持つ（contentRights・primaryCategory・primarySubcategory・privacyPolicyUrl・price・availability・supportUrl・marketingUrl・copyright・reviewContact。marketingUrl のほかに 1 つ以上）。知らない欄のある payload は読まない",
   "$ref": "../state/app-store.schema.json#/$defs/settings"
 }

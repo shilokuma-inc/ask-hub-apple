@@ -56,6 +56,22 @@ extension StateClientServiceTests {
         await #expect(throws: ClientServiceError.self) { try await fixture.service.screenshot(at: "keys/1.json") }
     }
 
+    /// App Store のスクショの見本は base64 の文字で置かれる（1 回のコミットでまとめて書くため）ので、画像に戻して返す。前の形（`.jpg`）はそのまま
+    @Test
+    func storeScreenshotPreviewsAreDecodedFromBase64() async throws {
+        let base = "repos/\(Self.repo)/store-screenshots/1.2.0"
+        let preview = "\(base)/\(String(repeating: "d", count: 40))/IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE/ja/2.b64"
+        let legacy = "\(base)/IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE/ja/2.jpg"
+        var files = Self.reviewingEpic()
+        files[preview] = Data("JPEG の見本".utf8).base64EncodedString()
+        files[legacy] = "前の形の見本"
+        files["\(base)/x/IPHONE/ja/3.b64"] = "abcde"
+        let fixture = try makeService(files: files)
+        #expect(try await fixture.service.screenshot(at: preview) == Data("JPEG の見本".utf8))
+        #expect(try await fixture.service.screenshot(at: legacy) == Data("前の形の見本".utf8))
+        await #expect(throws: ClientServiceError.self) { try await fixture.service.screenshot(at: "\(base)/x/IPHONE/ja/3.b64") }
+    }
+
     /// 撮影の設定を後で外した（・repo.json を読めない）ときも、撮ったスクショがあれば「設定が無い」とは出さない
     @Test
     func storedScreenshotsKeepTheirNoteWithoutSetting() {

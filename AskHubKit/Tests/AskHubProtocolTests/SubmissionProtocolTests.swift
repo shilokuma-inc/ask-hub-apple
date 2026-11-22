@@ -19,6 +19,9 @@ extension EpicIntentsTests {
         },
         Kind(vectors: "payloads/abandonRelease.json", kind: "abandonRelease", target: submissionTarget, targetVersion: nil) {
             try AbandonReleaseIntent(envelope: $0).payload
+        },
+        Kind(vectors: "payloads/retakeScreenshots.json", kind: "retakeScreenshots", target: submissionTarget, targetVersion: nil) {
+            try RetakeScreenshotsIntent(envelope: $0).payload
         }
     ]
 }
@@ -69,6 +72,7 @@ struct SubmissionProtocolTests {
             builds: builds,
             whatsNew: whatsNew,
             listing: listing,
+            screenshots: .init(state: .notConfigured, startedAt: Self.at, finishedAt: Self.at),
             revision: 2,
             submit: submit,
             review: review,

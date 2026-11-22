@@ -49,6 +49,8 @@ enum HumanIntent: Hashable {
     case withdrawSubmission(repositoryID: TargetRepository.ID, version: String)
     /// このリリースをやめる
     case abandonRelease(repositoryID: TargetRepository.ID, version: String)
+    /// スクショを撮り直す（`displayTypes`・`locales` が空なら、すべての組）
+    case retakeScreenshots(repositoryID: TargetRepository.ID, version: String, displayTypes: [String], locales: [String])
     /// 対象から外す（終わっていない epic があれば司令塔が断る。状態リポジトリのファイルと GitHub のリポジトリは消さない）
     case removeRepository(repositoryID: TargetRepository.ID)
     /// ビルドの設定を入れる（`json` は `repo.json` の `build` と同じ形。送るたびにまるごと置き換える）
@@ -137,6 +139,9 @@ extension HumanIntent {
 
         case let .abandonRelease(_, version):
             "リリースをやめる（\(version)）"
+
+        case let .retakeScreenshots(_, version, _, _):
+            "スクショの撮り直し（\(version)）"
 
         case .removeRepository(let repositoryID):
             "対象から外す（\(repositoryID)）"

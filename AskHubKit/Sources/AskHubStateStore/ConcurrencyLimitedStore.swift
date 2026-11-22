@@ -88,6 +88,10 @@ public struct ConcurrencyLimitedStore: StateStore {
         try await limited { () throws(StateStoreError) in try await base.move(moves, message: message) }
     }
 
+    public func writeTextFiles(_ files: [String: String], message: String) async throws(StateStoreError) {
+        try await limited { () throws(StateStoreError) in try await base.writeTextFiles(files, message: message) }
+    }
+
     public func listFiles(under directory: String) async throws(StateStoreError) -> [DirectoryEntry]? {
         try await limited { () throws(StateStoreError) in try await base.listFiles(under: directory) }
     }
