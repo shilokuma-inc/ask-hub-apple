@@ -252,6 +252,58 @@ public struct WithdrawSubmissionIntent: Equatable, Sendable {
     public var payload: [String: JSONValue] { [:] }
 }
 
+/// スクショを撮り直す人の意図（`kind` が `retakeScreenshots`。`docs/renewal/store-screenshots.md` の「撮り直す」）。審査に出す前だけ。
+/// 今の release ブランチの先頭で撮り直す。`displayTypes`（配置グループ）・`locales`（App Store Connect の言語）で撮り直す組を選べ、空ならすべて
+public struct RetakeScreenshotsIntent: Equatable, Sendable {
+    public static let kind = "retakeScreenshots"
+    /// 選べる表示サイズ・言語の数の上限
+    public static let limit = 50
+
+    public var target: SubmissionTarget
+    public var displayTypes: [String]
+    public var locales: [String]
+    public var intent: IntentReference
+
+    public init(target: SubmissionTarget, displayTypes: [String] = [], locales: [String] = [], intent: IntentReference) {
+        self.target = target
+        self.displayTypes = displayTypes
+        self.locales = locales
+        self.intent = intent
+    }
+
+    public init(envelope: IntentEnvelope) throws(MalformedIntent) {
+        let (target, _) = try SubmissionTarget.read(envelope, kind: Self.kind, revisioned: false)
+        let reader = try PayloadReader(envelope.payload, allowed: ["displayTypes", "locales"])
+        let displayTypes = try Self.strings(reader.payload["displayTypes"], field: "displayTypes")
+        let locales = try Self.strings(reader.payload["locales"], field: "locales")
+        guard displayTypes.allSatisfy(StoreScreenshotSettings.isDisplayType) else {
+            throw .init(detail: "displayTypes は App Store Connect の表示サイズ（配置グループ）")
+        }
+        guard locales.allSatisfy(LocalizedText.isLocale) else { throw .init(detail: "locales は App Store Connect の言語") }
+        let intent = IntentReference(keyId: envelope.keyId, nonce: envelope.nonce)
+        self.init(target: target, displayTypes: displayTypes, locales: locales, intent: intent)
+    }
+
+    public var payload: [String: JSONValue] {
+        var payload: [String: JSONValue] = [:]
+        if !displayTypes.isEmpty { payload["displayTypes"] = .array(displayTypes.map(JSONValue.string)) }
+        if !locales.isEmpty { payload["locales"] = .array(locales.map(JSONValue.string)) }
+        return payload
+    }
+
+    /// 重ならない文字列の並び（無ければ空）
+    private static func strings(_ value: JSONValue?, field: String) throws(MalformedIntent) -> [String] {
+        guard let value else { return [] }
+        guard case let .array(items) = value, items.count <= limit else { throw .init(detail: "\(field) は \(limit) 個までの並び") }
+        var strings: [String] = []
+        for item in items {
+            guard case let .string(text) = item, !strings.contains(text) else { throw .init(detail: "\(field) は重ならない文字列") }
+            strings.append(text)
+        }
+        return strings
+    }
+}
+
 /// このリリースをやめる人の意図（`kind` が `abandonRelease`）。審査に出す前・取り下げた後・断られた後だけ。記録に終わりの印を付けるだけで、
 /// release ブランチ・App Store Connect の版は消さない。payload は持たない
 public struct AbandonReleaseIntent: Equatable, Sendable {

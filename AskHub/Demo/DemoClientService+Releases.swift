@@ -78,6 +78,14 @@ extension DemoClientService {
                 submission.awaitsSubmission = false
             }
 
+        case let .retakeScreenshots(repositoryID, version, _, _):
+            updateSoon(Submission.id(repositoryID, version), sending: .retake) { submission in
+                submission.screenshots?.state = .capturing
+                submission.screenshots?.progress = "GitHub Actions の撮影を待っています"
+                submission.awaitsSubmission = false
+                submission.canRetakeScreenshots = false
+            }
+
         default:
             break
         }

@@ -8,11 +8,10 @@ import Foundation
 /// 人が直す失敗は `failed` にし、スクショを変えずに審査に出せるようにする
 extension ReleaseWatch {
     func prepareScreenshots(_ file: SubmissionFile, settings: RepositoryFile) async -> SubmissionFile {
+        if let advanced = await advanceRequestedScreenshots(file, settings: settings) { return advanced }
         guard let branch = file.branch, file.screenshots?.state.isSettled != true else { return file }
         let key = Self.screenshotKey(file)
         guard !capturing.contains(key) else { return file }
-        // 撮って比べ終え、App Store Connect のライブラリの取り込みを待っている（撮り方によらない）
-        if file.screenshots?.library != nil { return await advanceLibraryUpload(file, settings: settings) }
         let now = context.timestamp
         let storeSettings: StoreScreenshotSettings
         switch settings.build?.storeScreenshots {
@@ -52,6 +51,20 @@ extension ReleaseWatch {
             await self.captureScreenshots(started, commit: commit, build: build, settings: storeSettings, repository: settings)
         }
         return started
+    }
+
+    /// 撮り方によらない段取り。人が頼んだ撮り直しを始める（始めたら、続けて撮り直しを進める）か、
+    /// 撮って比べ終えた後の App Store Connect のライブラリの取り込みを待つ。どちらでもなければ nil
+    private func advanceRequestedScreenshots(_ file: SubmissionFile, settings: RepositoryFile) async -> SubmissionFile? {
+        if file.screenshots?.awaitsRetake == true {
+            let started = await startRetake(file, settings: settings)
+            guard started.screenshots?.awaitsRetake == false else { return started }
+            return await prepareScreenshots(started, settings: settings)
+        }
+        guard file.screenshots?.state == .capturing, file.screenshots?.library != nil, !capturing.contains(Self.screenshotKey(file)) else {
+            return nil
+        }
+        return await advanceLibraryUpload(file, settings: settings)
     }
 
     /// 撮って比べ、結果を記録に書く（見回りの外で動く）。待てば直る失敗は、撮り始めた印のまま次の見回りでやり直す
@@ -116,6 +129,12 @@ extension ReleaseWatch {
     /// `revision` を上げる。撮っている間は、撮影のワークフローの実行（`run`）と、実行が撮ったコミットの進みだけを写す。審査に出した後は変えない
     static func mergeScreenshots(_ changed: SubmissionFile, into file: inout SubmissionFile) {
         guard file.submit == nil, let screenshots = changed.screenshots else { return }
+        // 頼まれた撮り直しを始めた。同じ頼みの、まだ始めていない撮影を置き換える
+        if let retake = screenshots.retake, retake.startedAt != nil, let current = file.screenshots, current.awaitsRetake,
+           current.retake?.approval == retake.approval {
+            file.screenshots = screenshots
+            return
+        }
         if let current = file.screenshots {
             let isSameCapture = current.commit == screenshots.commit || current.startedAt == screenshots.startedAt
             guard current.state == .capturing, isSameCapture else { return }

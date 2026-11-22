@@ -3,6 +3,21 @@ import Foundation
 // `SubmissionFile` の、App Store のスクショ（`docs/renewal/release.md` の「スクショ」）
 
 extension SubmissionFile {
+    /// スクショを撮り直せないわけ（`retakeScreenshots`）。撮り直せるなら nil。審査に出した後・UI テストで撮っている途中・
+    /// 頼んだ撮り直しを始める前は撮り直せない
+    public var retakeProblem: String? {
+        if origin != .askhub { return "AskHub で始めたリリースだけ、スクショを撮り直せる" }
+        if isEnded { return "\(version) のリリースはもう終わっている" }
+        if submit != nil || isSubmitting || hasReviewInFlight { return "\(version) は審査に出した後なので、スクショを撮り直せない" }
+        guard let shots = screenshots else { return "\(version) のスクショはまだ撮り始めていない" }
+        if shots.state == .notConfigured { return "スクショの撮り方の設定（build.storeScreenshots）が無い" }
+        if shots.state == .capturing, shots.run == nil, shots.library == nil {
+            return "UI テストでスクショを撮っている途中。撮り終えてから撮り直す"
+        }
+        if shots.awaitsRetake { return "スクショの撮り直しをもう頼んでいる" }
+        return nil
+    }
+
     /// 撮影の様子
     public enum ScreenshotState: String, Codable, Sendable, CaseIterable {
         /// 撮っている（終わるまで審査に出す準備はそろわない）
@@ -176,6 +191,44 @@ extension SubmissionFile {
         }
     }
 
+    /// 人が頼んだスクショの撮り直し（`retakeScreenshots`）。司令塔が撮り直しを始めたら `startedAt` を付ける
+    public struct Retake: Codable, Equatable, Sendable {
+        /// 撮り直す表示サイズ（配置グループ）。空ならすべて
+        public var displayTypes: [String]
+        /// 撮り直す言語（App Store Connect の言語）。空ならすべて
+        public var locales: [String]
+        public var approval: IntentReference
+        public var at: Timestamp
+        /// 撮り直しを始めた時刻。まだなら nil（その間は審査に出す準備をそろえない）
+        public var startedAt: Timestamp?
+        /// 一部だけ撮り直すとき、引き継ぐ組を撮ったコミット（元の画像をこのコミットの置き場所から写す）
+        public var from: String?
+
+        public init(
+            displayTypes: [String] = [],
+            locales: [String] = [],
+            approval: IntentReference,
+            at: Timestamp,
+            startedAt: Timestamp? = nil,
+            from: String? = nil
+        ) {
+            self.displayTypes = displayTypes
+            self.locales = locales
+            self.approval = approval
+            self.at = at
+            self.startedAt = startedAt
+            self.from = from
+        }
+
+        /// 一部の組だけを撮り直す
+        public var isPartial: Bool { !displayTypes.isEmpty || !locales.isEmpty }
+
+        /// 撮り直す組か
+        public func covers(displayType: String, locale: String) -> Bool {
+            (displayTypes.isEmpty || displayTypes.contains(displayType)) && (locales.isEmpty || locales.contains(locale))
+        }
+    }
+
     /// App Store のスクショを撮って比べた結果
     public struct StoreScreenshots: Codable, Equatable, Sendable {
         public var state: ScreenshotState
@@ -192,6 +245,11 @@ extension SubmissionFile {
         public var run: CaptureRun?
         /// App Store Connect のライブラリに先に上げた様子（上げている間・取り込みを待つ間。撮影は `capturing` のまま）
         public var library: LibraryUpload?
+        /// 人が頼んだ撮り直し（受け付けた頼みと、撮り直している・撮り直した組）
+        public var retake: Retake?
+
+        /// 撮り直しを頼まれ、まだ始めていない
+        public var awaitsRetake: Bool { retake != nil && retake?.startedAt == nil }
 
         public init(
             state: ScreenshotState,
@@ -202,7 +260,8 @@ extension SubmissionFile {
             skipped: [SkippedDisplayType] = [],
             failure: String? = nil,
             run: CaptureRun? = nil,
-            library: LibraryUpload? = nil
+            library: LibraryUpload? = nil,
+            retake: Retake? = nil
         ) {
             self.state = state
             self.commit = commit
@@ -213,6 +272,7 @@ extension SubmissionFile {
             self.failure = failure
             self.run = run
             self.library = library
+            self.retake = retake
         }
 
         /// 合わない点
@@ -220,6 +280,13 @@ extension SubmissionFile {
             var problems: [String] = []
             problems += run?.problems ?? []
             problems += library?.problems ?? []
+            if let retake {
+                let shaped = retake.displayTypes.allSatisfy(StoreScreenshotSettings.isDisplayType)
+                    && retake.locales.allSatisfy(LocalizedText.isLocale)
+                if !shaped || retake.from.map({ !ReleaseFile.isCommit($0) }) == true {
+                    problems.append("screenshots の retake の displayTypes・locales・from の形が違う")
+                }
+            }
             let rejected = sets.flatMap(\.shots).compactMap(\.rejected)
             if rejected.contains(where: { $0.isEmpty || $0.count > 1000 }) { problems.append("screenshots の rejected は 1〜1,000 文字") }
             if commit.map({ !ReleaseFile.isCommit($0) }) ?? false { problems.append("screenshots の commit が 40 桁の 16 進でない") }

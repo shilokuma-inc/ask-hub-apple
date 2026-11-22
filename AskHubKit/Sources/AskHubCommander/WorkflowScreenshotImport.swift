@@ -45,11 +45,15 @@ struct WorkflowScreenshotImport: Sendable {
         let workspace = FileManager.default.temporaryDirectory
             .appendingPathComponent("askhub-artifacts-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: workspace) }
+        // 一部だけを撮り直すときは、撮り直す組だけを取り込み、ほかの組は引き継ぐ（`ReleaseWatch+ScreenshotRetake`）
+        let retake = file.screenshots?.retake.flatMap { $0.isPartial ? $0 : nil }
         var imported = Imported(
             comparer: .init(store: store, repo: file.repo, version: file.version, commit: commit, originals: originals),
-            skipped: skipped
+            skipped: skipped,
+            retake: retake
         )
-        for (type, name) in workflow.artifacts.sorted(by: { $0.key < $1.key }) {
+        for (type, name) in workflow.artifacts.sorted(by: { $0.key < $1.key })
+            where retake.map({ $0.displayTypes.isEmpty || $0.displayTypes.contains(type) }) ?? true {
             switch try await download(name, from: artifacts, repo: file.repo, into: workspace) {
             case let .success(folders):
                 try await imported.compare(type, artifact: name, folders: folders, live: live, workflow: workflow)
@@ -58,7 +62,9 @@ struct WorkflowScreenshotImport: Sendable {
             }
         }
         // クライアントは最初の組の言語を基準の言語とみなすので、基準の言語の組を先に並べる
-        let sets = imported.sets.sorted { Self.order($0, base: workflow.baseLocale) < Self.order($1, base: workflow.baseLocale) }
+        let carried = retake == nil ? [] : (file.screenshots?.sets ?? [])
+        let base = workflow.baseLocale
+        let sets = (carried + imported.sets).sorted { Self.order($0, base: base) < Self.order($1, base: base) }
         skipped = imported.skipped
         let previews = imported.previews
         guard sets.contains(where: { $0.locale == workflow.baseLocale }) else {
@@ -77,6 +83,8 @@ struct WorkflowScreenshotImport: Sendable {
         var sets: [SubmissionFile.ScreenshotSet] = []
         var previews: [String: String] = [:]
         var skipped: [SubmissionFile.SkippedDisplayType]
+        /// 一部だけを撮り直す頼み（撮り直す言語だけを取り込む）
+        var retake: SubmissionFile.Retake?
 
         /// 1 つの artifact（表示サイズ）の、言語ごとのフォルダの PNG を名前の順に並べ、配信中の版の組と比べる
         mutating func compare(
@@ -86,7 +94,7 @@ struct WorkflowScreenshotImport: Sendable {
             live: Live,
             workflow: StoreScreenshotWorkflow
         ) async throws {
-            for locale in live.locales {
+            for locale in live.locales where retake?.covers(displayType: type, locale: locale) ?? true {
                 let folder = workflow.languages[locale]?.language ?? locale
                 guard let files = folders[folder], !files.isEmpty else {
                     skipped.append(.init(displayType: type, reason: "\(locale): artifact の screenshots-\(name) に \(folder) のフォルダが無い"))

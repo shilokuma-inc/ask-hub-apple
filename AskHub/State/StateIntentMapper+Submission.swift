@@ -26,6 +26,9 @@ extension StateIntentMapper {
         case let .abandonRelease(repositoryID, version):
             return index.submissions[Submission.id(repositoryID, version)]?.canAbandon == true
 
+        case let .retakeScreenshots(repositoryID, version, _, _):
+            return index.submissions[Submission.id(repositoryID, version)]?.canRetakeScreenshots == true
+
         default:
             return false
         }
@@ -70,6 +73,12 @@ extension StateIntentMapper {
         case let .abandonRelease(repositoryID, version):
             let entry = try entry(repositoryID, version, \.canAbandon, unavailable: "このリリースは、いまはやめられません（審査中か、審査に通っています）")
             return .abandonRelease(entry.target)
+
+        case let .retakeScreenshots(repositoryID, version, displayTypes, locales):
+            let entry = try entry(
+                repositoryID, version, \.canRetakeScreenshots, unavailable: "この版は、いまはスクショを撮り直せません（審査に出した後か、撮っている途中）"
+            )
+            return .retakeScreenshots(entry.target, displayTypes: displayTypes, locales: locales)
 
         default:
             throw Self.unsupported

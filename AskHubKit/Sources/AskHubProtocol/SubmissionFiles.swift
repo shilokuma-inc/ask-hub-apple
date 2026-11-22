@@ -364,7 +364,8 @@ public struct SubmissionFile: StateFile {
 
     /// 審査に出す準備（What's New の下書き・掲載文の案・スクショの撮影と、release ブランチから上げたビルド）がそろった
     public var isPrepared: Bool {
-        origin == .askhub && whatsNew != nil && listing != nil && screenshots?.state.isSettled == true && !builds.isEmpty
+        origin == .askhub && whatsNew != nil && listing != nil && screenshots?.state.isSettled == true && screenshots?.awaitsRetake != true
+            && !builds.isEmpty
     }
 
     /// 審査に出してから配信までの間のプラットフォームがある

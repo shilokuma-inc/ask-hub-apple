@@ -67,7 +67,8 @@ extension StateSnapshotBuilder {
             canSubmit: file.awaitsSubmission && idle,
             canDistribute: file.awaitsDistribution && idle,
             canWithdraw: file.canWithdraw && idle,
-            canAbandon: file.canAbandon && idle
+            canAbandon: file.canAbandon && idle,
+            canRetakeScreenshots: file.retakeProblem == nil && idle
         )
     }
 
@@ -104,24 +105,28 @@ extension StateSnapshotBuilder {
             createdAt: file.createdAt.date,
             updatedAt: file.updatedAt.date
         )
-        submission.submitted = file.submit.map { submit in
-            Submission.Submitted(
-                builds: submit.builds.map { Submission.Build(platform: $0.platform.rawValue, build: $0.build) },
-                whatsNew: submit.whatsNew.map { Submission.Localized(locale: $0.locale, text: $0.text) },
-                releaseType: releaseType(submit.releaseType, date: submit.earliestReleaseDate),
-                at: submit.at.date,
-                listing: (submit.listing ?? []).map(listingTexts),
-                appReview: submit.appReview.map(reviewInfo)
-            )
-        }
+        submission.submitted = file.submit.map(submitted)
         submission.slots = file.appStoreVersions.map { $0.map(slot) }
         submission.screenshots = file.screenshots.map(storeScreenshots)
         submission.awaitsSubmission = file.awaitsSubmission
         submission.awaitsDistribution = file.awaitsDistribution
         submission.canWithdraw = file.canWithdraw
         submission.canAbandon = file.canAbandon
+        submission.canRetakeScreenshots = file.retakeProblem == nil
         submission.isSubmitting = file.isSubmitting
         return submission
+    }
+
+    /// 人が審査に出した中身
+    private static func submitted(_ submit: SubmissionFile.Submit) -> Submission.Submitted {
+        Submission.Submitted(
+            builds: submit.builds.map { Submission.Build(platform: $0.platform.rawValue, build: $0.build) },
+            whatsNew: submit.whatsNew.map { Submission.Localized(locale: $0.locale, text: $0.text) },
+            releaseType: releaseType(submit.releaseType, date: submit.earliestReleaseDate),
+            at: submit.at.date,
+            listing: (submit.listing ?? []).map(listingTexts),
+            appReview: submit.appReview.map(reviewInfo)
+        )
     }
 
     private static func storeScreenshots(_ file: SubmissionFile.StoreScreenshots) -> Submission.StoreScreenshots {
@@ -219,6 +224,7 @@ extension StateSnapshotBuilder {
         case DistributeReleaseIntent.kind: .distribute
         case WithdrawSubmissionIntent.kind: .withdraw
         case AbandonReleaseIntent.kind: .abandon
+        case RetakeScreenshotsIntent.kind: .retake
         default: nil
         }
     }
