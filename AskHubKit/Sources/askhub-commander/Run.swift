@@ -26,6 +26,8 @@ extension AskHubCommanderMain {
         let simulators = runtime.straySimulatorSweep(log: log)
         let archive = FinishedEpicArchive(context: context, log: log)
         let releases = releaseWatch(runtime: runtime, context: context, transport: transport)
+        // app-kit（public）は git で読む。版の中身はコミットで決まるので、1 つの部品を準備・広げる・ずれの点検で使い回す
+        let (admin, appKit) = (runtime.adminTokens.map { AdminGitHub(tokens: $0, transport: transport) }, appKitSource(runtime))
         let loop = CommanderLoop(
             context: context,
             settings: .init(
@@ -55,13 +57,23 @@ extension AskHubCommanderMain {
             releases: releases,
             protection: protectionWatch(secrets: secrets, context: context, transport: transport),
             candidates: candidatesWatch(runtime: runtime, context: context, transport: transport),
-            admin: runtime.adminTokens.map { AdminGitHub(tokens: $0, transport: transport) },
-            appKit: GitAppKitSource(setup: .init(directory: runtime.paths.appKit), runner: ProcessCommandRunner()),
+            admin: admin,
+            appKit: appKit,
+            appKitPilot: configuration.appKitPilot ?? AppKitPolicy.defaultPilot,
+            appKitWatch: appKitWatch(appKit: appKit, admin: admin, secrets: secrets, context: context, transport: transport),
             cleanup: runtime.cleanupService(context: context, log: log)
         )
+        logStarted(configuration)
+        await loop.run()
+    }
+
+    private static func logStarted(_ configuration: MachineConfiguration) {
         let pid = ProcessInfo.processInfo.processIdentifier
         log("起動しました（版 \(CommanderVersion.build.summary)、pid \(pid)、\(configuration.mac)、状態リポジトリ \(configuration.stateRepository)）")
-        await loop.run()
+    }
+
+    private static func appKitSource(_ runtime: MachineRuntime) -> GitAppKitSource {
+        GitAppKitSource(setup: .init(directory: runtime.paths.appKit), runner: ProcessCommandRunner())
     }
 
     /// 対象のアプリのアイコンは、常時オンの Mac の clone から取り出し、ビルドに使う Xcode の Icon Composer で書き出す
@@ -85,6 +97,23 @@ extension AskHubCommanderMain {
         ProtectionWatch(
             context: context,
             github: { GitHubPullRequests(repository: $0, transport: transport, token: MachineRuntime.githubTokens(in: secrets)) },
+            log: log
+        )
+    }
+
+    /// app-kit の見張り。ずれの点検は毎日のトークンで読むだけにし、版を広げるのは人の意図を受けた後だけ管理用のトークンで行う
+    private static func appKitWatch(
+        appKit: GitAppKitSource,
+        admin: AdminGitHub?,
+        secrets: KeychainSecretStore,
+        context: CommanderContext,
+        transport: any HTTPTransport
+    ) -> AppKitWatch {
+        AppKitWatch(
+            context: context,
+            source: appKit,
+            github: { GitHubPullRequests(repository: $0, transport: transport, token: MachineRuntime.githubTokens(in: secrets)) },
+            admin: admin,
             log: log
         )
     }

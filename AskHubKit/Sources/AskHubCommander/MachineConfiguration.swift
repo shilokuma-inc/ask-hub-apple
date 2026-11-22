@@ -59,6 +59,8 @@ public struct MachineConfiguration: Codable, Equatable, Sendable {
     /// ビルドとテストに使う Xcode（`Xcode.app` か、その下の `Contents/Developer` の絶対パス。`xcode` で決める）。nil なら xcode-select で選んだもの。
     /// 決めておけば、人が xcode-select を切り替えても、ワーカーのビルドとテストは同じ Xcode で流れる（子に `DEVELOPER_DIR` で渡す）
     public var xcode: String?
+    /// app-kit の版を広げるときの試しの 1 本（司令塔だけ）。nil なら `AppKitPolicy.defaultPilot`
+    public var appKitPilot: RepositoryFullName?
 
     public init(
         stateRepository: RepositoryFullName,
@@ -72,7 +74,8 @@ public struct MachineConfiguration: Codable, Equatable, Sendable {
         adminOwners: [String]? = nil,
         apns: APNsConfiguration? = nil,
         appStoreConnect: [AppStoreConnectConfiguration]? = nil,
-        xcode: String? = nil
+        xcode: String? = nil,
+        appKitPilot: RepositoryFullName? = nil
     ) {
         self.stateRepository = stateRepository
         self.stateBranch = stateBranch
@@ -86,6 +89,7 @@ public struct MachineConfiguration: Codable, Equatable, Sendable {
         self.apns = apns
         self.appStoreConnect = appStoreConnect
         self.xcode = xcode
+        self.appKitPilot = appKitPilot
     }
 
     /// ビルドとテストに渡す `DEVELOPER_DIR`（`xcode` の `Contents/Developer`）。nil なら xcode-select で選んだもの
