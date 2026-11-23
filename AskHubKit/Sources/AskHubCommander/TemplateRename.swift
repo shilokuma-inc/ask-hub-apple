@@ -7,6 +7,8 @@ import Foundation
 /// - パスに元の名前（`OLD_NAME`）を含むファイルを、新しい名前のパスに移す
 /// - テキストのファイルの中の元の名前と元のリポジトリ（`OLD_REPO`）を置き換える（`scripts/rename.sh` 自身は除く）
 /// - `Configs/Project.xcconfig` の `APP_BUNDLE_IDENTIFIER` を、選んだ Bundle ID にする
+/// - 書き換えた Swift のファイルの import を並べ直す（テンプレートの `@testable import IOSTemplateApp` は Foundation と Testing の間にあり、
+///   新しい名前によっては SwiftLint の `sorted_imports` で CI が落ちるため。`rename.sh` の後に人が直していたもの）
 enum TemplateRename {
     static let scriptPath = "scripts/rename.sh"
     static let configPath = "Configs/Project.xcconfig"
@@ -76,9 +78,37 @@ enum TemplateRename {
             guard file.type == "blob", file.path != scriptPath, let text = texts[file.sha].flatMap({ $0 }) else { return renamed }
             var content = text.replacingOccurrences(of: old.name, with: new.appName).replacingOccurrences(of: old.repo, with: new.repo)
             if file.path == configPath { content = Self.settingBundleId(new.bundleId, in: content) }
+            if file.path.hasSuffix(".swift"), content != text { content = Self.sortingImports(content) }
             if content != text { renamed.content = content }
             return renamed
         }
+    }
+
+    /// 続いた import の行（`import X`・`@testable import X` など）を、モジュール名の順（大文字小文字を区別しない）に並べ直す。
+    /// 空の行やほかの行で区切られた並びは、それぞれの中だけで並べる（SwiftLint の `sorted_imports` と同じ見方）
+    static func sortingImports(_ source: String) -> String {
+        var lines = source.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        var start = 0
+        while start < lines.count {
+            guard importedModule(lines[start]) != nil else {
+                start += 1
+                continue
+            }
+            var end = start
+            while end < lines.count, importedModule(lines[end]) != nil { end += 1 }
+            let sorted = lines[start..<end].sorted { (importedModule($0) ?? "").lowercased() < (importedModule($1) ?? "").lowercased() }
+            lines.replaceSubrange(start..<end, with: sorted)
+            start = end
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// import の行なら、そのモジュール名（`@testable` などの属性と `import` の種類を除く）。import の行でなければ nil
+    private static func importedModule(_ line: String) -> String? {
+        let words = line.trimmingCharacters(in: .whitespaces).split(separator: " ").filter { !$0.hasPrefix("@") }
+        guard words.first == "import", words.count >= 2 else { return nil }
+        // `import struct Foundation.Date` のような種類つきの import は、最後の語がモジュール名
+        return String(words[words.count - 1])
     }
 
     /// `APP_BUNDLE_IDENTIFIER = …` の行を置き換える
