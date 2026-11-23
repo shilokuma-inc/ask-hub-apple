@@ -34,6 +34,17 @@ extension StateSnapshotBuilder {
         index.repositories[id] = index.removedRepositories.removeValue(forKey: id) ?? repo
     }
 
+    /// アプリ名を付けた対象のリポジトリ。テンプレートから作ったときのアプリ名が無ければ、
+    /// App Store の準備の記録（`app-store.json`）にある App Store Connect のアプリ名を使う（どちらも無ければリポジトリ名）
+    func namedRepository(_ file: RepositoryFile) -> TargetRepository {
+        var repository = Self.repository(file)
+        let setup = documents.appStoreSetups.first { $0.repo.rawValue.lowercased() == file.repo.rawValue.lowercased() }
+        if file.created?.appName == nil, let name = setup?.app?.name, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            repository.appName = name
+        }
+        return repository
+    }
+
     /// 画面に出すビルドの設定と、直すときの元の JSON
     static func buildSettings(_ build: RepositoryFile.Build) -> RepositoryBuildSettings {
         RepositoryBuildSettings(
