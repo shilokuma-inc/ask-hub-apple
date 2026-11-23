@@ -84,18 +84,23 @@ enum TemplateRename {
         }
     }
 
-    /// 続いた import の行（`import X`・`@testable import X` など）を、モジュール名の順（大文字小文字を区別しない）に並べ直す。
-    /// 空の行やほかの行で区切られた並びは、それぞれの中だけで並べる（SwiftLint の `sorted_imports` と同じ見方）
+    /// ファイルの先頭の、続いた import の行（`import X`・`@testable import X` など）を、モジュール名の順（大文字小文字を区別しない）に並べ直す。
+    /// 空の行で区切られた並びは、それぞれの中だけで並べる（SwiftLint の `sorted_imports` と同じ見方）。
+    /// 見るのは先頭のコメント・空の行・import の行だけで、ほかの行が出たらそこで止める（後ろの複数行の文字列の中の行を、import と取り違えない）
     static func sortingImports(_ source: String) -> String {
         var lines = source.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        let header = lines.firstIndex { line in
+            let text = line.trimmingCharacters(in: .whitespaces)
+            return !(text.isEmpty || text.hasPrefix("//") || text.hasPrefix("/*") || text.hasPrefix("*") || importedModule(line) != nil)
+        } ?? lines.count
         var start = 0
-        while start < lines.count {
+        while start < header {
             guard importedModule(lines[start]) != nil else {
                 start += 1
                 continue
             }
             var end = start
-            while end < lines.count, importedModule(lines[end]) != nil { end += 1 }
+            while end < header, importedModule(lines[end]) != nil { end += 1 }
             let sorted = lines[start..<end].sorted { (importedModule($0) ?? "").lowercased() < (importedModule($1) ?? "").lowercased() }
             lines.replaceSubrange(start..<end, with: sorted)
             start = end
@@ -103,9 +108,10 @@ enum TemplateRename {
         return lines.joined(separator: "\n")
     }
 
-    /// import の行なら、そのモジュール名（`@testable` などの属性と `import` の種類を除く）。import の行でなければ nil
+    /// import の行なら、そのモジュール名（`@testable` などの属性・`import` の種類・行末のコメントを除く）。import の行でなければ nil
     private static func importedModule(_ line: String) -> String? {
-        let words = line.trimmingCharacters(in: .whitespaces).split(separator: " ").filter { !$0.hasPrefix("@") }
+        let code = line.components(separatedBy: "//")[0]
+        let words = code.trimmingCharacters(in: .whitespaces).split(separator: " ").filter { !$0.hasPrefix("@") }
         guard words.first == "import", words.count >= 2 else { return nil }
         // `import struct Foundation.Date` のような種類つきの import は、最後の語がモジュール名
         return String(words[words.count - 1])
