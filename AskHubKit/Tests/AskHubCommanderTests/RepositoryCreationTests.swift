@@ -133,6 +133,49 @@ struct RepositoryCreationTests {
         #expect(!TemplateRename.needsText(Self.files[4]))
     }
 
+    /// 名前を書き換えた Swift のファイルの import を並べ直す（テンプレートの `@testable import IOSTemplateApp` は
+    /// Foundation と Testing の間にあり、`AskhubCreateCheck` に変えると SwiftLint の sorted_imports で CI が落ちた）
+    @Test func renameSortsImportsOfRenamedSwiftFiles() {
+        let test = """
+            //
+            //  IOSTemplateAppTests.swift
+            //
+
+            import Foundation
+            @testable import IOSTemplateApp
+            import Testing
+
+            struct T {}
+
+            """
+        let file = TreeFile(path: "IOSTemplateAppTests/IOSTemplateAppTests.swift", mode: "100644", type: "blob", sha: Self.sha("c"))
+        let names = TemplateRename.Names(appName: "AskhubCreateCheck", repo: Self.repo.rawValue, bundleId: "jp.shilokuma.AskhubCreateCheck")
+        let plan = TemplateRename.plan(files: [file], texts: [Self.sha("c"): test], old: ("IOSTemplateApp", "x/y"), new: names)
+        #expect(plan.first?.content == """
+            //
+            //  AskhubCreateCheckTests.swift
+            //
+
+            @testable import AskhubCreateCheck
+            import Foundation
+            import Testing
+
+            struct T {}
+
+            """)
+        // 空の行で区切った並びは、それぞれの中だけで並べる。import の種類つき・大文字小文字の違いも名前で比べる
+        let grouped = "import Testing\nimport struct Foundation.Date\n\nimport XCTest\nimport os\n"
+        #expect(TemplateRename.sortingImports(grouped) == "import struct Foundation.Date\nimport Testing\n\nimport os\nimport XCTest\n")
+        // 並んでいれば変えない
+        #expect(TemplateRename.sortingImports("import A\nimport B\n") == "import A\nimport B\n")
+        // 行末のコメントは名前に入れない
+        #expect(TemplateRename.sortingImports("import Foundation // A\n@testable import AskhubCreateCheck\n")
+            == "@testable import AskhubCreateCheck\nimport Foundation // A\n")
+        // 先頭の import の後ろ（複数行の文字列の中など）は並べ替えない
+        let literal = "import Testing\n\nlet text = \"\"\"\nimport Testing\n@testable import AskhubCreateCheck\n\"\"\"\n"
+        #expect(TemplateRename.sortingImports(literal) == literal)
+    }
+
     /// 書き換えの様子は、部分一致ではなくプロジェクトのファイルで見る（元の名前を含むアプリ名でも二重に書き換えない）
     @Test func renameProgressUsesProjectFile() {
         let names = TemplateRename.Names(appName: "IOSTemplateAppPlus", repo: Self.repo.rawValue, bundleId: "jp.shilokuma.Plus")
