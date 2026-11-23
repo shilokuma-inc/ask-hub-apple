@@ -163,7 +163,7 @@ app-kit/
 
 ### app-kit 自身の確かめ
 
-- `self-test.yml` が、PR と develop への push で、`fixtures/App`（iOS の小さなアプリ）と `fixtures/MacApp`（macOS の小さなアプリ。v1.4.0 から）に対して、同じリポジトリの再利用ワークフロー（`./.github/workflows/app-build.yml`）と、Upload しない Archive（書き出しまで。鍵が要らない所まで）を流す
+- `self-test.yml` が、PR と develop への push で、`fixtures/App`（iOS の小さなアプリ）と `fixtures/MacApp`（macOS の小さなアプリ。v1.4.0 から）に対して、同じリポジトリの再利用ワークフロー（`./.github/workflows/app-build.yml`）と、Upload しない Archive（書き出しの手前まで。鍵が要らない所まで）を流す
 - 写すファイルの目印が埋まること、`manifest.json` と `managed/` の中身が合うこと、`schema/` の形で `fixtures/` の設定が読めることを確かめる
 - 本物のリポジトリでの確かめは、試しの 1 本で行う（下の「版を広げる」）
 
@@ -320,11 +320,11 @@ app-kit の v1.4.0 で、macOS（Mac App Store）の Archive・`.pkg` の書き�
 ### 設定と流れ
 
 - 設定は `platforms`・`archive.platforms` に `macOS` を書くだけ。iOS と macOS を出すアプリは `archive.platforms: ["iOS", "macOS"]` にする。プラットフォームごとに別のジョブ（`archive (iOS)`・`archive (macOS)`）になるので、macOS が落ちても iOS は上がる
-- macOS だけを止めたいときは `archive.platforms` から外す（このリポジトリの変数 `ENABLE_MACOS_DELIVERY` は、入れ替えると要らなくなる）
+- macOS の Archive・Upload だけを止めたいときは `archive.platforms` から外す。app-kit は変数 `ENABLE_MACOS_DELIVERY` を読まない。このリポジトリでこの変数は、macOS の掲載文とスクショの反映も止めているので、それらのワークフローを残すあいだは変数も残す
 - `app-archive.yml` の macOS のジョブ:
   1. アドホック署名で Archive する（`-destination 'generic/platform=macOS'`）。スタブのフレームワークの署名の直しは飛ばす（アドホック署名なら、同梱するときに Xcode が署名する）
   2. プロジェクトの既定の署名（自動）で読んだ `CODE_SIGN_ENTITLEMENTS` を、`$(…)` を展開して、アドホック署名の entitlement に足す。足すものが無ければ署名し直さない
-  3. Archive のアプリに `com.apple.security.app-sandbox` と Info.plist の `LSApplicationCategoryType` があるかを、書き出しの前に確かめる（鍵が要らないので self-test でも流れる）
+  3. Archive のアプリの `com.apple.security.app-sandbox` が `true` か、Info.plist に `LSApplicationCategoryType` があるかを、書き出しの前に確かめる（鍵が要らないので self-test でも流れる）
   4. 書き出した `.pkg` を展開して、Archive の entitlement がすべて残ったかを確かめる
   5. Upload の前に、App Store Connect にアプリがあるか（無ければ作り方を出して止める。iOS と同じ）と、そのアプリに macOS の版があるかを読む。無ければ Upload を飛ばす
 - TestFlight の内部テストグループはアプリに 1 つなので、内部テスターは `archive.platforms` の先頭のジョブだけで設定する（2 つのジョブが同時にグループを作らないように）
