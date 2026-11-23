@@ -202,11 +202,16 @@ struct RepositoryCreationRunner {
         }
     }
 
-    /// テンプレートから作り終わって、ブランチが出るまで待つ
+    /// テンプレートから作り終わって、ブランチが出るまで待つ。写し終わる前のリポジトリは空で、GitHub はブランチを
+    /// 404 ではなく 409（Git Repository is empty）で返すので、どちらも「まだ作っている途中」として待つ
     private func branchHead(_ branch: String) async throws(RepositoryCreationError) -> String {
         for attempt in 0..<attempts {
-            let head = try await step("作ったリポジトリの \(branch) を読めない") { () throws(PullRequestError) in
-                try await github.branchHead(branch)
+            let head = try await step("作ったリポジトリの \(branch) を読めない") { () throws(PullRequestError) -> String? in
+                do throws(PullRequestError) {
+                    return try await github.branchHead(branch)
+                } catch .conflict {
+                    return nil
+                }
             }
             if let head { return head }
             if attempt + 1 < attempts {

@@ -153,7 +153,8 @@ struct RepositoryCreationTests {
         let transport = StubTransport([
             .json(404, #"{"message":"Not Found"}"#),
             .json(201, "{}"),
-            .json(404, #"{"message":"Not Found"}"#),
+            // 写し終わる前は空のリポジトリ（409）。写し終わるまで待つ
+            .json(409, #"{"message":"Git Repository is empty."}"#),
             .json(200, #"{"object":{"sha":"\#(Self.head)","type":"commit"}}"#),
             .json(200, Self.tree),
             .json(200, Self.settingBlobs),
@@ -299,8 +300,8 @@ struct RepositoryCreationTests {
             .json(404, #"{"message":"Not Found"}"#),
             .json(201, "{}"),
             .json(404, #"{"message":"Not Found"}"#),
-            .json(404, #"{"message":"Not Found"}"#),
-            .json(404, #"{"message":"Not Found"}"#)
+            .json(409, #"{"message":"Git Repository is empty."}"#),
+            .json(409, #"{"message":"Git Repository is empty."}"#)
         ])
         guard case let .reject(reason) = try await handler(transport).handle(envelope(), in: context(store)) else {
             Issue.record("断っていない")
