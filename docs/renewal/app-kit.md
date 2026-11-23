@@ -376,7 +376,7 @@ v1.4.0 までは本体しか扱わないので、ウィジェットなどの ent
 - ターゲットとの突き合わせ
   - 本体は今と同じく、`-scheme` の設定から製品の名前で選ぶ
   - 中のバンドルがあるときだけ、`-alltargets -sdk <SDK>` を 1 回読む。`FULL_PRODUCT_NAME` が同じターゲットを選ぶ（同じ名前のターゲットは 1 つにまとめる）
-  - 2 つ以上なら、Archive のバンドルの `CFBundleIdentifier` と `PRODUCT_BUNDLE_IDENTIFIER` で絞る。まだ 2 つ以上なら、`-sdk` なしの設定の `SUPPORTED_PLATFORMS` で、Archive したプラットフォームのターゲットに絞る
+  - Archive のバンドルの `CFBundleIdentifier` と `PRODUCT_BUNDLE_IDENTIFIER` が合うものに絞る（候補が 1 つでも確かめる。別のターゲットの entitlements で署名しないように）。まだ 2 つ以上なら、`-sdk` なしの設定の `SUPPORTED_PLATFORMS` で、Archive したプラットフォームのターゲットに絞る
   - 見つからない・1 つに決まらないときは、候補を出して止める（黙って飛ばさない）
 - 署名の順: 深い（内側の）バンドルから署名する。あるバンドルを署名し直したら、それを入れている外側のバンドルも、足すものが無くても署名し直して封をし直す
   - iOS・visionOS（署名なしの Archive）: 各バンドルを、`CODE_SIGN_ENTITLEMENTS` の `$(…)` を展開したファイルでアドホック署名する。どのバンドルにも entitlements が無ければ、今と同じく何も署名しない
