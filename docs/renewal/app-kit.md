@@ -4,6 +4,7 @@
 元の方針は [operations.md](operations.md) の「共通リポジトリとテンプレートの配布」。この文書は、その方針を作れる形まで決める。
 
 状態: 2026-11-22 にユーザーが決め、設計を承認した（下の「決めたこと」）。同じ日に `shilokuma-inc/app-kit` を作り、v1.0.0 を出した（下の「実装の順と PR の分け方」の 1〜5。app-kit の #2・#4・#6・#8・#10）。試しの 1 本の入れ替えは tm-family/shinkeisuijaku-app-ios#83。
+macOS のアプリの Archive・Upload は、2026-11-23 にユーザーが決め、app-kit の v1.4.0 で足す（下の「macOS のアプリ」。app-kit#21）。
 
 ## ねらい
 
@@ -151,8 +152,8 @@ app-kit/
 - 起動の条件（push・PR・`askhub/` の子 PR と最終 PR の見分け・`concurrency`）は、呼ぶ側のワークフローに書く（再利用ワークフローからは決められないため）。中身は今のテンプレートと同じで、`paths`・`paths-ignore` で絞らない
 - 撮影の呼ぶ側（`app-store-screenshots.yml`）は、ファイルの名前と入力（`display_types`・`languages`・`allow_non_release`・`upload`）を今のままにする。司令塔がこの名前で起動し、artifact `screenshots-<表示サイズ>` を取り込むため（[store-screenshots.md](store-screenshots.md)）。上げるのは司令塔なので、`upload` が true なら理由を出して止める
 - 使うアクション（`actions/checkout`・`maxim-lobanov/setup-xcode` など）は、コミットで固定する（今はタグ）
-- visionOS（テンプレート）の Archive・Upload も、`archive.platforms` で扱う。macOS（ask-hub-apple）の Archive は v1 では扱わず、ask-hub-apple を入れ替えるときに足す
-- 書き出した IPA は artifact に上げない（今のテンプレートは上げている。public のリポジトリでは誰でも取れるため。[release.md](release.md) の「ワークフロー」）
+- visionOS（テンプレート）の Archive・Upload も、`archive.platforms` で扱う。macOS は v1.0.0〜v1.3.0 では扱わず、v1.4.0 で足す（下の「macOS のアプリ」）
+- 書き出した IPA・pkg は artifact に上げない（今のテンプレートは上げている。public のリポジトリでは誰でも取れるため。[release.md](release.md) の「ワークフロー」）
 
 ### 版
 
@@ -162,7 +163,7 @@ app-kit/
 
 ### app-kit 自身の確かめ
 
-- `self-test.yml` が、PR と develop への push で、`fixtures/App`（iOS の小さなアプリ）に対して、同じリポジトリの再利用ワークフロー（`./.github/workflows/app-build.yml`）と、Upload しない Archive（書き出しまで。鍵が要らない所まで）を流す
+- `self-test.yml` が、PR と develop への push で、`fixtures/App`（iOS の小さなアプリ）と `fixtures/MacApp`（macOS の小さなアプリ。v1.4.0 から）に対して、同じリポジトリの再利用ワークフロー（`./.github/workflows/app-build.yml`）と、Upload しない Archive（書き出しまで。鍵が要らない所まで）を流す
 - 写すファイルの目印が埋まること、`manifest.json` と `managed/` の中身が合うこと、`schema/` の形で `fixtures/` の設定が読めることを確かめる
 - 本物のリポジトリでの確かめは、試しの 1 本で行う（下の「版を広げる」）
 
@@ -286,10 +287,63 @@ app-kit/
 - クライアント（#1228。2026-11-22 にユーザーが決めた）: リポジトリのタブの一番上に「app-kit」の行を置き、その画面に新しい版の変更点と「広げる」、広げている進み具合（相手ごとの様子と PR・「もう一度試す」「やめる」）、リポジトリとテンプレートごとの入っている版とずれ、前の版（戻すときに広げる）を出す。各リポジトリの画面には、入っている版・ずれ・広げている版のこのリポジトリの PR を出し、「加えるときの準備」に入れる版と名前が変わる待つチェックを出して承認の確かめに添える
   - あなたの番: 新しい版（まだ広げていない一番新しい版で、それより古い版が入っている相手があるとき）とずれ（リポジトリ・テンプレート）は「時間のあるときに」、広げる途中で止まったことは「進行が止まっています」
 
+## macOS のアプリ
+
+app-kit の v1.4.0 で、macOS（Mac App Store）の Archive・`.pkg` の書き出し・App Store Connect への Upload を足す（#1252・app-kit#21）。
+対象は shilokuma-inc/mullion-macos・shilokuma-inc/quick-key-assistant-macos・このリポジトリの macOS 版。設定の形・入力・Secrets の名前は変えないので、minor の版にする。
+
+### 今の 3 本で分かったこと
+
+2026-11-23 に、3 本のワークフローと実行の記録を読んだ（読むだけ）。
+
+| 見たもの | 分かったこと |
+| --- | --- |
+| Build | app-kit の `app-build.yml` は v1.0.0 から macOS を扱う（先頭が macOS なら、アドホック署名・App Sandbox なしでテスト。2 つ目からは署名なしでビルド）。mullion の `_build.yml` と同じ手順で、mullion の develop では macOS の UI テストも GitHub のランナーで通っている |
+| 書き出しと Upload | 3 本とも、iOS と同じ organization の `EXPORT_OPTIONS`（method は iOS と同じ）・API キー・`-allowProvisioningUpdates` のまま、`.pkg` を TestFlight まで上げている。証明書（Apple Distribution・Mac Installer Distribution）と profile は Export が作る。新しい Secrets は要らない |
+| Archive の署名 | 3 本とも macOS はアドホック署名（`CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual PROVISIONING_PROFILE_SPECIFIER=`）で Archive する。署名なし（`CODE_SIGNING_ALLOWED=NO`）だと `ENABLE_APP_SANDBOX` などのビルドの設定から作られる entitlement が入らず、Export でも足されないので、App Store Connect が App Sandbox の無いアプリとして断る |
+| profile の要る entitlement | push（`com.apple.developer.aps-environment`）などがあると、macOS はアドホック署名でも「requires a provisioning profile」で止まる。このリポジトリは、自動の署名のときだけ entitlements のファイルを付け（`Configs/Project.xcconfig`）、Archive の後に `Tools/embed_archive_entitlements.py` がアドホック署名の entitlement に足して署名し直す |
+| ビルド番号 | `manageAppVersionAndBuildNumber` は macOS でも効く（mullion・このリポジトリ）。quick-key だけ UTC の日時をビルド番号にしている |
+| ほかの癖 | Mac App Store には Info.plist の `LSApplicationCategoryType` が要る。iOS と macOS は App Store Connect の版とビルド番号を別に数える |
+| このリポジトリの iOS | iOS の entitlements のファイルが `$(APS_ENVIRONMENT)` を含む。v1.3.0 の app-kit の entitlements の道具は変数を展開しないので、そのままでは書き出しの確かめで落ちる |
+
+### 決めたこと
+
+2026-11-23 にユーザーが決めた（すべて推奨の案）。
+
+| 決めたこと | 決定 | 採らなかった案 |
+| --- | --- | --- |
+| App Store Connect のアプリに macOS のプラットフォームが無いとき（iOS と macOS を出すアプリ） | macOS の Upload だけを飛ばし、追加の手順を Job Summary に出す（ジョブは成功のまま。このリポジトリの今の動きと同じ）。Archive・書き出しは流してから飛ばす | 手順を出して macOS のジョブを失敗にする |
+| entitlements の道具 | このリポジトリの `Tools/embed_archive_entitlements.py` を app-kit に移し、iOS・visionOS・macOS で使う。iOS でも `$(…)` を展開し、アプリのターゲットを製品の名前で選ぶ（v1.3.0 の道具は Scheme の先頭のターゲットの設定を読んでいた） | macOS だけ新しい道具にし、iOS は v1.3.0 のまま |
+| macOS のスクショ | v1.4.0 では扱わない（撮れない表示サイズは v1.3.0 から plan で止める） | このリポジトリの「macOS のユニットテストで画面を描いて撮る」方式を、アプリが撮影のテストを持つ約束として取り込む |
+| app-kit の確かめ | `fixtures/MacApp`（macOS だけの小さなアプリ）を足し、self-test で Build と Archive（書き出しの手前まで）を流す。本物の確かめは mullion-macos と shinkeisuijaku-app-ios の一時ブランチの Archive（書き出しまで） | 今の fixture を iOS と macOS の両方のアプリにする／fixture を足さない |
+
+### 設定と流れ
+
+- 設定は `platforms`・`archive.platforms` に `macOS` を書くだけ。iOS と macOS を出すアプリは `archive.platforms: ["iOS", "macOS"]` にする。プラットフォームごとに別のジョブ（`archive (iOS)`・`archive (macOS)`）になるので、macOS が落ちても iOS は上がる
+- macOS だけを止めたいときは `archive.platforms` から外す（このリポジトリの変数 `ENABLE_MACOS_DELIVERY` は、入れ替えると要らなくなる）
+- `app-archive.yml` の macOS のジョブ:
+  1. アドホック署名で Archive する（`-destination 'generic/platform=macOS'`）。スタブのフレームワークの署名の直しは飛ばす（アドホック署名なら、同梱するときに Xcode が署名する）
+  2. プロジェクトの既定の署名（自動）で読んだ `CODE_SIGN_ENTITLEMENTS` を、`$(…)` を展開して、アドホック署名の entitlement に足す。足すものが無ければ署名し直さない
+  3. Archive のアプリに `com.apple.security.app-sandbox` と Info.plist の `LSApplicationCategoryType` があるかを、書き出しの前に確かめる（鍵が要らないので self-test でも流れる）
+  4. 書き出した `.pkg` を展開して、Archive の entitlement がすべて残ったかを確かめる
+  5. Upload の前に、App Store Connect にアプリがあるか（無ければ作り方を出して止める。iOS と同じ）と、そのアプリに macOS の版があるかを読む。無ければ Upload を飛ばす
+- TestFlight の内部テストグループはアプリに 1 つなので、内部テスターは `archive.platforms` の先頭のジョブだけで設定する（2 つのジョブが同時にグループを作らないように）
+- profile の要る entitlement を持つ macOS のアプリは、このリポジトリと同じく、アドホック署名（`CODE_SIGN_STYLE=Manual`）のときは entitlements のファイルから外す。Archive の後に app-kit が足す
+
+### 入れ替えるときに要ること
+
+| リポジトリ | 要ること |
+| --- | --- |
+| mullion-macos | `platforms`・`archive.platforms` を `["macOS"]`、`uiTests` を `MullionUITests`。`AppStore/` が無いので、`unmanaged` に撮影（`app-store-screenshots.yml`）とクリエイティブ（`app-store-creative.yml`）を入れる。Xcode は 26.3 から app-kit の既定（26.6）になる。書き出した `.pkg` は artifact に上がらなくなる |
+| quick-key-assistant-macos | mullion と同じに加え、`swiftlint` を false にする（SwiftLint を入れていない）。共有の Scheme が無いので、先に作ってコミットする。ビルド番号は UTC の日時から Xcode の採番に替わる（App Store Connect の一番大きい番号から続く） |
+| このリポジトリ | `platforms` の先頭だけでテストが流れる（今は iOS と macOS の両方でテストし、`AskHubKit` を `swift test` で確かめる）。撮影（macOS の撮影を含む）と掲載文のワークフローは今のまま残す（`unmanaged`・`replaces` の `keepIfPresent`）。`.coderabbit.yaml`・`.swiftlint.yml` は `unmanaged`。最後にする（上の「今あるリポジトリをそろえる手順」） |
+
 ## 決めずに残すこと
 
 - XcodeGen への移行（段階 5 の 7）。app-kit は `generate` で XcodeGen のリポジトリも扱えるようにしておき、テンプレートを XcodeGen にするかは段階 5 の 7 で決める
 - 複数のアプリで同じ Swift のコードを持つようになったときの Swift Package（上の「置かないもの」）
 - クリエイティブ素材のワークフロー。司令塔でプロダクトページのヘッダー・検索結果の素材を作れるようになったら、各リポジトリから外す（[release.md](release.md) の「プロダクトページのヘッダーと検索結果の素材」）。作り方の設計は [creative-assets.md](creative-assets.md)（#1235）
 - Upload の鍵を Environment の Secrets に移すこと（#1067）。移すときは、app-kit の `app-archive.yml` の `environment` と、呼ぶ側の Secrets の渡し方を一緒に変える（major を上げる）
+- macOS のスクショ（上の「macOS のアプリ」）。このリポジトリを入れ替えるときに、今の方式を app-kit に取り込むかを決める
+- iOS と macOS の両方でテストを流すこと（今の Build は `platforms` の先頭だけテストし、残りはビルドだけ）。このリポジトリを入れ替えるときに決める
 - Android のリポジトリ（段階 6）。同じ形（再利用ワークフロー・写すファイル・版を広げる）で、別の再利用ワークフローを足す見込み
