@@ -225,6 +225,7 @@
 - 実行がジョブを作らずに落ちたときの理由（注記）は、REST の実行・check run・GraphQL の check suite からは読めない（check run が 0 個）。public のリポジトリなら、実行の画面の HTML に注記の文がある（2026-11-23、app-kit#18）
 - public のリポジトリは、コミットを指定した浅い fetch（`git init --bare` の後に `git fetch --depth 1 --no-tags <URL> <40 桁の sha>`）を受け付け、`git show <sha>:<path>`・`git ls-tree`・2 つの浅いコミットのあいだの `git diff --name-only` が読める。タグの一覧は `git ls-remote --tags <URL>` で読め、注釈つきのタグは `refs/tags/v1.0.0`（タグのオブジェクト）と `refs/tags/v1.0.0^{}`（指すコミット）の 2 行で返る。どれも REST の上限に数えない（2026-11-22、app-kit を読む `GitAppKitSource`）
 - テンプレートからリポジトリを作る API（`POST /repos/<template>/generate`）は 201 をすぐ返すが、ファイルの写しは GitHub の側で少し遅れて終わる。写し終わる前のリポジトリは空で、`git/ref/heads/<branch>` は 404 ではなく **409（Git Repository is empty）** を返す。作った直後にブランチを読む処理は、409 も「まだ作っている途中」として間隔を空けて待つ（2026-11-23、司令塔の createRepository が断った。#1248）
+- GitHub の Secrets に入れた暗号文（sealed box）が正しく解けるかは、PUT の応答（201）では分からない。確かめ用のブランチへの push で動くワークフローで、`printf '%s' "$VALUE" | sha256sum` のように値の SHA-256 だけを出し、手元の値のハッシュと照らし合わせる（リポジトリの Secrets は、どのブランチの push にも渡る）。`workflow_dispatch` は、ワークフローのファイルが既定のブランチに無いと 404 で起動できない。確かめた後は Secret とブランチを消す（2026-11-23、自前の `SealedBox` を askhub-create-check で確かめた）
 
 ## ビルド・テスト
 
