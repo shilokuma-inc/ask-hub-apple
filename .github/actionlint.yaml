@@ -1,0 +1,5 @@
+# actionlint がまだ知らない GitHub のホストのランナーのラベル。
+# xcode-27 は Xcode 27 の画像（macOS 27。2026-10-15 に GA）。GitHub の macOS の画像は、Xcode 27 から Xcode の major ごとになった
+self-hosted-runner:
+  labels:
+    - xcode-27

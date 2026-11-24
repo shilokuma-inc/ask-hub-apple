@@ -5,10 +5,10 @@ on:
   workflow_call:
     inputs:
       xcode-version:
-        description: maxim-lobanov/setup-xcode に渡す Xcode バージョン
+        description: maxim-lobanov/setup-xcode に渡す Xcode バージョン（27.x だけ。ランナーの xcode-27 に入っている版）
         type: string
         # README の Environment と揃える。ランナー側の更新でビルドが変わらないよう固定する
-        default: '26.6'
+        default: '27.1'
       ui-tests:
         description: UI テスト（<プロジェクト名>UITests）も実行するか。false なら Unit テストだけ実行する
         type: boolean
@@ -16,7 +16,8 @@ on:
 
 jobs:
   build:
-    runs-on: macos-latest
+    # Xcode 27 は xcode-27 のランナー（macOS 27）にだけある。macos-latest（macos-26）には Xcode 26.x しか無い
+    runs-on: xcode-27
     # UI テスト込みの実行は 35 分ほどかかる（Simulator の UI テストだけで 27 分前後）。失敗したテストの再試行のぶんも見込む
     timeout-minutes: 45
 
