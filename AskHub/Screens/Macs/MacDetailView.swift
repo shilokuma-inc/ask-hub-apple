@@ -67,7 +67,7 @@ struct MacDetailView: View {
             }
             .pastelBackground()
             .compactList()
-            .navigationTitle(mac.name)
+            .detailTitle(mac.name)
         } else {
             ContentUnavailableView("この Mac は見つかりません", systemImage: "laptopcomputer.slash")
         }
