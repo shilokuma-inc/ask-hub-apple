@@ -4,13 +4,14 @@ import Foundation
 
 extension SubmissionFile {
     /// スクショを撮り直せないわけ（`retakeScreenshots`）。撮り直せるなら nil。審査に出した後・UI テストで撮っている途中・
-    /// 頼んだ撮り直しを始める前は撮り直せない
-    public var retakeProblem: String? {
+    /// 頼んだ撮り直しを始める前は撮り直せない。撮らなかった版（`notConfigured`）は、リポジトリで撮れる（`canCapture`。
+    /// `RepositoryFile.canCaptureStoreScreenshots`）なら後から撮れる
+    public func retakeProblem(canCapture: Bool) -> String? {
         if origin != .askhub { return "AskHub で始めたリリースだけ、スクショを撮り直せる" }
         if isEnded { return "\(version) のリリースはもう終わっている" }
         if submit != nil || isSubmitting || hasReviewInFlight { return "\(version) は審査に出した後なので、スクショを撮り直せない" }
         guard let shots = screenshots else { return "\(version) のスクショはまだ撮り始めていない" }
-        if shots.state == .notConfigured { return "スクショの撮り方の設定（build.storeScreenshots）が無い" }
+        if shots.state == .notConfigured, !canCapture { return "スクショの撮り方の設定（build.storeScreenshots）が無い" }
         if shots.state == .capturing, shots.run == nil, shots.library == nil {
             return "UI テストでスクショを撮っている途中。撮り終えてから撮り直す"
         }
@@ -194,7 +195,7 @@ extension SubmissionFile {
         /// 撮って比べた組（差の無い組も持つ）
         public var sets: [ScreenshotSet]
         public var skipped: [SkippedDisplayType]
-        /// 撮れなかった理由（`failed` のとき）
+        /// 撮れなかった理由（`failed` のとき。`notConfigured` のときは、撮らなかったわけがあれば）
         public var failure: String?
         /// 撮影のワークフローの実行（`capture: actions` のときだけ）
         public var run: CaptureRun?
@@ -245,7 +246,9 @@ extension SubmissionFile {
             let rejected = sets.flatMap(\.shots).compactMap(\.rejected)
             if rejected.contains(where: { $0.isEmpty || $0.count > 1000 }) { problems.append("screenshots の rejected は 1〜1,000 文字") }
             if commit.map({ !ReleaseFile.isCommit($0) }) ?? false { problems.append("screenshots の commit が 40 桁の 16 進でない") }
-            if (state == .failed) != (failure != nil) { problems.append("screenshots の failure は、failed のときだけ持つ") }
+            if state == .failed ? failure == nil : (failure != nil && state != .notConfigured) {
+                problems.append("screenshots の failure は、failed のときは持ち、captured・capturing のときは持たない")
+            }
             if failure?.isEmpty == true { problems.append("screenshots の failure が空") }
             let keys = sets.map { "\($0.displayType)/\($0.locale)" }
             if Set(keys).count != keys.count { problems.append("screenshots の組が重複している") }

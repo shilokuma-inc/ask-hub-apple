@@ -113,15 +113,44 @@ extension ReleaseWatchTests {
     @Test func refusesToRetakeAfterSubmittingOrWhileTheUITestCaptures() throws {
         let now = Timestamp(Self.now)
         var file = SubmissionFile(repo: Self.repo, version: Self.next, origin: .askhub, createdAt: now, updatedAt: now)
-        #expect(RetakeScreenshotsHandler.problem(retaking: file)?.contains("撮り始めていない") == true)
+        #expect(RetakeScreenshotsHandler.problem(retaking: file, canCapture: true)?.contains("撮り始めていない") == true)
         file.screenshots = .init(state: .capturing, startedAt: now)
-        #expect(RetakeScreenshotsHandler.problem(retaking: file)?.contains("UI テスト") == true)
+        #expect(RetakeScreenshotsHandler.problem(retaking: file, canCapture: true)?.contains("UI テスト") == true)
         file.screenshots = .init(state: .captured, startedAt: now)
-        #expect(RetakeScreenshotsHandler.problem(retaking: file) == nil)
+        #expect(RetakeScreenshotsHandler.problem(retaking: file, canCapture: true) == nil)
         file.screenshots?.retake = .init(approval: Self.retakeIntent, at: now)
-        #expect(RetakeScreenshotsHandler.problem(retaking: file)?.contains("もう頼んでいる") == true)
+        #expect(RetakeScreenshotsHandler.problem(retaking: file, canCapture: true)?.contains("もう頼んでいる") == true)
         file.screenshots?.retake = nil
         file.submit = .init(approval: Self.retakeIntent, at: now, builds: [], whatsNew: [], releaseType: .afterApproval)
-        #expect(RetakeScreenshotsHandler.problem(retaking: file)?.contains("審査に出した後") == true)
+        #expect(RetakeScreenshotsHandler.problem(retaking: file, canCapture: true)?.contains("審査に出した後") == true)
+    }
+
+    /// 撮らなかった版（`notConfigured`）は、リポジトリで撮れる（撮影の設定がある）ときだけ後から撮れる
+    @Test func acceptsCapturingLaterOnlyWhenTheRepositoryCanCapture() {
+        let now = Timestamp(Self.now)
+        var file = SubmissionFile(repo: Self.repo, version: Self.next, origin: .askhub, createdAt: now, updatedAt: now)
+        file.screenshots = .init(state: .notConfigured, startedAt: now, finishedAt: now)
+        #expect(RetakeScreenshotsHandler.problem(retaking: file, canCapture: false)?.contains("撮り方の設定") == true)
+        #expect(RetakeScreenshotsHandler.problem(retaking: file, canCapture: true) == nil)
+    }
+
+    /// 撮影の設定が無いまま始めた版も、設定を足した後に頼めば、今の release ブランチの先頭で撮る
+    @Test func capturesLaterAReleaseStartedWithoutScreenshotSettings() async throws {
+        try await startRelease()
+        let watch = watch(screenshots: FakeStoreScreenshots())
+        await watch.refresh()
+        #expect(try await submission().screenshots?.state == .notConfigured)
+
+        try await addWorkflowScreenshotRepository()
+        liveScreenshots([Self.home], localization: "l-ja", locale: "ja")
+        liveScreenshots([Self.home], localization: "l-en", locale: "en-US")
+        screenshotArtifacts(iPhone: ["ja": [Self.home], "en": [Self.home]])
+        try await requestRetake()
+        clock.advance(minutes: 1)
+        await captureOnActions(watch)
+        let shots = try #require(try await submission().screenshots)
+        #expect(shots.state == .captured && shots.failure == nil && shots.run?.id == Self.screenshotRun)
+        #expect(shots.sets.map(\.locale).sorted() == ["en-US", "ja"])
+        #expect(hosting.workflows.withLock { $0.dispatches.count } == 1)
     }
 }

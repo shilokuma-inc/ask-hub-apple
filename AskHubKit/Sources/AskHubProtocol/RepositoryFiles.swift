@@ -181,6 +181,10 @@ public struct RepositoryFile: StateFile {
     /// 対象から外したか。外したリポジトリには、依頼・開始・ビルドの設定を受け付けない
     public var isRemoved: Bool { removedAt != nil }
 
+    /// App Store のスクショを撮れる（撮影の設定 `build.storeScreenshots` がある）。撮らずに始めた版（`notConfigured`）を、
+    /// 後から撮れるか（`SubmissionFile.retakeProblem(canCapture:)`）に使う
+    public var canCaptureStoreScreenshots: Bool { build?.storeScreenshots != nil }
+
     public init(
         repo: RepositoryFullName,
         platform: RepositoryPlatform,

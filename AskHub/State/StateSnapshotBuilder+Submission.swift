@@ -13,14 +13,15 @@ extension StateSnapshotBuilder {
         }
         var submissions: [Submission] = []
         for file in documents.submissions {
-            var submission = Self.submission(file)
+            let canCapture = documents.repositories.first { $0.repo == file.repo }?.canCaptureStoreScreenshots ?? false
+            var submission = Self.submission(file, canCapture: canCapture)
             let pending = overlaid.filter { Self.targets($0, repo: file.repo, version: file.version) }
             if let envelope = pending.first {
                 submission.sending = Self.action(of: envelope.kind)
             } else {
                 submission.rejected = rejectedRequest(repo: file.repo, version: file.version)
             }
-            index.submissions[submission.id] = Self.entry(file, idle: pending.isEmpty)
+            index.submissions[submission.id] = Self.entry(file, canCapture: canCapture, idle: pending.isEmpty)
             if !file.isEnded, pending.allSatisfy({ $0.kind != AbandonReleaseIntent.kind }) {
                 index.releasingRepositories.insert(submission.repositoryID)
                 index.openReleases[submission.repositoryID, default: []].append((file.version, file.hotfix != nil))
@@ -53,7 +54,7 @@ extension StateSnapshotBuilder {
     }
 
     /// 操作を送るときに確かめる中身。`idle` は、この端末から送って司令塔がまだ処理していない操作が無いか
-    private static func entry(_ file: SubmissionFile, idle: Bool) -> StateIndex.SubmissionEntry {
+    private static func entry(_ file: SubmissionFile, canCapture: Bool, idle: Bool) -> StateIndex.SubmissionEntry {
         StateIndex.SubmissionEntry(
             target: SubmissionTarget(repo: file.repo, version: file.version),
             revision: file.revision,
@@ -69,13 +70,14 @@ extension StateSnapshotBuilder {
             canDistribute: file.awaitsDistribution && idle,
             canWithdraw: file.canWithdraw && idle,
             canAbandon: file.canAbandon && idle,
-            canRetakeScreenshots: file.retakeProblem == nil && idle,
+            canRetakeScreenshots: file.retakeProblem(canCapture: canCapture) == nil && idle,
             canReportRejection: file.canReportRejection && idle,
             canResolveRejection: file.awaitsRejectionChoice && idle
         )
     }
 
-    static func submission(_ file: SubmissionFile) -> Submission {
+    /// `canCapture` は、リポジトリで App Store のスクショを撮れるか（撮らなかった版を後から撮れるか）
+    static func submission(_ file: SubmissionFile, canCapture: Bool) -> Submission {
         var submission = Submission(
             repositoryID: repository(file.repo).id,
             version: file.version.rawValue,
@@ -118,7 +120,7 @@ extension StateSnapshotBuilder {
         submission.awaitsDistribution = file.awaitsDistribution
         submission.canWithdraw = file.canWithdraw
         submission.canAbandon = file.canAbandon
-        submission.canRetakeScreenshots = file.retakeProblem == nil
+        submission.canRetakeScreenshots = file.retakeProblem(canCapture: canCapture) == nil
         submission.isSubmitting = file.isSubmitting
         submission.rejection = file.rejection.map(rejection)
         submission.awaitsRejectionReport = file.awaitsRejectionReport

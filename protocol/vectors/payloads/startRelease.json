@@ -85,6 +85,24 @@
       },
       "schemaValid": true,
       "read": "malformed"
+    },
+    {
+      "name": "skip-screenshots",
+      "payload": {
+        "version": "1.4.0",
+        "skipScreenshots": true
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
+      "name": "skip-screenshots-false",
+      "payload": {
+        "version": "1.4.0",
+        "skipScreenshots": false
+      },
+      "schemaValid": false,
+      "read": "malformed"
     }
   ]
 }

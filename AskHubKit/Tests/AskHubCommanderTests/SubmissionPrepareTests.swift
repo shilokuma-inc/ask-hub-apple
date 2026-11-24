@@ -83,6 +83,17 @@ struct SubmissionHandlersTests {
         #expect(try await handler.handle(envelope("startRelease", nonce: "01JCN0NCE00000000000000002"), in: context) != .accept)
     }
 
+    /// 「撮らずに進む」を選んで始めたら、スクショを撮らなかったわけを書いて始める（後から撮れる）
+    @Test func startsWithoutScreenshotsWhenTheHumanSkipsThem() async throws {
+        try await addRepository()
+        var skip = envelope("startRelease")
+        skip.payload = ["version": .string("1.2.0"), "skipScreenshots": .bool(true)]
+        #expect(try await StartReleaseHandler().handle(skip, in: context) == .accept)
+        let shots = try #require(try await file()?.screenshots)
+        #expect(shots.state == .notConfigured && shots.failure == StartReleaseHandler.skippedReason)
+        #expect(shots.startedAt == Timestamp(ReleaseWatchTests.now) && shots.finishedAt == shots.startedAt)
+    }
+
     @Test func rejectsStartThatCannotBeReleased() async throws {
         let handler = StartReleaseHandler()
         // 対象に加えていない・外した

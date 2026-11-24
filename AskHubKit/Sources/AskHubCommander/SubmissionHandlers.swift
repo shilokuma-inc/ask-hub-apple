@@ -34,6 +34,7 @@ public struct StartReleaseHandler: IntentHandler {
             origin: .askhub,
             start: .init(approval: start.intent, at: context.timestamp),
             hotfix: start.hotfix ? released.map { .init(from: $0, suspended: start.suspend) } : nil,
+            screenshots: start.skipScreenshots ? Self.skippedScreenshots(at: context.timestamp) : nil,
             appStoreVersions: [],
             createdAt: context.timestamp,
             updatedAt: context.timestamp
@@ -57,6 +58,13 @@ public struct StartReleaseHandler: IntentHandler {
         }
         return .accept
     }
+
+    /// 人が「撮らずに進む」を選んだときのスクショ（撮らない。後から撮れる）
+    static func skippedScreenshots(at now: Timestamp) -> SubmissionFile.StoreScreenshots {
+        .init(state: .notConfigured, startedAt: now, finishedAt: now, failure: skippedReason)
+    }
+
+    static let skippedReason = "リリースを始めるときに、撮らずに進むを選んだ"
 
     /// 始められない理由。始められれば nil
     static func problem(
