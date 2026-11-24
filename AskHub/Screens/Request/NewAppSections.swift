@@ -82,6 +82,8 @@ struct NewAppSections: View {
                 .autocorrectionDisabled()
                 #if os(iOS)
                 .textInputAutocapitalization(.never)
+                // 英数字しか使えないので、日本語のキーボードを出さない
+                .keyboardType(.asciiCapable)
                 #endif
                 .accessibilityIdentifier(identifier)
         }
