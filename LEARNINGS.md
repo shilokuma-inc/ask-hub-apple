@@ -548,6 +548,14 @@
   選んだ値がメニューのボタンの名前に出たかで確かめ、出なければメニューの外を押して閉じて開き直す）で選ぶ（2026-11-23、#1245）
 - UI テストで「取り消す」を押すまでの間は、CI ではスワイプの合成から戻るまでに 4〜5 秒かかり、既定の猶予（4 秒）を超えることがある。
   猶予の間に操作するテストは、起動引数 `-demoUndoDelay <秒>` で猶予を長くする（2026-11-23、#1245）
+- GitHub の `macos-latest`（macos-26）には Xcode 26.x しか無く、Xcode 27 は別のラベル `xcode-27`（arm64・macOS 27。2026-10-15 に GA）にだけある。
+  GitHub は macOS の画像を Xcode の major ごとに変えたので、Xcode を上げるときは `setup-xcode` の版と `runs-on` を一緒に変える。
+  `xcode-27` の画像（20261104）は Xcode 27.0・27.1（既定）・27.2 で、Simulator は iOS 27.0（iPhone 17・17e・18 Pro・18 Pro Max・Air）・iOS 27.1（iPhone Duo だけ）・iOS 27.2。
+  iPhone 17 Pro と iOS 26.x のランタイムは無い。「最新のランタイムの iPhone」で選ぶと、Xcode 27.1 より新しい iOS 27.2 か、形の違う iPhone Duo になるので、
+  SDK（`xcrun --sdk iphonesimulator --show-sdk-version`）と同じか古いランタイムに絞り、iPhone Duo を除く（`_build.yml`）。
+  actionlint 1.7.12 は `xcode-27` を知らないので、`.github/actionlint.yaml` の `self-hosted-runner.labels` に書く（2026-11-24、#1293）
+- Xcode 27.1（Swift 6.4）でこのリポジトリをビルドすると、Xcode 26.6 では出なかった警告（`#SendableMetatypes`・`#UnnecessaryEffectMarker` など）が出るが、エラーは無く、
+  macOS のアプリのテスト（453 件）と `swift test --package-path AskHubKit` は通る（2026-11-24、#1293）
 
 ## Keychain
 

@@ -5,10 +5,10 @@ on:
   workflow_call:
     inputs:
       xcode-version:
-        description: maxim-lobanov/setup-xcode に渡す Xcode バージョン
+        description: maxim-lobanov/setup-xcode に渡す Xcode バージョン（27.x だけ。ランナーの xcode-27 に入っている版）
         type: string
         # README の Environment と揃える。ランナー側の更新でビルドが変わらないよう固定する
-        default: '26.6'
+        default: '27.1'
       ui-tests:
         description: UI テスト（<プロジェクト名>UITests）も実行するか。false なら Unit テストだけ実行する
         type: boolean
@@ -16,7 +16,8 @@ on:
 
 jobs:
   build:
-    runs-on: macos-latest
+    # Xcode 27 は xcode-27 のランナー（macOS 27）にだけある。macos-latest（macos-26）には Xcode 26.x しか無い
+    runs-on: xcode-27
     # UI テスト込みの実行は 35 分ほどかかる（Simulator の UI テストだけで 27 分前後）。失敗したテストの再試行のぶんも見込む
     timeout-minutes: 45
 
@@ -43,11 +44,14 @@ jobs:
           echo "project=$project scheme=$project"
           # Simulator でテストしない作業ブランチでは選ばない（simctl の初回呼び出しに 30 秒前後かかる）
           [[ "$UI_TESTS" == "true" ]] || exit 0
-          # 最新の iOS ランタイムに存在する iPhone シミュレータを UDID で選ぶ
-          # （名前だけの指定は OS:latest を暗黙に要求し、古いランタイムにしかないデバイスだと解決できない）
-          simulator=$(xcrun simctl list devices available -j | jq -r '.devices | to_entries | map(select(.key | contains("SimRuntime.iOS"))) | sort_by(.key | capture("iOS-(?<maj>[0-9]+)-(?<min>[0-9]+)") | [(.maj|tonumber),(.min|tonumber)]) | reverse | map(.value[] | select(.name | startswith("iPhone"))) | .[0]')
+          # 選んだ Xcode の SDK と同じか古い、最新の iOS ランタイムに存在する iPhone シミュレータを UDID で選ぶ
+          # （名前だけの指定は OS:latest を暗黙に要求し、古いランタイムにしかないデバイスだと解決できない）。
+          # SDK より新しいランタイムではテストを流せない（xcode-27 の画像には Xcode 27.1 より新しい iOS 27.2 もある）。
+          # iPhone Duo は画面の縦横比がほかの iPhone と違い、iOS 27.1 のランタイムは iPhone Duo だけなので除く
+          sdk=$(xcrun --sdk iphonesimulator --show-sdk-version)
+          simulator=$(xcrun simctl list devices available -j | jq -r --arg sdk "$sdk" '(($sdk | split(".") | map(tonumber)) + [0] | .[0:2]) as $limit | .devices | to_entries | map(select(.key | contains("SimRuntime.iOS"))) | map(. + {version: (.key | capture("iOS-(?<maj>[0-9]+)-(?<min>[0-9]+)") | [(.maj|tonumber),(.min|tonumber)])}) | map(select(.version <= $limit)) | sort_by(.version) | reverse | map(.value[] | select((.name | startswith("iPhone")) and .name != "iPhone Duo")) | .[0]')
           echo "SIMULATOR_ID=$(jq -r .udid <<<"$simulator")" >> "$GITHUB_ENV"
-          echo "simulator=$(jq -r '"\(.name) (\(.udid))"' <<<"$simulator")"
+          echo "simulator=$(jq -r '"\(.name) (\(.udid))"' <<<"$simulator") sdk=$sdk"
 
       - name: Resolve Swift packages
         run: |

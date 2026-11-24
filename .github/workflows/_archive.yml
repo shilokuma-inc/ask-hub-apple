@@ -10,10 +10,10 @@ on:
   workflow_call:
     inputs:
       xcode-version:
-        description: maxim-lobanov/setup-xcode に渡す Xcode バージョン
+        description: maxim-lobanov/setup-xcode に渡す Xcode バージョン（27.x だけ。ランナーの xcode-27 に入っている版）
         type: string
         # README の Environment と揃える。ランナー側の更新でビルドが変わらないよう固定する
-        default: '26.6'
+        default: '27.1'
       platform:
         description: アーカイブするプラットフォーム（iOS / macOS）
         type: string
@@ -82,7 +82,8 @@ jobs:
     # platform を飛ばした（iOS・アップロードしない）ときと、macOS のプラットフォームがあったときだけ動く。
     # needs が skipped だと既定では後続も飛ぶので !cancelled() を付ける。platform が失敗したら available は空なので飛ぶ
     if: ${{ !cancelled() && (needs.platform.result == 'skipped' || needs.platform.outputs.available == 'true') }}
-    runs-on: macos-latest
+    # Xcode 27 は xcode-27 のランナー（macOS 27）にだけある。macos-latest（macos-26）には Xcode 26.x しか無い
+    runs-on: xcode-27
     timeout-minutes: 45
     permissions:
       contents: read
