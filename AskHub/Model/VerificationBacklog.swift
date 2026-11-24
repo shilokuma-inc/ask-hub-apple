@@ -37,6 +37,7 @@ extension VerificationBacklog {
             let mergedAt = epic.finalReview?.mergedAt
             let release = VerificationFold.foldingRelease(
                 mergedAt: mergedAt,
+                fixedVersion: epic.release,
                 repositoryID: epic.repositoryID,
                 releases: snapshot.releases,
                 submissions: snapshot.submissions
@@ -68,24 +69,33 @@ enum VerificationFold {
         return submission?.branchCreatedAt ?? release.platforms.compactMap(\.uploadedAt).min() ?? release.detectedAt
     }
 
-    /// epic の残りの確認を畳む、配信した版。そのリポジトリで、epic をマージした時刻と同じか後に切った版を切った順に並べ、
-    /// 最初の版（epic が入った版）の次の版。hotfix の版（タグから切るので develop の epic を含まない）は数えない。
-    /// 畳まない（マージした時刻が分からない・次の版がまだ無い）なら nil
+    /// epic の残りの確認を畳む、配信した版。epic が入った版より新しい、配信した版のうち、最も早く切ったもの（次の版）。
+    /// epic が入った版は、「このリリースを直す」依頼の epic（`fixedVersion` がある）ならその版、ほかは、そのリポジトリで
+    /// epic をマージした時刻と同じか後に最初に切った版。hotfix の版（タグから切るので develop の epic を含まない）は、ほかの epic が入った版にしない
+    /// （hotfix は元の版の中身を含むので、次の版には数える）。畳まない（入った版が分からない・次の版がまだ無い）なら nil
     static func foldingRelease(
         mergedAt: Date?,
+        fixedVersion: String? = nil,
         repositoryID: TargetRepository.ID,
         releases: [Release],
         submissions: [Submission]
     ) -> Release? {
-        guard let mergedAt else {
-            return nil
+        let ofRepository = releases.filter { $0.repositoryID == repositoryID }
+        let cut = { (release: Release) in cutAt(of: release, submissions: submissions) }
+        let included: String
+        if let fixedVersion {
+            included = fixedVersion
+        } else {
+            guard let mergedAt else {
+                return nil
+            }
+            let afterMerge = ofRepository.filter { !isHotfix($0, submissions: submissions) && cut($0) >= mergedAt }
+            guard let first = afterMerge.min(by: { cut($0) < cut($1) }) else {
+                return nil
+            }
+            included = first.version
         }
-        let shipped = releases
-            .filter { $0.repositoryID == repositoryID && !isHotfix($0, submissions: submissions) }
-            .map { (release: $0, cutAt: cutAt(of: $0, submissions: submissions)) }
-            .filter { $0.cutAt >= mergedAt }
-            .sorted { $0.cutAt < $1.cutAt }
-        return shipped.dropFirst().first?.release
+        return ofRepository.filter { ClientSnapshot.isOlder(included, $0.version) }.min { cut($0) < cut($1) }
     }
 
     /// hotfix の版か（リリースを始めた版の記録に、元にしたタグがある）。App Store Connect で出した版など、記録の無い版は分からないので hotfix とみなさない
