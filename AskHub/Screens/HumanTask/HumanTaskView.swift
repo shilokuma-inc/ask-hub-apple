@@ -85,7 +85,7 @@ struct HumanTaskView: View {
         }
         .pastelBackground()
         .compactList()
-        .navigationTitle("人がする作業")
+        .detailTitle("人がする作業")
         .fileImporter(isPresented: $isImporting, allowedContentTypes: [.item]) { result in
             pick(result)
         }

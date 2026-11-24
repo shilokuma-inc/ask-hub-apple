@@ -114,7 +114,7 @@ struct SubmissionDetailView: View {
         }
         .pastelBackground()
         .compactList()
-        .navigationTitle("\(submission.version) のリリース")
+        .detailTitle("\(submission.version) のリリース")
         .sheet(isPresented: $isRetaking) {
             if let screenshots = submission.screenshots {
                 RetakeScreenshotsSheet(screenshots: screenshots) { displayTypes, locales in

@@ -98,7 +98,7 @@ struct ReleaseDetailView: View {
         }
         .pastelBackground()
         .compactList()
-        .navigationTitle("\(release.version) の配信")
+        .detailTitle("\(release.version) の配信")
         .sheet(isPresented: $isEditing) {
             if let notes = release.notes {
                 ReleaseNotesSheet(release: release, notes: notes) { isEditing = false }
