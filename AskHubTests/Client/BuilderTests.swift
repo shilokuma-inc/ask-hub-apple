@@ -111,6 +111,8 @@ struct BuilderTests {
         let first = try #require(cards.first)
         #expect(first.choices.map(\.id) == ["accept", "alternative-0", "fix", "alternative-1"])
         #expect(first.choices.first?.isRecommended == true)
+        // 別案は中身を名前にし、別案が 2 つあっても見分けられる
+        #expect(first.choices.filter(\.isAlternative).map(\.label) == ["タイトル順にする", "著者順にする"])
         // 別案が 1 つ（3 択）と無い（2 択）カード
         #expect(cards[1].choices.map(\.id) == ["accept", "alternative-0", "fix"])
         #expect(cards[2].choices.map(\.id) == ["accept", "fix"])
@@ -140,7 +142,7 @@ struct BuilderTests {
         }
     }
 
-    /// 読み上げでも札（推奨・自由回答）と方向が分かる
+    /// 読み上げでも札（推奨・自由回答・別案）と方向が分かる
     @Test
     func choiceAccessibilityLabelIncludesBadges() throws {
         let card = try #require(DeckBuilder.cards(from: snapshot, scope: .decisions("tsundoku-search")).first)
@@ -152,9 +154,9 @@ struct BuilderTests {
         }
         #expect(labels == [
             "OK（推奨・右上へスワイプ）",
-            "別案にする（左上へスワイプ）",
+            "タイトル順にする（別案・左上へスワイプ）",
             "直してほしい（自由回答・左下へスワイプ）",
-            "別案にする（右下へスワイプ）"
+            "著者順にする（別案・右下へスワイプ）"
         ])
     }
 
