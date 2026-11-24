@@ -18,8 +18,6 @@ struct RootView: View {
             // テキストサイズが変わったら、UIKit が描くバーの見出しも新しい大きさで作り直す（Typography）
             .id(dynamicTypeSize)
             .onChange(of: dynamicTypeSize) { AppFont.applyToSystemBars() }
-            // 主な色はラベンダー（パステルの見た目。Theme）
-            .tint(Theme.accent)
             // 開いている間（バックグラウンド以外）は決まった間隔で取り直す。Mac で前面でない間は間隔を延ばし、前面に戻ったら回し直す。
             // デモの場面を変えて store を作り直したら、新しい store で回し直す
             .task(id: AutoRefreshKey(isActive: scenePhase != .background, isFrontmost: isFrontmost, store: ObjectIdentifier(store))) {
@@ -37,6 +35,8 @@ struct RootView: View {
                 AppSettingsView()
             }
             #endif
+            // 主な色はラベンダー（パステルの見た目。Theme）。ここで開くシートにも効くよう、シートより外に付ける
+            .tint(Theme.accent)
     }
 
     /// 取り直しを回し直すきっかけ（バックグラウンドから戻った・Mac で前面に出た・前面から外れた・store が替わった）
