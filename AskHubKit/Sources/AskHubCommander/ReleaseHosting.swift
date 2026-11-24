@@ -6,6 +6,10 @@ import Foundation
 /// 配信の後作業が使う、対象のリポジトリの GitHub の操作（本物は `GitHubReleaseHosting`。テストでは差し替える）
 public protocol ReleaseHosting: Sendable {
     func workflowRuns(_ repo: RepositoryFullName, createdFrom from: Date, to: Date) async throws(PullRequestError) -> [ActionsRun]
+    /// 実行の job（すべての試行）
+    func runJobs(_ repo: RepositoryFullName, runID: Int) async throws(PullRequestError) -> [ActionsJob]
+    /// job のログの先頭
+    func jobLogHead(_ repo: RepositoryFullName, jobID: Int) async throws(PullRequestError) -> String
     func tagCommit(_ repo: RepositoryFullName, tag: String) async throws(PullRequestError) -> String?
     func createAnnotatedTag(_ repo: RepositoryFullName, _ tag: AnnotatedTag) async throws(PullRequestError)
     func release(_ repo: RepositoryFullName, tag: String) async throws(PullRequestError) -> PublishedRelease?
@@ -109,6 +113,14 @@ public struct GitHubReleaseHosting: ReleaseHosting {
         to: Date
     ) async throws(PullRequestError) -> [ActionsRun] {
         try await github(repo).workflowRuns(createdFrom: from, to: to)
+    }
+
+    public func runJobs(_ repo: RepositoryFullName, runID: Int) async throws(PullRequestError) -> [ActionsJob] {
+        try await github(repo).runJobs(runID: runID)
+    }
+
+    public func jobLogHead(_ repo: RepositoryFullName, jobID: Int) async throws(PullRequestError) -> String {
+        try await github(repo).jobLogHead(jobID: jobID)
     }
 
     public func tagCommit(_ repo: RepositoryFullName, tag: String) async throws(PullRequestError) -> String? {

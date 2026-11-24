@@ -26,29 +26,66 @@ extension ReleaseWatch {
                 to: uploadedAt
             )
         }
+        let run: ActionsRun
         switch ReleaseCommitFinder.find(in: runs, build: platform.build, uploadedAt: uploadedAt) {
-        case let .found(run):
-            file.commit = .init(
-                sha: run.headSHA,
-                source: .uploadRun,
-                platform: platform.platform,
-                build: platform.build,
-                run: run.id,
-                runNumber: run.runNumber
-            )
-            return file
+        case let .found(found):
+            run = found
         case .notFound:
             throw ReleaseStepProblem(
                 "ビルド (\(platform.build)) を上げた Upload の実行（\(ReleaseCommitFinder.uploadWorkflow)）が見つからない。タグ \(tagName) を手で付けると、そのコミットで続ける",
                 needsHuman: true
             )
         case let .ambiguous(candidates):
+            // 同じ時刻に違うコミットの Upload が流れた（develop と release/** が同時に動いたなど）。job のログのビルドの番号で確かめる
+            if let confirmed = try await runShowingBuild(file.repo, candidates: candidates, build: platform.build) {
+                log("\(file.repo) のビルド (\(platform.build)) を上げた Upload の実行を、job のログのビルドの番号で実行 \(confirmed.runNumber) に決めた")
+                run = confirmed
+                break
+            }
             let list = candidates.map { "実行 \($0.runNumber)（\($0.headSHA.prefix(7))）" }.joined(separator: "・")
+            let logs = candidates.count <= ReleaseCommitFinder.maximumRunsToRead
+                ? "。job のログのビルドの番号でも絞れない" : "。候補が多いので job のログは読まない"
             throw ReleaseStepProblem(
-                "ビルド (\(platform.build)) を上げた Upload の実行を 1 つに決められない（候補: \(list)）。タグ \(tagName) を手で付けると、そのコミットで続ける",
+                "ビルド (\(platform.build)) を上げた Upload の実行を 1 つに決められない（候補: \(list)\(logs)）。タグ \(tagName) を手で付けると、そのコミットで続ける",
                 needsHuman: true
             )
         }
+        file.commit = .init(
+            sha: run.headSHA,
+            source: .uploadRun,
+            platform: platform.platform,
+            build: platform.build,
+            run: run.id,
+            runNumber: run.runNumber
+        )
+        return file
+    }
+
+    /// 候補の Upload の実行のうち、job のログにビルドの番号を書いたもの（`ReleaseCommitFinder.logShowsBuild`）から決める。決まらなければ nil。
+    /// REST の上限を考え、読むのは `find` で決まらなかったときだけにし、候補が `maximumRunsToRead` を超えれば読まない。
+    /// 1 つの候補で読むのは、job の一覧と、ビルドの番号が見つかるまでの job のログ
+    func runShowingBuild(_ repo: RepositoryFullName, candidates: [ActionsRun], build: String) async throws -> ActionsRun? {
+        guard candidates.count <= ReleaseCommitFinder.maximumRunsToRead else { return nil }
+        var confirmed: [ActionsRun] = []
+        for run in candidates {
+            let jobs = try await github { () throws(PullRequestError) in try await hosting.runJobs(repo, runID: run.id) }
+            // 飛ばした job にはログが無い
+            for job in jobs where job.conclusion != "skipped" {
+                let log = try await github { () throws(PullRequestError) -> String? in
+                    do throws(PullRequestError) {
+                        return try await hosting.jobLogHead(repo, jobID: job.id)
+                    } catch .notFound, .unexpected(status: 410, message: _) {
+                        // 保存の期限を過ぎて消えたログ
+                        return nil
+                    }
+                }
+                if let log, ReleaseCommitFinder.logShowsBuild(log, build: build) {
+                    confirmed.append(run)
+                    break
+                }
+            }
+        }
+        return ReleaseCommitFinder.pick(confirmed: confirmed)
     }
 
     // MARK: - 2. タグ
