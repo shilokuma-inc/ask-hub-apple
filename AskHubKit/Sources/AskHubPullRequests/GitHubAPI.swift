@@ -78,8 +78,8 @@ struct GitHubAPI: Sendable {
     /// GET して本文を返す。ログのように、短い間だけ使える署名つきの URL へリダイレクトする API に使う。
     ///
     /// 行き先にはトークンを付けずに取りに行く（署名で認められるため）。API と同じホストへのリダイレクト（リポジトリの移管・改名）と、
-    /// https 以外の行き先は追わない。`tailBytes` を渡すと、行き先には末尾のその大きさだけを頼む（`Range`。応じない行き先は全体を返す）
-    func download(_ path: String, tailBytes: Int? = nil) async throws(PullRequestError) -> Data {
+    /// https 以外の行き先は追わない。`range` を渡すと、行き先には先頭か末尾のその大きさだけを頼む（`Range`。応じない行き先は全体を返す）
+    func download(_ path: String, range: ByteRange? = nil) async throws(PullRequestError) -> Data {
         let request = try await makeRequest("GET", url(path), body: nil)
         let (data, response) = try await transmit(request)
         if (200..<300).contains(response.statusCode) { return data }
@@ -90,7 +90,7 @@ struct GitHubAPI: Sendable {
             throw PullRequestError.classify(response, body: data, now: now())
         }
         var signed = URLRequest(url: target)
-        if let tailBytes { signed.setValue("bytes=-\(tailBytes)", forHTTPHeaderField: "Range") }
+        if let range { signed.setValue(range.header, forHTTPHeaderField: "Range") }
         let (body, final) = try await transmit(signed)
         guard (200..<300).contains(final.statusCode) else { throw PullRequestError.classify(final, body: body, now: now()) }
         return body
@@ -208,6 +208,21 @@ enum LinkHeader {
             return URL(string: String(target.dropFirst().dropLast()))
         }
         return nil
+    }
+}
+
+/// `GitHubAPI.download` で、行き先に頼む中身の範囲（`Range` ヘッダー）
+enum ByteRange: Equatable {
+    /// 先頭のこの大きさ
+    case head(Int)
+    /// 末尾のこの大きさ
+    case tail(Int)
+
+    var header: String {
+        switch self {
+        case let .head(bytes): "bytes=0-\(max(bytes, 1) - 1)"
+        case let .tail(bytes): "bytes=-\(bytes)"
+        }
     }
 }
 
