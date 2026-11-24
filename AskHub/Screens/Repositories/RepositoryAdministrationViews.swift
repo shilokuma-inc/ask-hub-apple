@@ -1,12 +1,13 @@
 import SwiftUI
 
 /// リポジトリの画面の「保護」。様子（未設定・掛けた・ずれ）と、外したもの・断られた理由を出し、「保護の設定」のシートを開く
+/// （シートは、やることからも開けるようにリポジトリの画面が持つ）
 struct ProtectionSection: View {
     let repository: TargetRepository
     let protection: RepositoryProtection
+    @Binding var showsSheet: Bool
 
     @Environment(ClientStore.self) private var store
-    @State private var showsSheet = false
 
     var body: some View {
         let reflecting = store.isReflecting([.repository(repository.id)])
@@ -35,9 +36,6 @@ struct ProtectionSection: View {
             Text("保護")
         } footer: {
             Text("develop・main・release/ の下に、PR 必須・必須のチェック・force push と削除の禁止を、例外なしで掛けます。司令塔が管理用のトークンで掛け、ずれは 6 時間ごとに確かめます")
-        }
-        .sheet(isPresented: $showsSheet) {
-            ProtectionSheet(repository: repository, protection: protection)
         }
     }
 
