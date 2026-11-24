@@ -127,6 +127,26 @@ struct AppKitInstallation: Hashable {
 
     /// 画面に出す版の名前（タグが無ければコミットの先頭）
     var versionLabel: String { version ?? String(ref.prefix(7)) }
+
+    /// 入っている版が、ほかの版より古い（タグの無いコミットは古いとみなす）
+    func isOlder(than other: String) -> Bool {
+        version.map { AppKitOverview.isNewer(other, than: $0) } ?? true
+    }
+
+    /// その版を広げたとき、司令塔が PR を出す相手か（`AppKitRollout` と同じ決まり）。入っている版の major が違えば出さない
+    /// （major を上げる入れ替えは人が手で行う）。同じコミットでずれも無ければ、入っているので出さない。
+    /// それ以外（古い版・タグの無いコミット・同じ版のずれ）には出す
+    func receivesRollout(of release: AppKitOverview.Release) -> Bool {
+        if let version, Self.major(of: version) != Self.major(of: release.version) {
+            return false
+        }
+        return !(ref == release.ref && drift.isEmpty)
+    }
+
+    /// 版（`v1.2.0`）の major
+    static func major(of version: String) -> Int {
+        Int(version.dropFirst().split(separator: ".").first ?? "") ?? 0
+    }
 }
 
 /// 対象のリポジトリの app-kit の様子（入っている版と、広げている版のこのリポジトリの PR）
@@ -137,6 +157,48 @@ struct RepositoryAppKit: Hashable {
     var rolloutVersion: String?
     /// その版の、このリポジトリの様子。まだ確かめていなければ nil
     var rolloutTarget: AppKitOverview.Target?
+}
+
+extension ClientSnapshot {
+    /// 版を広げると PR を出す相手の数（入れ替え済みのリポジトリとテンプレートのうち、司令塔が PR を出す相手。`receivesRollout(of:)`）
+    func appKitRolloutCount(_ release: AppKitOverview.Release) -> Int {
+        let installed = repositories.compactMap { $0.appKit?.installed } + (appKit?.templates.compactMap(\.installed) ?? [])
+        return installed.count { $0.receivesRollout(of: release) }
+    }
+}
+
+extension AppKitOverview {
+    /// 変更点（Markdown）の最初の 1 行を、一覧の 2 行目に出す平文にする。箇条書き・見出し・番号・引用の記号（後ろに空白が続くものだけ）と、
+    /// コード・強調の記号を外す。中身のある行が無ければ nil
+    static func plainSummary(of changes: String) -> String? {
+        for line in changes.split(separator: "\n") {
+            var text = line.trimmingCharacters(in: .whitespaces)
+            // 「- -1 を返す」の負の符号のように、記号の後ろに空白が無いものは中身として残す
+            while let range = text.range(of: #"^([-*+>]|#{1,6}|\d+[.)])\s+"#, options: .regularExpression) {
+                text.removeSubrange(range)
+            }
+            // 記号だけの行（空の箇条書き）は中身が無い
+            if text.range(of: #"^([-*+>]|#{1,6}|\d+[.)])$"#, options: .regularExpression) != nil {
+                continue
+            }
+            for pattern in emphasisPatterns {
+                text = text.replacingOccurrences(of: pattern, with: "$2", options: .regularExpression)
+            }
+            text = text.replacingOccurrences(of: #"`([^`]*)`"#, with: "$1", options: .regularExpression)
+            text = text.trimmingCharacters(in: .whitespaces)
+            if !text.isEmpty {
+                return text
+            }
+        }
+        return nil
+    }
+
+    /// 強調（`**太字**`・`__太字__`・`*斜体*`・`_斜体_`）。語の途中の記号（`snake_case`・`a*b`）は強調とみなさない
+    private static let emphasisPatterns = [
+        #"(\*\*|__)(?!\s)(.+?)(?<!\s)\1"#,
+        #"(?<![\p{L}\p{N}*])(\*)(?![\s*])(.+?)(?<![\s*])\*(?![\p{L}\p{N}*])"#,
+        #"(?<![\p{L}\p{N}_])(_)(?![\s_])(.+?)(?<![\s_])_(?![\p{L}\p{N}_])"#
+    ]
 }
 
 // MARK: - あなたの番
@@ -154,10 +216,8 @@ extension InboxBuilder {
             items.append(appKitItem(id: "rollout", urgency: .blocking, title: title, detail: detail, since: rollout.updatedAt))
         }
         // 入れた相手がまだ無い（入れ替える前）なら、広げる相手がいないので知らせない
-        let installed = snapshot.repositories.compactMap { $0.appKit?.installed } + appKit.templates.compactMap(\.installed)
-        if let release = appKit.newRelease, appKit.canRollOut(release),
-           installed.contains(where: { $0.version.map { AppKitOverview.isNewer(release.version, than: $0) } ?? true }) {
-            let detail = release.changes.map { $0.split(separator: "\n").prefix(2).joined(separator: " ") } ?? "変更点を見て広げる"
+        if let release = appKit.newRelease, appKit.canRollOut(release), snapshot.appKitRolloutCount(release) > 0 {
+            let detail = release.changes.flatMap { AppKitOverview.plainSummary(of: $0) } ?? "変更点を見て広げる"
             let title = "app-kit \(release.version) を広げる"
             let id = "release/\(release.version)"
             items.append(appKitItem(id: id, urgency: .whenFree, title: title, detail: detail, since: release.foundAt))

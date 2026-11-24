@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 設定。テーマと、スワイプの持ち手と、データ（状態リポジトリ・GitHub のトークン・この端末の鍵・通知、またはデモの場面）と、このアプリのバージョン
+/// 設定。テーマと、スワイプの持ち手（iOS だけ）と、データ（状態リポジトリ・GitHub のトークン・この端末の鍵・通知、またはデモの場面）と、このアプリのバージョン
 struct AppSettingsView: View {
     @AppStorage(ThemePreferences.themeKey) private var theme: AppTheme = .system
     @AppStorage(SwipePreferences.handKey) private var hand: Handedness = .right
@@ -10,18 +10,8 @@ struct AppSettingsView: View {
         NavigationStack {
             Form {
                 themeSection
-                Section {
-                    Picker("スマホを持つ手", selection: $hand) {
-                        ForEach(Handedness.allCases, id: \.self) { hand in
-                            Text(hand.label).tag(hand)
-                        }
-                    }
-                } header: {
-                    Text("スワイプ")
-                } footer: {
-                    Text(hand == .right
-                        ? "推奨はいつも ↗。2 択は ↗↙、3 択は ↗↖↙、4 択は ↗↖↙↘ に割り当てます。自由回答の選択肢は、推奨の対角の ↙ に置きます"
-                        : "推奨はいつも ↖。2 択は ↖↘、3 択は ↖↗↘、4 択は ↖↗↘↙ に割り当てます。自由回答の選択肢は、推奨の対角の ↘ に置きます")
+                if SwipePreferences.choosesHand {
+                    swipeSection
                 }
                 ConnectionSettingsSections()
                 SiriShortcutsSection()
@@ -58,6 +48,21 @@ struct AppSettingsView: View {
         }
     }
 
+    /// スマホを持つ手で、選択肢を置く方向を鏡写しにする（iOS だけ）
+    private var swipeSection: some View {
+        Section {
+            Picker("スマホを持つ手", selection: $hand) {
+                ForEach(Handedness.allCases, id: \.self) { hand in
+                    Text(hand.label).tag(hand)
+                }
+            }
+        } header: {
+            Text("スワイプ")
+        } footer: {
+            Text(SwipeLayout.summary(hand: hand))
+        }
+    }
+
     private var aboutSection: some View {
         let info = AppVersionInfo()
         return Section("このアプリについて") {
@@ -82,6 +87,7 @@ extension DemoScenario {
         case .started: "開始した後の段取り"
         case .manyFinished: "終わったものが多い"
         case .rateLimited: "GitHub の上限に当たった"
+        case .appKitRelease: "app-kit の新しい版が出た"
         }
     }
 }

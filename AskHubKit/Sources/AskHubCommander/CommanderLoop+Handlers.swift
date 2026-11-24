@@ -43,6 +43,7 @@ extension CommanderLoop {
         "approveMerge": ApproveMergeHandler(),
         "instructFinal": InstructFinalHandler(),
         "verify": VerifyHandler(),
+        "closeVerifications": CloseVerificationsHandler(),
         "publishGitHubRelease": PublishGitHubReleaseHandler(),
         "updatePromotionalText": UpdatePromotionalTextHandler(),
         "startRelease": StartReleaseHandler(),

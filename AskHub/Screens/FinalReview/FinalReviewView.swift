@@ -39,7 +39,7 @@ struct FinalReviewView: View {
         sections(epic, review)
             .pastelBackground()
             .compactList()
-            .navigationTitle("マージを確かめる")
+            .detailTitle("マージを確かめる")
             .hidesTabBar()
             .safeAreaBar(edge: .bottom) { mergeBar(epic, review) }
             .sheet(item: $shownDecision) { shown in

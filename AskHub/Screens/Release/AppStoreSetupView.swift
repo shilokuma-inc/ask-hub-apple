@@ -43,15 +43,15 @@ struct AppStoreSetupView: View {
                     Label("\(failure.item.title): \(failure.message)", systemImage: "xmark.octagon.fill").foregroundStyle(Theme.danger)
                 }
             }
+            // 残りの項目を先に、済んだ項目は後ろの「済み」にまとめる（ユーザーの決定。2026-11-24）
             if setup.isActive {
                 appSection(setup)
                 if setup.app != nil {
                     settingsSection(setup)
                     webSection(setup)
-                    if setup.items.contains(where: \.kind.isVersionItem) {
-                        versionSection(setup)
-                    }
+                    versionSection(setup)
                 }
+                doneSection(setup)
             }
             exclusionSection(setup)
         }
@@ -88,8 +88,15 @@ struct AppStoreSetupView: View {
     // MARK: - アプリを作る
 
     @ViewBuilder private func appSection(_ setup: AppStoreSetup) -> some View {
+        let items = setup.items.filter { $0.kind.isNeededForApp && !$0.isDone }
+        if !items.isEmpty {
+            appCard(setup, items: items)
+        }
+    }
+
+    private func appCard(_ setup: AppStoreSetup, items: [AppStoreSetup.Item]) -> some View {
         CardSection {
-            ForEach(setup.items.filter(\.kind.isNeededForApp)) { item in
+            ForEach(items) { item in
                 ChecklistRow(item: item)
             }
             if setup.item(.bundleId)?.isDone == false, let identifier = setup.mainBundleID,
@@ -117,15 +124,18 @@ struct AppStoreSetupView: View {
 
     @ViewBuilder private func settingsSection(_ setup: AppStoreSetup) -> some View {
         let kinds = AppStoreSetup.ItemKind.settingKinds
-        CardSection {
-            ForEach(setup.items.filter { kinds.contains($0.kind) && !$0.kind.isVersionItem }) { item in
-                ChecklistRow(item: item)
+        let items = setup.items.filter { kinds.contains($0.kind) && !$0.kind.isVersionItem && !$0.isDone }
+        if !items.isEmpty {
+            CardSection {
+                ForEach(items) { item in
+                    ChecklistRow(item: item)
+                }
+                writeButton(setup, versionItems: false)
+            } header: {
+                Text("AskHub から書けるもの")
+            } footer: {
+                Text("あなたが値を確かめて押したときだけ、司令塔が App Store Connect に書きます。App Store Connect で決めた値は上書きしません")
             }
-            writeButton(setup, versionItems: false)
-        } header: {
-            Text("AskHub から書けるもの")
-        } footer: {
-            Text("あなたが値を確かめて押したときだけ、司令塔が App Store Connect に書きます。App Store Connect で決めた値は上書きしません")
         }
     }
 
@@ -133,23 +143,22 @@ struct AppStoreSetupView: View {
 
     @ViewBuilder private func webSection(_ setup: AppStoreSetup) -> some View {
         let kinds: [AppStoreSetup.ItemKind] = [.ageRating, .appPrivacy, .digitalServicesAct]
-        CardSection {
-            ForEach(setup.items.filter { kinds.contains($0.kind) }) { item in
-                VStack(alignment: .leading, spacing: 6) {
-                    ChecklistRow(item: item)
-                    if !item.isDone, let guide = item.kind.guide {
-                        Text(guide).appFont(.footnote).foregroundStyle(.secondary)
-                    }
+        let items = setup.items.filter { kinds.contains($0.kind) && !$0.isDone }
+        if !items.isEmpty {
+            CardSection {
+                ForEach(items) { item in
+                    ChecklistRow(item: item, showsGuide: true)
+                    confirmButton(setup, item.kind)
                 }
-                confirmButton(setup, item.kind)
+                if let url = setup.app?.url {
+                    Link(destination: url) { Label("App Store Connect でこのアプリを開く", systemImage: "safari") }
+                }
+            } header: {
+                Text("App Store Connect の Web で")
+            } footer: {
+                // 「終わった」を押すことは各行の手順に書いてあるので、ここでは繰り返さない
+                Text("API で書けない項目です。年齢制限は、答えると AskHub が見つけます")
             }
-            if let url = setup.app?.url {
-                Link(destination: url) { Label("App Store Connect でこのアプリを開く", systemImage: "safari") }
-            }
-        } header: {
-            Text("App Store Connect の Web で")
-        } footer: {
-            Text("API が無い・AskHub から書かない項目です。年齢制限は答えると AskHub が見つけます。App のプライバシーと DSA は、終わったら「終わった」を押してください")
         }
     }
 
@@ -157,27 +166,40 @@ struct AppStoreSetupView: View {
 
     @ViewBuilder private func versionSection(_ setup: AppStoreSetup) -> some View {
         let version = store.snapshot?.submissions(of: setup.repositoryID).first { !$0.isEnded }?.version
-        CardSection {
-            ForEach(setup.items.filter(\.kind.isVersionItem)) { item in
-                VStack(alignment: .leading, spacing: 6) {
-                    ChecklistRow(item: item)
-                    if !item.isDone, let guide = item.kind.guide {
-                        Text(guide).appFont(.footnote).foregroundStyle(.secondary)
-                    }
+        let items = setup.items.filter { $0.kind.isVersionItem && !$0.isDone }
+        if !items.isEmpty {
+            CardSection {
+                ForEach(items) { item in
+                    ChecklistRow(item: item, showsGuide: true)
+                    confirmButton(setup, item.kind)
                 }
-                confirmButton(setup, item.kind)
+                writeButton(setup, versionItems: true)
+            } header: {
+                Text(version.map { "初めての版（\($0)）" } ?? "初めての版")
+            } footer: {
+                // 連絡先を写すことは App Review の連絡先の行の手順に書いてあるので、ここでは繰り返さない
+                Text("リリースを始めて App Store Connect に版ができると出ます。あなたが値を確かめて押したら、司令塔が書きます（連絡先は AskHub に置きません）")
             }
-            if let source = setup.settingsRequest?.reviewContactFrom {
-                Label("App Review の連絡先を「\(source)」の版から写しました", systemImage: "person.crop.rectangle.stack")
-                    .appFont(.footnote)
-                    .foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: - 済み
+
+    @ViewBuilder private func doneSection(_ setup: AppStoreSetup) -> some View {
+        let items = setup.items.filter(\.isDone)
+        if !items.isEmpty {
+            CardSection {
+                ForEach(items) { item in
+                    ChecklistRow(item: item)
+                }
+                if let source = setup.settingsRequest?.reviewContactFrom {
+                    Label("App Review の連絡先を「\(source)」の版から写しました", systemImage: "person.crop.rectangle.stack")
+                        .appFont(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("済み · \(items.count)")
             }
-            writeButton(setup, versionItems: true)
-        } header: {
-            Text(version.map { "初めての版（\($0)）" } ?? "初めての版")
-        } footer: {
-            Text("リリースを始めて App Store Connect に版ができると出ます。あなたが値を確かめて押したら、司令塔が書きます"
-                + "（App Review の連絡先は、同じ鍵のほかのアプリの版から写します。連絡先は AskHub に置きません）")
         }
     }
 
@@ -228,9 +250,10 @@ struct AppStoreSetupView: View {
     }
 }
 
-/// チェックリストの 1 行（済み・まだ・確かめられない）
+/// チェックリストの 1 行（済み・まだ・確かめられない）。`showsGuide` なら、まだの項目に App Store Connect の Web でする手順を出す
 private struct ChecklistRow: View {
     let item: AppStoreSetup.Item
+    var showsGuide = false
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
@@ -238,15 +261,34 @@ private struct ChecklistRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.kind.title).appFont(.headline, weight: .semibold)
                 Text(detail).foregroundStyle(.secondary)
+                if let guide = extraGuide {
+                    Text(guide).appFont(.footnote).foregroundStyle(.secondary).padding(.top, 4)
+                }
             }
         }
         .accessibilityElement(children: .combine)
         .accessibilityValue(stateLabel)
     }
 
+    /// Web でする手順（まだの項目だけ）
+    private var guide: String? {
+        showsGuide && !item.isDone ? item.kind.guide : nil
+    }
+
+    /// API で読めない項目は、司令塔の注記（読めないこと・Web でする所）が手順と同じことを言うので、手順だけを出す
+    private var replacesNote: Bool {
+        guide != nil && item.state == .unknown
+    }
+
     private var detail: String {
         if item.confirmed { return "終わった（あなたが押しました）" }
+        if replacesNote, let guide { return guide }
         return item.note ?? (item.state == .done ? "済み" : "まだ")
+    }
+
+    /// 注記（今の様子）の下に足す手順
+    private var extraGuide: String? {
+        replacesNote ? nil : guide
     }
 
     private var symbol: String {
@@ -292,182 +334,5 @@ private struct AppRecordValues: View {
             Spacer()
             CopyButton(value: text)
         }
-    }
-}
-
-/// まだ決めていない決まった値を確かめて、App Store Connect に書くシート
-struct AppStoreSettingsSheet: View {
-    let setup: AppStoreSetup
-    let onClose: () -> Void
-
-    @Environment(ClientStore.self) private var store
-    @State private var request = AppStoreSettingsRequest()
-    @State private var categoryID = ""
-    @State private var contentRights = 0
-    @State private var privacyPolicyURL = ""
-    @State private var supportURL = ""
-    @State private var marketingURL = ""
-    @State private var copyright = ""
-    @State private var sending = SheetSendState()
-
-    private func needs(_ kind: AppStoreSetup.ItemKind) -> Bool {
-        setup.writableItems.contains { $0.kind == kind }
-    }
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                if sending.showsStatus {
-                    Section {
-                        SheetSendStatus(state: sending) { submit() }
-                    }
-                }
-                if needs(.price) || needs(.availability) {
-                    Section {
-                        if needs(.price) { Toggle("無料にする", isOn: $request.free) }
-                        if needs(.availability) { Toggle("すべての国と地域に配信する", isOn: $request.everywhere) }
-                    } header: {
-                        Text("価格と配信の地域")
-                    } footer: {
-                        Text("有料にする・地域を絞るときは、App Store Connect で決めてください（有料には契約と口座が要ります）")
-                    }
-                }
-                if needs(.category) {
-                    Section {
-                        Picker("カテゴリ", selection: $categoryID) {
-                            Text("選んでください").tag("")
-                            ForEach(AppStoreCategoryChoice.all) { choice in
-                                Text(choice.label).tag(choice.id)
-                            }
-                        }
-                        .accessibilityIdentifier("app-store-category")
-                    } header: {
-                        Text("カテゴリ")
-                    }
-                }
-                if needs(.contentRights) {
-                    Section {
-                        Picker("コンテンツの権利", selection: $contentRights) {
-                            Text("選んでください").tag(0)
-                            Text("第三者のコンテンツを使わない").tag(1)
-                            Text("第三者のコンテンツを使う（権利がある）").tag(2)
-                        }
-                    } header: {
-                        Text("コンテンツの権利")
-                    }
-                }
-                if needs(.privacyPolicy) {
-                    Section {
-                        URLField(prompt: "https://", text: $privacyPolicyURL, identifier: "app-store-privacy-policy")
-                    } header: {
-                        Text("プライバシーポリシーの URL")
-                    } footer: {
-                        Text("App Store Connect の言語のうち、まだ書いていない言語に書きます")
-                    }
-                }
-                if needs(.supportUrl) {
-                    Section {
-                        URLField(prompt: "https://", text: $supportURL, identifier: "app-store-support-url")
-                        URLField(prompt: "マーケティング URL（任意）", text: $marketingURL, identifier: "app-store-marketing-url")
-                    } header: {
-                        Text("サポート URL")
-                    } footer: {
-                        Text("初めての版の言語のうち、まだ書いていない言語に書きます。マーケティング URL は無くても審査に出せます")
-                    }
-                }
-                if needs(.copyright) {
-                    Section {
-                        TextField("2026 Shilokuma Inc.", text: $copyright)
-                            .autocorrectionDisabled()
-                            .accessibilityIdentifier("app-store-copyright")
-                    } header: {
-                        Text("著作権表示")
-                    } footer: {
-                        Text("権利を得た年と、持ち主（会社名か個人名）を書きます。URL は入れません")
-                    }
-                }
-                if needs(.reviewContact) {
-                    Section {
-                        Toggle("ほかのアプリの連絡先を写す", isOn: $request.copyReviewContact)
-                            .accessibilityIdentifier("app-store-copy-review-contact")
-                    } header: {
-                        Text("App Review の連絡先")
-                    } footer: {
-                        Text("司令塔が、同じ鍵のほかのアプリの配信中か審査に出した版から、姓・名・電話番号・メールアドレスを写します。"
-                            + "連絡先は AskHub に置きません。写せるアプリが無いときは、App Store Connect で入れてください")
-                    }
-                }
-            }
-            .formStyle(.grouped)
-            .pastelBackground()
-            .navigationTitle("値を書く")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("キャンセル", action: onClose)
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    SheetSendButton("書く", isSending: sending.isSending) { submit() }
-                        .disabled(composed.isEmpty)
-                }
-            }
-            .onAppear {
-                // 無料・すべての地域・連絡先を写すは、まだ決めていなければ既定で選んでおく（書くのは「書く」を押したときだけ）
-                if !sending.showsStatus {
-                    request.free = needs(.price)
-                    request.everywhere = needs(.availability)
-                    request.copyReviewContact = needs(.reviewContact)
-                    // 著作権表示は、今年を入れておく（持ち主は人が書く）
-                    if needs(.copyright), copyright.isEmpty { copyright = "\(Calendar.current.component(.year, from: Date())) " }
-                }
-            }
-        }
-        .sheetSending(sending)
-        .sheetSize(.page)
-    }
-
-    /// 選んだ値から作る中身（選んでいない欄は送らない）
-    private var composed: AppStoreSettingsRequest {
-        var composed = request
-        composed.category = AppStoreCategoryChoice.all.first { $0.id == categoryID }
-        composed.contentRights = switch contentRights {
-        case 1: .doesNotUseThirdPartyContent
-        case 2: .usesThirdPartyContent
-        default: nil
-        }
-        composed.privacyPolicyURL = Self.entered(privacyPolicyURL)
-        composed.supportURL = Self.entered(supportURL)
-        composed.marketingURL = Self.entered(marketingURL)
-        let text = copyright.trimmingCharacters(in: .whitespacesAndNewlines)
-        // 年だけ（入れておいたまま）なら送らない
-        composed.copyright = text.isEmpty || text.allSatisfy(\.isNumber) ? nil : text
-        return composed
-    }
-
-    /// 入れた URL（空・`https://` のままなら nil）
-    private static func entered(_ text: String) -> String? {
-        let url = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return url.isEmpty || url == "https://" ? nil : url
-    }
-
-    private func submit() {
-        if sending.submit(.applyAppStoreSettings(repositoryID: setup.repositoryID, request: composed), in: store) { onClose() }
-    }
-}
-
-/// URL を入れる欄（自動の修正と大文字を止める）
-private struct URLField: View {
-    let prompt: String
-    @Binding var text: String
-    let identifier: String
-
-    var body: some View {
-        TextField(prompt, text: $text)
-            .textContentType(.URL)
-            .autocorrectionDisabled()
-            #if os(iOS)
-            .keyboardType(.URL)
-            .textInputAutocapitalization(.never)
-            #endif
-            .accessibilityIdentifier(identifier)
     }
 }

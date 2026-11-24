@@ -49,6 +49,27 @@ extension DemoData {
         )
     }
 
+    /// v1.1.0 を広げ終わった後に、変更点の長い v1.2.0 が出た様子
+    func appKitWithNewRelease() -> AppKitOverview {
+        var overview = appKit()
+        let changes = """
+            ## 足したこと
+            - visionOS のスクショで、没入型の空間を撮れるようにした
+            - Upload で、TestFlight の外部テスターのグループにも配れるようにした
+            - 撮影の設定に、ダークの外観を足した
+            ## 変えたこと
+            - SwiftLint の版を上げ、CI では --strict で流すようにした
+            - Build のキャッシュの鍵に Package.resolved を含めた
+            - What's New の文字数を、審査に出す前に確かめるようにした
+            ## 直したこと
+            - Simulator の向きが横のまま残ると、撮影が崩れる不具合を直した
+            - release ブランチの Upload が、ビルド番号を重ねることがある不具合を直した
+            """
+        let ref = String(repeating: "c", count: 40)
+        overview.releases.insert(AppKitOverview.Release(version: "v1.2.0", ref: ref, changes: changes, foundAt: ago(minutes: 180)), at: 0)
+        return overview
+    }
+
     private func target(
         _ repository: String,
         _ state: AppKitTargetState,

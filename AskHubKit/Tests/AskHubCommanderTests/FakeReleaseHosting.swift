@@ -14,6 +14,13 @@ final class FakeReleaseHosting: ReleaseHosting {
 
     struct State {
         var runs: [ActionsRun] = []
+        /// 実行の id → job
+        var jobs: [Int: [ActionsJob]] = [:]
+        /// job の id → ログ（無ければ、消えたログとして 410 を返す）
+        var logs: [Int: String] = [:]
+        /// job の一覧を読んだ実行の id と、ログを読んだ job の id
+        var jobReads: [Int] = []
+        var logReads: [Int] = []
         var tags: [String: String] = [:]
         var tagMessages: [String: String] = [:]
         var releases: [String: String] = [:]
@@ -41,6 +48,22 @@ final class FakeReleaseHosting: ReleaseHosting {
 
     func workflowRuns(_ repo: RepositoryFullName, createdFrom from: Date, to: Date) async throws(PullRequestError) -> [ActionsRun] {
         call { $0.runs }
+    }
+
+    func runJobs(_ repo: RepositoryFullName, runID: Int) async throws(PullRequestError) -> [ActionsJob] {
+        call { state in
+            state.jobReads.append(runID)
+            return state.jobs[runID] ?? []
+        }
+    }
+
+    func jobLogHead(_ repo: RepositoryFullName, jobID: Int) async throws(PullRequestError) -> String {
+        let log = call { state in
+            state.logReads.append(jobID)
+            return state.logs[jobID]
+        }
+        guard let log else { throw .unexpected(status: 410, message: "Gone") }
+        return log
     }
 
     func tagCommit(_ repo: RepositoryFullName, tag: String) async throws(PullRequestError) -> String? {

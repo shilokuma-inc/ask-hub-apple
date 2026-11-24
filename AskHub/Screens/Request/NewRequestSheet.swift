@@ -33,8 +33,8 @@ struct NewRequestSheet: View {
     @State private var newApp = NewAppRequest()
     /// 新しいアプリのアプリ名・Bundle ID を手で直したか。欄は「機能の依頼」に切り替えると作り直されるので、入れた値と同じくここに持つ
     @State private var newAppEdits = NewAppSections.Edits()
-    /// 下書き（分け方の案から依頼し直す）から開いたか。下書きなら「新しいアプリ」に切り替えさせない
-    private let isDraft: Bool
+    /// 開いたときの下書き（分け方の案から依頼し直す・リリースを直す）。下書きから変えていなければ、確かめずに閉じる
+    private let draft: RequestDraft?
     @State private var repositoryID: TargetRepository.ID?
     @State private var summary: String
     @State private var requestBody: String
@@ -50,12 +50,22 @@ struct NewRequestSheet: View {
 
     init(draft: RequestDraft? = nil, kind: RequestKind = .feature) {
         _kind = State(initialValue: draft == nil ? kind : .feature)
-        isDraft = draft != nil
+        self.draft = draft
         _repositoryID = State(initialValue: draft?.repositoryID)
         _summary = State(initialValue: draft?.summary ?? "")
         _requestBody = State(initialValue: draft?.body ?? "")
         release = draft?.release
         _attachments = State(initialValue: draft?.attachments ?? [])
+    }
+
+    /// 下書きなら「新しいアプリ」に切り替えさせない
+    private var isDraft: Bool { draft != nil }
+
+    /// 閉じると消える入力があるか（何も入れていない・下書きから変えていなければ false）。
+    /// 新しいアプリの欄は「機能の依頼」に切り替えても残るので、どちらを開いていても数える
+    private var hasInput: Bool {
+        summary != (draft?.summary ?? "") || requestBody != (draft?.body ?? "")
+            || attachments != (draft?.attachments ?? []) || newApp.hasInput
     }
 
     private var canSend: Bool {
@@ -103,7 +113,7 @@ struct NewRequestSheet: View {
                     .disabled(sending.isSending)
                 }
                 if kind == .newApp {
-                    NewAppSections(request: $newApp, edits: $newAppEdits, owners: store.snapshot?.adminOwners ?? [])
+                    NewAppSections(request: $newApp, edits: $newAppEdits, owners: store.snapshot?.adminOwners ?? [], isEditing: $isEditing)
                         .disabled(sending.isSending)
                 } else {
                     featureSections(groups: groups)
@@ -116,7 +126,7 @@ struct NewRequestSheet: View {
             .navigationTitle(title)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("キャンセル") { dismiss() }
+                    SheetCancelButton(hasInput: hasInput) { dismiss() }
                         .disabled(sending.isSending)
                 }
                 ToolbarItem(placement: .confirmationAction) {
@@ -138,7 +148,7 @@ struct NewRequestSheet: View {
             }
             .keyboardDoneButton($isEditing)
         }
-        .sheetSending(sending)
+        .sheetSending(sending, hasInput: hasInput)
         .sheetSize(.page)
     }
 

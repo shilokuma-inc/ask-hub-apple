@@ -250,6 +250,9 @@ extension View {
         return listRowBackground(CardRowBackground(position: position))
             .listRowInsets(EdgeInsets(top: AppList.rowVerticalInset, leading: side, bottom: AppList.rowVerticalInset, trailing: side))
             #if os(iOS)
+            // 線の右端を行の右の余白にそろえる。中身が幅いっぱいに広がらない行（文字だけの VStack など）でも、
+            // 線が文字の右端で止まらないよう、先に行を幅いっぱいに広げてから右端を合わせる
+            .frame(maxWidth: .infinity, alignment: .leading)
             .alignmentGuide(.listRowSeparatorTrailing) { $0[.trailing] }
             #else
             .listRowSeparator(.hidden)

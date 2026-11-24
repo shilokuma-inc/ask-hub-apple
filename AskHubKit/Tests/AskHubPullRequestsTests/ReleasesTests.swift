@@ -27,6 +27,23 @@ struct ReleasesTests {
         #expect(Fixture.path(transport.requests.first) == "/repos/shilokuma-inc/ask-hub-apple/actions/runs")
     }
 
+    @Test func listsJobsOfAllAttemptsFollowingPages() async throws {
+        let next = "https://api.github.com/repos/shilokuma-inc/ask-hub-apple/actions/runs/19000000040/jobs?page=2"
+        let transport = StubTransport([
+            .json(200, #"{"total_count":2,"jobs":[{"id":51,"name":"upload","conclusion":"failure"}]}"#, headers: Fixture.link(next: next)),
+            .json(200, #"{"total_count":2,"jobs":[{"id":52,"name":"upload","conclusion":null}]}"#)
+        ])
+        let jobs = try await Fixture.client(transport).runJobs(runID: 19_000_000_040)
+        #expect(jobs == [
+            ActionsJob(id: 51, name: "upload", conclusion: "failure"),
+            ActionsJob(id: 52, name: "upload", conclusion: nil)
+        ])
+        #expect(Fixture.path(transport.requests.first) == "/repos/shilokuma-inc/ask-hub-apple/actions/runs/19000000040/jobs")
+        // Re-run の前の試行の job も読む
+        #expect(Fixture.query(transport.requests.first)["filter"] == "all")
+        #expect(transport.requests.last?.url?.absoluteString == next)
+    }
+
     // MARK: - タグ
 
     @Test func followsAnnotatedTagToCommit() async throws {

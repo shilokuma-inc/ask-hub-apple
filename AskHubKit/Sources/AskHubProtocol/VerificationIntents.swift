@@ -59,6 +59,8 @@ public struct VerifyIntent: Equatable, Sendable {
         case confirmed
         /// 問題あり
         case problem
+        /// 確かめずに閉じた。`verifications.json` の答えにだけ現れ、`verify` では送れない（`CloseVerificationsIntent` が書く）
+        case skipped
     }
 
     public var target: VerificationTarget
@@ -77,12 +79,68 @@ public struct VerifyIntent: Equatable, Sendable {
         guard envelope.kind == Self.kind else { throw .init(detail: "kind が verify でない") }
         let target = try VerificationTarget(envelope: envelope)
         let reader = try PayloadReader(envelope.payload, allowed: ["result", "note"])
-        guard let result = Result(rawValue: try reader.text("result", required: true, limit: 16)) else {
+        guard let result = Result(rawValue: try reader.text("result", required: true, limit: 16)), result != .skipped else {
             throw .init(detail: "result が confirmed・problem のどちらでもない")
         }
         // 問題ありは、何が起きたかが無いと直せない。確認したは説明を持たない（記録の `note` を空にそろえる）
         let note = try reader.text("note", required: result == .problem, limit: Self.maximumNoteLength)
         guard result == .problem || note.isEmpty else { throw .init(detail: "確認したに note がある") }
+        self.init(target: target, result: result, note: note, intent: IntentReference(keyId: envelope.keyId, nonce: envelope.nonce))
+    }
+
+    public var payload: [String: JSONValue] {
+        var payload: [String: JSONValue] = ["result": .string(result.rawValue)]
+        if !note.isEmpty { payload["note"] = .string(note) }
+        return payload
+    }
+}
+
+/// 実機確認をまとめて答える人の意図（`kind` が `closeVerifications`）。マージした epic の、まだ答えていない完了の条件の項目すべてに、同じ答えを 1 回で付ける。
+///
+/// 「まとめて確認した」は `confirmed`（説明を持たない）、「確かめずに閉じる」は `skipped`（理由の `note` は任意）。
+/// 対象は epic（`{type: epic, epic}`）、`targetVersion` は人が見たときのゴールの版（`docs/renewal/flows.md` の「実機で確かめてほしいこと」）
+public struct CloseVerificationsIntent: Equatable, Sendable {
+    public static let kind = "closeVerifications"
+    public static let maximumNoteLength = 2000
+
+    public enum Result: String, Codable, Sendable, CaseIterable {
+        /// まとめて確認した
+        case confirmed
+        /// 確かめずに閉じた
+        case skipped
+
+        /// `verifications.json` に書く答えの種類
+        public var answer: VerifyIntent.Result {
+            switch self {
+            case .confirmed: .confirmed
+            case .skipped: .skipped
+            }
+        }
+    }
+
+    /// `version` はゴールの版
+    public var target: EpicTarget
+    public var result: Result
+    public var note: String
+    public var intent: IntentReference
+
+    public init(target: EpicTarget, result: Result, note: String = "", intent: IntentReference) {
+        self.target = target
+        self.result = result
+        self.note = note
+        self.intent = intent
+    }
+
+    public init(envelope: IntentEnvelope) throws(MalformedIntent) {
+        guard envelope.kind == Self.kind else { throw .init(detail: "kind が closeVerifications でない") }
+        let target = try EpicTarget(envelope: envelope)
+        let reader = try PayloadReader(envelope.payload, allowed: ["result", "note"])
+        guard let result = Result(rawValue: try reader.text("result", required: true, limit: 16)) else {
+            throw .init(detail: "result が confirmed・skipped のどちらでもない")
+        }
+        // 確認したは説明を持たない（記録の `note` を空にそろえる）。確かめずに閉じた理由は任意
+        let note = try reader.text("note", required: false, limit: Self.maximumNoteLength)
+        guard result == .skipped || note.isEmpty else { throw .init(detail: "まとめて確認したに note がある") }
         self.init(target: target, result: result, note: note, intent: IntentReference(keyId: envelope.keyId, nonce: envelope.nonce))
     }
 

@@ -25,6 +25,21 @@ struct SwipeLayoutTests {
         #expect(SwipeLayout.directions(count: count, hand: .left) == expected)
     }
 
+    /// 設定の説明は、割り当てと同じ矢印を並べる。矢印には異体字セレクタ（U+FE0E）を付けて、iOS で絵文字にしない
+    @Test(arguments: [
+        (Handedness.right, "推奨はいつも ↗。2 択は ↗↙、3 択は ↗↖↙、4 択は ↗↖↙↘ に割り当てます。自由回答の選択肢は、推奨の対角の ↙ に置きます"),
+        (Handedness.left, "推奨はいつも ↖。2 択は ↖↘、3 択は ↖↗↘、4 択は ↖↗↘↙ に割り当てます。自由回答の選択肢は、推奨の対角の ↘ に置きます")
+    ])
+    func summaryListsArrowsAsText(hand: Handedness, expected: String) {
+        let scalars = Array(SwipeLayout.summary(hand: hand).unicodeScalars)
+        let selector: Unicode.Scalar = "\u{FE0E}"
+        #expect(String(String.UnicodeScalarView(scalars.filter { $0 != selector })) == expected)
+        let arrows: Set<Unicode.Scalar> = ["↗", "↖", "↙", "↘"]
+        for index in scalars.indices where arrows.contains(scalars[index]) {
+            #expect(scalars.indices.contains(index + 1) && scalars[index + 1] == selector)
+        }
+    }
+
     /// 推奨はいつも先頭の方向
     @Test
     func recommendedAlwaysTakesFirstDirection() {

@@ -21,7 +21,7 @@ struct EpicDetailView: View {
         sections(epic)
             .pastelBackground()
             .compactList()
-            .navigationTitle(epic.title)
+            .detailTitle(epic.title)
             .toolbar { EpicMenu(epic: epic, isConfirmingDiscard: $isConfirmingDiscard) }
             .confirmationDialog("「\(epic.title)」をやめますか？", isPresented: $isConfirmingDiscard, titleVisibility: .visible) {
                 Button("やめる", role: .destructive) {

@@ -97,9 +97,16 @@ struct ConnectionBadge: View {
     var body: some View {
         switch mac.connection {
         case .online(let lastSeen):
-            Label("オンライン · \(RelativeTime.string(lastSeen, now: store.currentDate()))", systemImage: "circle.fill")
+            // 開始に選べるのは 30 分まで（オンライン）だが、あなたの番は印が 15 分途絶えると警告するので、同じところから注意の色にする
+            let now = store.currentDate()
+            let isStale = now.timeIntervalSince(lastSeen) >= ConnectionStatusView.staleHeartbeat
+            // 注意のときは、あなたの番の司令塔の警告と同じ言い方（「20 分 印がありません」）にする
+            let text = isStale
+                ? "\(RelativeTime.duration(since: lastSeen, now: now)) 印がありません"
+                : "オンライン · \(Self.checked(lastSeen, now: now))"
+            Label(text, systemImage: "circle.fill")
                 .appFont(.caption)
-                .foregroundStyle(Theme.success)
+                .foregroundStyle(isStale ? Theme.warning : Theme.success)
                 .labelStyle(DotLabelStyle())
 
         case .offline(let since):
@@ -108,6 +115,14 @@ struct ConnectionBadge: View {
                 .foregroundStyle(.secondary)
                 .labelStyle(DotLabelStyle())
         }
+    }
+}
+
+extension ConnectionBadge {
+    /// 最後の印を確かめた時刻（「16 分前に確認」「たった今確認」）
+    static func checked(_ lastSeen: Date, now: Date) -> String {
+        let relative = RelativeTime.string(lastSeen, now: now)
+        return now.timeIntervalSince(lastSeen) < 60 ? "\(relative)確認" : "\(relative)に確認"
     }
 }
 

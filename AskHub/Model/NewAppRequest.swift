@@ -16,6 +16,11 @@ struct NewAppRequest: Hashable {
     var repositoryID: TargetRepository.ID { fullName.lowercased() }
     var repository: RepositoryFullName? { RepositoryFullName(rawValue: fullName) }
 
+    /// 人が入れた値があるか（閉じる前に確かめる）。Bundle ID は、アプリ名から決まる案のままなら入れた値に数えない
+    var hasInput: Bool {
+        !name.isEmpty || !appName.isEmpty || !(bundleId.isEmpty || bundleId == CreateRepositoryIntent.defaultBundleId(appName: appName))
+    }
+
     /// 送れないわけ。送れるなら nil
     var problem: String? {
         if owner.isEmpty { return "作る先の持ち主を選んでください" }

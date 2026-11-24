@@ -45,7 +45,7 @@ struct AttachmentPickerSection: View {
                 public のリポジトリでは、添付したファイルは誰でも見られます（後から消しても履歴に残ります）。\
                 テキスト・画像（PNG / JPEG / GIF / WebP / SVG）・PDF は 1 ファイル \(AttachmentSize.displayText(bytes: AttachmentLimits.maxFileSize))、\
                 zip は \(AttachmentSize.displayText(bytes: AttachmentLimits.maxZipFileSize)) まで、\(AttachmentLimits.maxCount) ファイルまで添付できます。\
-                zip は受け取る側（担当 PC）で展開して使います
+                zip はワーカーの Mac で展開して使います
                 """)
         }
         // フォーム全体へのドロップの後に、結果が見えるようにここまでスクロールする（macOS。Discussion #784）

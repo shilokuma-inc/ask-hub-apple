@@ -90,9 +90,15 @@ extension InboxBuilder {
             let detail = problems.joined(separator: "・")
             items.append(item(repository, id: "protection", title: "保護のずれを直す", detail: detail, since: foundAt))
         }
+        return items + setupItems(repository)
+    }
+
+    /// 加えるときの準備で人がすること（準備をやり直す・Discussions のカテゴリを作る・ワークフローの直しを承認する）。リポジトリの画面のやることにも出す
+    static func setupItems(_ repository: TargetRepository) -> [InboxItem] {
         guard let setup = repository.setup else {
-            return items
+            return []
         }
+        var items: [InboxItem] = []
         if !setup.problems.isEmpty {
             let detail = setup.problems.joined(separator: "・")
             items.append(item(repository, id: "setup", title: "準備をやり直す", detail: detail, since: setup.updatedAt))

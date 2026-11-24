@@ -15,6 +15,8 @@ struct NewAppSections: View {
     @Binding var edits: Edits
     /// 管理用のトークンを入れた持ち主
     let owners: [String]
+    /// 親の入力欄のフォーカス。キーボードの「完了」で、この欄のキーボードも閉じる
+    let isEditing: FocusState<Bool>.Binding
 
     var body: some View {
         Section {
@@ -42,30 +44,16 @@ struct NewAppSections: View {
                     }
                 }
             }
-            TextField("リポジトリの名前", text: $request.name, prompt: Text("例: memo-widget-ios"))
-                .autocorrectionDisabled()
-                #if os(iOS)
-                .textInputAutocapitalization(.never)
-                #endif
+            textField("リポジトリの名前", prompt: "例: memo-widget-ios", text: $request.name, identifier: "new-app-name")
                 .onChange(of: request.name) { suggestNames() }
-                .accessibilityIdentifier("new-app-name")
         } header: {
             Text("作る先")
         } footer: {
             Text("作る先の持ち主の管理用のトークンは、Repository access を All repositories にしておきます（作る前のリポジトリは選べないため）")
         }
         Section {
-            TextField("アプリ名", text: appName, prompt: Text("例: MemoWidget"))
-                .autocorrectionDisabled()
-                #if os(iOS)
-                .textInputAutocapitalization(.never)
-                #endif
-                .accessibilityIdentifier("new-app-app-name")
-            TextField("Bundle ID", text: bundleId, prompt: Text("例: jp.shilokuma.MemoWidget"))
-                .autocorrectionDisabled()
-                #if os(iOS)
-                .textInputAutocapitalization(.never)
-                #endif
+            textField("アプリ名", prompt: "例: MemoWidget", text: appName, identifier: "new-app-app-name")
+            textField("Bundle ID", prompt: "例: jp.shilokuma.MemoWidget", text: bundleId, identifier: "new-app-bundle-id")
             Picker("公開範囲", selection: $request.visibility) {
                 Text("public").tag(RepositoryVisibility.public)
                 Text("private").tag(RepositoryVisibility.private)
@@ -84,6 +72,24 @@ struct NewAppSections: View {
         let token = "作った後、毎日のトークン（司令塔と各 Mac）の Repository access にも足してください"
         let visibility = request.visibility == .private ? "private では、今のプランだと保護（ルールセット）を掛けられません。" : ""
         return names + after + visibility + token
+    }
+
+    /// 英数字の入力欄（リポジトリの名前・アプリ名・Bundle ID）。例の文だけでは入れた後にどの欄か分からないので、iOS でも名前を左に出す。
+    /// 名前は LabeledContent が出すので、Mac で入力欄の左にもう一度並べない
+    private func textField(_ title: String, prompt: String, text: Binding<String>, identifier: String) -> some View {
+        LabeledContent(title) {
+            TextField(title, text: text, prompt: Text(prompt))
+                .labelsHidden()
+                .multilineTextAlignment(.trailing)
+                .focused(isEditing)
+                .autocorrectionDisabled()
+                #if os(iOS)
+                .textInputAutocapitalization(.never)
+                // 英数字しか使えないので、日本語のキーボードを出さない
+                .keyboardType(.asciiCapable)
+                #endif
+                .accessibilityIdentifier(identifier)
+        }
     }
 
     private var appName: Binding<String> {
