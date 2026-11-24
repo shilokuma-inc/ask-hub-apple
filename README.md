@@ -7,7 +7,7 @@ Claude Code による開発で、人間の判断が必要なものだけを集�
 
 ## Environment
 
-- Xcode 26.6
+- Xcode 27.1（CI は GitHub の `xcode-27` のランナー）
 - iOS 26.0 以上 / macOS 26.0 以上（SwiftUI マルチプラットフォーム）
 - Swift 6（Swift 6 言語モード / Strict Concurrency）
 - SwiftUI / Swift Testing / XCTest（UI テスト）

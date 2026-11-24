@@ -6,6 +6,7 @@
 状態: 2026-11-22 にユーザーが決め、設計を承認した（下の「決めたこと」）。同じ日に `shilokuma-inc/app-kit` を作り、v1.0.0 を出した（下の「実装の順と PR の分け方」の 1〜5。app-kit の #2・#4・#6・#8・#10）。試しの 1 本の入れ替えは tm-family/shinkeisuijaku-app-ios#83。
 macOS のアプリの Archive・Upload は、2026-11-23 にユーザーが決め、app-kit の v1.4.0 で足す（下の「macOS のアプリ」。app-kit#21）。
 App Extension などの中のバンドルの entitlements は、2026-11-24 にユーザーが決め、app-kit の v1.5.0 で足す（下の「App Extension の entitlements」。app-kit#23）。
+既定の Xcode は、2026-11-24 に app-kit の v1.8.0 で 26.6 から 27.1 に上げる（下の「Xcode 27」。app-kit#29）。
 
 ## ねらい
 
@@ -122,7 +123,7 @@ app-kit/
   - プラットフォームでスキームが違うアプリ（shilokuma-inc/kawarin-apple の macOS 版の `KawarinMac`）は、`schemes` に違うものだけを書く（v1.6.0。下の「プラットフォームごとのスキーム」）
 - `platforms`: ビルドとテストの行き先（`iOS`・`macOS`・`visionOS`）。`generate` は XcodeGen で作るリポジトリの `"xcodegen"`（ワーカーのビルドの設定の `generate` と同じ）
 - `uiTests`: UI テストのターゲット。作業ブランチへの push では飛ばす（今と同じ）。無いリポジトリは `null`
-- `xcodeVersion`: 版の既定（今は 26.6）と違う Xcode を使うときだけ書く
+- `xcodeVersion`: 版の既定（v1.7.0 までは 26.6、v1.8.0 から 27.1）と違う Xcode を使うときだけ書く。ランナーは Xcode の major で決まる（下の「Xcode 27」）
 - `archive`: Upload する行き先（`platforms`。省くと `platforms` の先頭）と、Secret から書き出す `GoogleService-Info.plist` のパス（`googleServiceInfo`。kobosu。使わなければ `null`）。構成をブランチで切り替えるアプリは `configurations` を書く（下の「構成の切り替えと Firebase」）
 - `unmanaged`: 写すファイルのうち、このリポジトリでは配らないもの（ask-hub-apple の `.coderabbit.yaml`・`.swiftlint.yml` のように、リポジトリで足した設定があるもの）。版を上げる PR でも、ずれの点検でも触れない
 - `.github/` の下なので、ワーカーの epic で変えると、マージの規則で人の確認に回る（[flows.md](flows.md) の「マージの規則」）
@@ -393,7 +394,7 @@ app-kit の v1.4.0 で、macOS（Mac App Store）の Archive・`.pkg` の書き�
 
 | リポジトリ | 要ること |
 | --- | --- |
-| mullion-macos | `platforms`・`archive.platforms` を `["macOS"]`、`uiTests` を `MullionUITests`。`AppStore/` が無いので、`unmanaged` に撮影（`app-store-screenshots.yml`）とクリエイティブ（`app-store-creative.yml`）を入れる。Xcode は 26.3 から app-kit の既定（26.6）になる。書き出した `.pkg` は artifact に上がらなくなる |
+| mullion-macos | `platforms`・`archive.platforms` を `["macOS"]`、`uiTests` を `MullionUITests`。`AppStore/` が無いので、`unmanaged` に撮影（`app-store-screenshots.yml`）とクリエイティブ（`app-store-creative.yml`）を入れる。Xcode は 26.3 から app-kit の既定（v1.7.0 までは 26.6、v1.8.0 から 27.1）になる。書き出した `.pkg` は artifact に上がらなくなる |
 | quick-key-assistant-macos | mullion と同じに加え、`swiftlint` を false にする（SwiftLint を入れていない）。共有の Scheme が無いので、先に作ってコミットする。ビルド番号は UTC の日時から Xcode の採番に替わる（App Store Connect の一番大きい番号から続く） |
 | このリポジトリ | `platforms` の先頭だけでテストが流れる（今は iOS と macOS の両方でテストし、`AskHubKit` を `swift test` で確かめる）。撮影（macOS の撮影を含む）と掲載文のワークフローは今のまま残す（`unmanaged`・`replaces` の `keepIfPresent`）。`.coderabbit.yaml`・`.swiftlint.yml` は `unmanaged`。最後にする（上の「今あるリポジトリをそろえる手順」） |
 
@@ -459,6 +460,40 @@ v1.4.0 までは本体しか扱わないので、ウィジェットなどの ent
 | oshikatsu-countdown-ios | v1.5.0 以上で入れ替える（v1.4.0 ではウィジェットの App Groups が抜ける）。`embed-entitlements.rb` は `replaces` で外れる |
 | otanecho-ios | v1.5.0 以上で入れ替えれば、本体・ウィジェット・共有拡張の 3 つに App Groups が入る見込み（別のセッションが、今のワークフローのまま直している） |
 | kawarin-apple | v1.5.0 では入れ替えない（今のワークフローのまま）。profile の要る項目は本体の `com.apple.developer.system-extension.install` だけで、本体には v1.4.0 から自動の署名のときだけの項目を足せるので、本体の entitlements のファイルを分ければ通る見込みはある（camera extension の sandbox・App Groups がアドホック署名で通るかは確かめていない） |
+
+## Xcode 27（v1.8.0）
+
+app-kit の v1.8.0 で、Build・Archive・Upload の既定の Xcode を 26.6 から 27.1 に上げる（#1293・app-kit#29）。
+App Store Connect への Upload で altool が警告 90725 を出している（iOS 26.5 の SDK でのビルド。2027 年 4 月からは iOS 27 の SDK でないと上げられない。2026-11-24 に shilokuma-inc/ninjacord-ios の Upload で確認）。
+
+### 分かっていること
+
+2026-11-24 に、GitHub の runner-images（git の clone）と changelog、対象のリポジトリ（約 30 本。git の浅い clone）を読んだ。
+
+| 見たもの | 分かったこと |
+| --- | --- |
+| ランナー | `macos-26`（= `macos-latest`）には Xcode 26.0.1〜26.6 しか無い。Xcode 27 は別のラベル `xcode-27`（arm64・macOS 27.0.1）にだけある（2026-07-16 に preview、2026-10-15 に GA）。GitHub は macOS の画像を、OS の版ごとから Xcode の major ごとに変えた（1 つの画像に major は 1 つ） |
+| `xcode-27` の中身（20261104） | Xcode 27.0・27.1（既定）・27.2。Simulator は iOS 27.0（iPhone 17・17e・18 Pro・18 Pro Max・Air・iPad）、iOS 27.1（iPhone Duo だけ）、iOS 27.2。iPhone 17 Pro と iOS 26.x のランタイムは無い |
+| Deployment Target | Xcode 27.1 の SDK の下限は iOS 15.0・macOS 12.0・visionOS 1.0。対象で一番低いもの（iOS 15.0・macOS 13.0・visionOS 1.0）も範囲の中なので、変えなくてよい |
+| Swift | 6.3.3（Xcode 26.6）→ 6.4（Xcode 27.1）。テンプレート由来のリポジトリで、`Shape` への準拠が `#ConformanceIsolation` で落ちる例が 7 本あった（型に `nonisolated` を付けて直る。26.6 でも通る）。ほかには新しいエラーは見つかっていない |
+| 今の各リポジトリ | app-kit を呼ぶ 4 本は既定の 26.6。自前の `_build.yml`・`_archive.yml` は `default: '26.6'`（mullion だけ 26.3）、古い 3 本立ては 26.6 の直書きか `latest-stable`。どれもランナーは `macos-latest` |
+
+### この版で決めた既定
+
+- 既定を 27.1 にする（ワーカーと司令塔と同じ版。`xcode-27` の画像の既定）
+- ランナーは Xcode の major で決める（27 → `xcode-27`、26 → `macos-26`）。`macos-latest` は行き先が変わるので使わない。`xcodeVersion` に 26.x を書けば、今までどおり `macos-26` の 26.x で流れる（27.1 で落ちるリポジトリの、直すまでの逃げ道）
+- Build に、設定を読んでランナーを決める ubuntu のジョブ `plan` を足す（ジョブの `runs-on` は始まる前に決まるため）。必須のチェック `build / build` の名前は変えない。plan が落ちたら `build / build` も落とす（skipped は必須のチェックで通った扱いになるため）
+- テストの Simulator は、選んだ Xcode の SDK と同じか古いランタイムから選び、iPhone Duo（縦横比 1398x2034）を除く
+- 撮影（`AppStore/screenshots.json`）とクリエイティブアセットは変えない。撮影を 27 にすると iOS 27 の見た目になり、機種の名前も変わる（6.9 inch は iPhone 18 Pro Max など）ので、別に決める
+- 版は minor（入力・Secrets・設定の形は変えない）。v1.7.0（撮影の assetsFrom・スタブの署名の直し。app-kit#28）とは分け、戻すときに Xcode の直しだけを外せるようにする
+
+### 各リポジトリへの届け方
+
+| 形 | 届け方 |
+| --- | --- |
+| app-kit を呼ぶ（askhub-create-check・shinkeisuijaku・2 つのテンプレート） | v1.8.0 を「広げる」。落ちたリポジトリは直してから「もう一度試す」（直すまでは `xcodeVersion` に 26.6） |
+| まだ自前のワークフロー | 入れ替え（「準備をやり直す」）で既定が 27.1 になる。入れ替えに使う版（状態の `app-kit.json` の `adoption`）を v1.8.0 以上にしてから行う。2027-03 までに入れ替えが済まないリポジトリだけ、`_build.yml`・`_archive.yml` の Xcode とランナーを直す（`.github/workflows/` はワーカーのトークンでは直せないので、司令塔の管理用のトークンか人のセッション） |
+| このリポジトリ | 入れ替えは最後なので、自前の `_build.yml`・`_archive.yml` を 27.1・`xcode-27` にした（#1293）。撮影は 26.6 のまま |
 
 ## 決めずに残すこと
 

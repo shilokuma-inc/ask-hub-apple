@@ -11,7 +11,7 @@ Claude Code による開発で **人間の判断が必要なものだけ** を�
 | リポジトリ | `shilokuma-inc/ask-hub-apple`（public） |
 | デフォルトブランチ | `develop` |
 | UI フレームワーク | SwiftUI（マルチプラットフォーム: 1 ターゲットで iOS と macOS ネイティブ） |
-| 言語 / Xcode | Swift 6（Strict Concurrency complete / MainActor 既定）/ Xcode 26.6 |
+| 言語 / Xcode | Swift 6（Strict Concurrency complete / MainActor 既定）/ Xcode 27.1（CI は GitHub の `xcode-27` のランナー） |
 | Deployment Target | iOS 26.0 / macOS 26.0 |
 | Bundle ID | `jp.shilokuma.AskHub` |
 
@@ -42,6 +42,7 @@ swift test --package-path AskHubKit
   まだ無い Mac では「No profiles for 'jp.shilokuma.AskHub' were found」で止まる（Xcode で一度実行すると Xcode が作る）
 - Simulator 名は OS 更新で改名されることがある。解決できない場合は `xcrun simctl list devices available` で UDID を調べて `id=` で指定する
 - CI（`.github/workflows/_build.yml`）は iOS でビルド・テストし、`AskHubKit` を `swift test` で検証し、macOS は署名なしでビルドする
+- CI の Xcode は 27.1 で、ランナーは `xcode-27`（macOS 27）。`macos-latest`（macos-26）には Xcode 26.x しか無い。Xcode を変えるときは `_build.yml`・`_archive.yml` の既定とランナーを一緒に変える
 
 ## 知見の記録（LEARNINGS.md）
 
