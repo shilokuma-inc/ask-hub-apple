@@ -2,7 +2,8 @@ import AskHubProtocol
 import Foundation
 
 /// リリースを始めた版の App Store のスクショ（`docs/renewal/release.md` の「スクショ」・`docs/renewal/store-screenshots.md`）。
-/// 撮り方（`build.storeScreenshots`）の無いリポジトリは撮らない。リポジトリの撮影のワークフローで撮る（`capture: actions`）なら、
+/// 撮り方（`build.storeScreenshots`）の無いリポジトリは、app-kit の撮影を使うなら撮り方を作ってから撮り、使わなければ撮らない（`ReleaseWatch+ScreenshotSettings`）。
+/// リポジトリの撮影のワークフローで撮る（`capture: actions`）なら、
 /// 起動して見張る（`ReleaseWatch+ScreenshotWorkflow`）。UI テストで撮る（`uiTest`）なら、release ブランチを作ったら撮り始めた印を書き、
 /// 見回りの外の Task で撮って比べ、結果を記録に書く（UI テストは長いので、見回りを止めない）。
 /// 人が直す失敗は `failed` にし、スクショを変えずに審査に出せるようにする
@@ -20,11 +21,7 @@ extension ReleaseWatch {
         case let .uiTest(settings)?:
             storeSettings = settings
         case nil:
-            return await submissionStep(.screenshots, file) { file in
-                var file = file
-                file.screenshots = .init(state: .notConfigured, startedAt: now, finishedAt: now)
-                return file
-            }
+            return await configureScreenshots(file, settings: settings)
         }
         guard let build = settings.build?.xcode else { return file }
         guard screenshots != nil else {

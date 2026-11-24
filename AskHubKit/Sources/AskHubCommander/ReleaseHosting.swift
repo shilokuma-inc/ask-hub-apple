@@ -43,6 +43,8 @@ public protocol ReleaseHosting: Sendable {
     func runArtifacts(_ repo: RepositoryFullName, runID: Int) async throws(PullRequestError) -> [RunArtifact]
     /// artifact の zip
     func downloadArtifact(_ repo: RepositoryFullName, id: Int) async throws(PullRequestError) -> Data
+    /// base（nil なら既定のブランチ）の先頭の、app-kit に関わる様子（呼んでいる版・撮影の設定の元のファイル）。撮影の設定を組み立てるときに読む
+    func appKitObserved(_ repo: RepositoryFullName, base: String?) async throws -> AppKitObserved
 }
 
 /// 配信したコミットに付ける注釈付きのタグ
@@ -154,6 +156,10 @@ public struct GitHubReleaseHosting: ReleaseHosting {
 
     public func runArtifacts(_ repo: RepositoryFullName, runID: Int) async throws(PullRequestError) -> [RunArtifact] {
         try await github(repo).runArtifacts(runID: runID)
+    }
+
+    public func appKitObserved(_ repo: RepositoryFullName, base: String?) async throws -> AppKitObserved {
+        try await AppKitObserved.read(github(repo), base: base)
     }
 
     public func downloadArtifact(_ repo: RepositoryFullName, id: Int) async throws(PullRequestError) -> Data {

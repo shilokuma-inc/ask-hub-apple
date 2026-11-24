@@ -33,6 +33,8 @@ final class FakeReleaseHosting: ReleaseHosting {
         var branches: [String: String] = [:]
         /// `<base>...<head>` → 進んでいるコミットの数（無ければ 0）
         var ahead: [String: Int] = [:]
+        /// base の先頭の、app-kit に関わる様子（無ければ app-kit を呼ばないリポジトリ）
+        var observed: AppKitObserved?
         var calls = 0
     }
 
@@ -44,6 +46,10 @@ final class FakeReleaseHosting: ReleaseHosting {
             state.calls += 1
             return body(&state)
         }
+    }
+
+    func appKitObserved(_ repo: RepositoryFullName, base: String?) async throws -> AppKitObserved {
+        call { $0.observed } ?? AppKitObserved(files: [:], config: nil, callerRef: nil)
     }
 
     func workflowRuns(_ repo: RepositoryFullName, createdFrom from: Date, to: Date) async throws(PullRequestError) -> [ActionsRun] {

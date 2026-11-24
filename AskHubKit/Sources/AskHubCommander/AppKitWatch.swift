@@ -347,8 +347,9 @@ struct AppKitCatalog {
     }
 }
 
-/// 対象のリポジトリの base の先頭のコミットの、app-kit に関わる様子（毎日のトークンで読む）
-struct AppKitObserved: Equatable {
+/// 対象のリポジトリの base の先頭のコミットの、app-kit に関わる様子（毎日のトークンで読む）。
+/// リリースの見回りも、撮影の設定を組み立てるときに読む（`ReleaseHosting.appKitObserved`）
+public struct AppKitObserved: Equatable, Sendable {
     /// ファイルのパス → git の blob の sha
     var files: [String: String]
     /// `.github/app-kit.json` の中身。無ければ nil
@@ -361,7 +362,7 @@ struct AppKitObserved: Equatable {
     var screenshotSources: ScreenshotSources?
 
     /// 撮影の設定の元のファイル（`AppStore/screenshots.json`・`languages.json`。無い・読めないものは nil）
-    struct ScreenshotSources: Equatable {
+    struct ScreenshotSources: Equatable, Sendable {
         var screenshots: String?
         var languages: String?
     }
