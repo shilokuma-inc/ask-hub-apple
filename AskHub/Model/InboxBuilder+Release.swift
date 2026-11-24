@@ -167,8 +167,7 @@ extension InboxBuilder {
             let detail = "App Store Connect にアプリがありません。チェックリストを見て作ってください（残り \(pending.count)）"
             items.append(item("app", title: "App Store Connect でアプリを作る", detail: detail, since: setup.updatedAt))
         } else if firstRelease, !pending.isEmpty {
-            let names = pending.prefix(3).map(\.kind.title).joined(separator: "・") + (pending.count > 3 ? " など" : "")
-            let detail = "初めての版を審査に出すまでに、残り \(pending.count) 個（\(names)）"
+            let detail = "初めての版を審査に出すまでに、" + AppStoreSetup.remainingSummary(pending)
             items.append(item("firstRelease", title: "App Store の準備を終える", detail: detail, since: setup.updatedAt))
         }
         if !setup.isWriting, let failure = setup.failures.first {

@@ -127,6 +127,11 @@ struct AppKitInstallation: Hashable {
 
     /// 画面に出す版の名前（タグが無ければコミットの先頭）
     var versionLabel: String { version ?? String(ref.prefix(7)) }
+
+    /// 入っている版が、ほかの版より古い（タグの無いコミットは古いとみなす）
+    func isOlder(than other: String) -> Bool {
+        version.map { AppKitOverview.isNewer(other, than: $0) } ?? true
+    }
 }
 
 /// 対象のリポジトリの app-kit の様子（入っている版と、広げている版のこのリポジトリの PR）
@@ -137,6 +142,14 @@ struct RepositoryAppKit: Hashable {
     var rolloutVersion: String?
     /// その版の、このリポジトリの様子。まだ確かめていなければ nil
     var rolloutTarget: AppKitOverview.Target?
+}
+
+extension ClientSnapshot {
+    /// 版を広げると PR を出す相手の数（入れ替え済みで、その版より古い版が入っているリポジトリとテンプレート）
+    func appKitRolloutCount(_ release: AppKitOverview.Release) -> Int {
+        let installed = repositories.compactMap { $0.appKit?.installed } + (appKit?.templates.compactMap(\.installed) ?? [])
+        return installed.count { $0.isOlder(than: release.version) }
+    }
 }
 
 // MARK: - あなたの番
@@ -154,9 +167,7 @@ extension InboxBuilder {
             items.append(appKitItem(id: "rollout", urgency: .blocking, title: title, detail: detail, since: rollout.updatedAt))
         }
         // 入れた相手がまだ無い（入れ替える前）なら、広げる相手がいないので知らせない
-        let installed = snapshot.repositories.compactMap { $0.appKit?.installed } + appKit.templates.compactMap(\.installed)
-        if let release = appKit.newRelease, appKit.canRollOut(release),
-           installed.contains(where: { $0.version.map { AppKitOverview.isNewer(release.version, than: $0) } ?? true }) {
+        if let release = appKit.newRelease, appKit.canRollOut(release), snapshot.appKitRolloutCount(release) > 0 {
             let detail = release.changes.map { $0.split(separator: "\n").prefix(2).joined(separator: " ") } ?? "変更点を見て広げる"
             let title = "app-kit \(release.version) を広げる"
             let id = "release/\(release.version)"
