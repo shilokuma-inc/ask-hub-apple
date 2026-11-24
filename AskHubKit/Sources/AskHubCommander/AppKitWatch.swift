@@ -161,9 +161,8 @@ public actor AppKitWatch {
         } else {
             let path = StatePath.repository(repo)
             guard let file = try await context.readable(RepositoryFile.self, at: path), !file.isRemoved else { return }
-            // まだ入れていないリポジトリは、準備の PR で入れる（ここでは見ない）
-            guard let appKit = file.appKit else { return }
-            installed = appKit
+            // まだ記録の無いリポジトリも読む（手で入れ替えた・テンプレートから作ったリポジトリは、呼んでいる版を書く）
+            installed = file.appKit
             build = file.build
         }
         let observed = try await AppKitObserved.read(github(repo), base: build?.baseBranch)
@@ -175,7 +174,8 @@ public actor AppKitWatch {
     }
 
     /// 読んだ様子から、入っている版とずれを決める。呼んでいるコミットが見つけた別の版で、写すファイルがその版と同じなら、
-    /// その版が入ったとみなす（人が GitHub で版の上げの PR をマージした・手で入れ替えたテンプレート）
+    /// その版が入ったとみなす（人が GitHub で版の上げの PR をマージした・手で入れ替えたテンプレート）。
+    /// まだ記録の無いリポジトリ（手で入れ替えた）は、ずれがあっても呼んでいる版を書き、ずれも書く（入れた時刻は分からないので書かない）
     static func installation(
         installed: RepositoryFile.AppKit?,
         observed: AppKitObserved,
@@ -183,16 +183,25 @@ public actor AppKitWatch {
         catalog: AppKitCatalog,
         now: Timestamp
     ) async throws -> RepositoryFile.AppKit? {
-        if let caller = observed.callerRef, caller != installed?.ref, let candidate = try await catalog.release(ref: caller),
-           AppKitDrift.problems(release: candidate, observed: observed, build: build).isEmpty {
-            return RepositoryFile.AppKit(ref: candidate.pin.ref, version: candidate.pin.version, installedAt: now)
+        if let caller = observed.callerRef, caller != installed?.ref, let candidate = try await catalog.release(ref: caller) {
+            let problems = AppKitDrift.problems(release: candidate, observed: observed, build: build)
+            let pin = candidate.pin
+            if problems.isEmpty {
+                return RepositoryFile.AppKit(ref: pin.ref, version: pin.version, installedAt: installed == nil ? nil : now)
+            }
+            if installed == nil {
+                return RepositoryFile.AppKit(ref: pin.ref, version: pin.version, drift: AppKitDrift.drift(problems, at: now))
+            }
+        }
+        if installed == nil, let caller = observed.callerRef {
+            return RepositoryFile.AppKit(ref: caller, drift: AppKitDrift.drift([AppKitDrift.unknownRef(caller)], at: now))
         }
         guard var installed else { return nil }
         let problems: [String]
         if let release = try await catalog.release(ref: installed.ref) {
             problems = AppKitDrift.problems(release: release, observed: observed, build: build)
         } else {
-            problems = ["呼んでいる app-kit のコミット \(installed.ref.prefix(7)) が、見つけた版に無い"]
+            problems = [AppKitDrift.unknownRef(installed.ref)]
         }
         let limited = Array(problems.prefix(AppKitDrift.maximumProblems))
         if limited != installed.drift?.problems ?? [] {
@@ -302,6 +311,16 @@ enum AppKitDrift {
             }
         }
         return problems.map { String(String.UnicodeScalarView($0.unicodeScalars.prefix(500))) }
+    }
+
+    /// 書くずれ（上限まで）。無ければ nil
+    static func drift(_ problems: [String], at now: Timestamp) -> ProtectionDrift? {
+        let limited = Array(problems.prefix(maximumProblems))
+        return limited.isEmpty ? nil : ProtectionDrift(foundAt: now, problems: limited)
+    }
+
+    static func unknownRef(_ ref: String) -> String {
+        "呼んでいる app-kit のコミット \(ref.prefix(7)) が、見つけた版に無い"
     }
 
     private struct ConfigNames: Decodable {
