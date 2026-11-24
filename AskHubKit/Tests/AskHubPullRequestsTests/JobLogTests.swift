@@ -40,6 +40,19 @@ struct JobLogTests {
         #expect(plain.requests.count == 1)
     }
 
+    @Test func readsHeadOfLongLogForBuildSettings() async throws {
+        let head = "2026-11-23T11:43:49.0000000Z     CURRENT_PROJECT_VERSION = 20261123.114349\n"
+        let long = head + String(repeating: "x", count: GitHubPullRequests.maximumLogHeadBytes) + "\nUpload succeeded"
+        let transport = StubTransport([.init(status: 302, headers: ["Location": Self.signed]), .init(status: 200, body: Data(long.utf8))])
+        let log = try await Fixture.client(transport).jobLogHead(jobID: 42)
+        #expect(log.hasPrefix(head))
+        #expect(log.utf8.count == GitHubPullRequests.maximumLogHeadBytes)
+        #expect(Fixture.path(transport.requests.first) == "/repos/shilokuma-inc/ask-hub-apple/actions/jobs/42/logs")
+        // 署名つきの URL には、トークンを渡さずに先頭だけを頼む
+        #expect(transport.requests.last?.value(forHTTPHeaderField: "Authorization") == nil)
+        #expect(transport.requests.last?.value(forHTTPHeaderField: "Range") == "bytes=0-\(GitHubPullRequests.maximumLogHeadBytes - 1)")
+    }
+
     @Test func reportsExpiredLogs() async throws {
         let transport = StubTransport([.json(410, #"{"message":"Gone"}"#)])
         await #expect(throws: PullRequestError.unexpected(status: 410, message: "Gone")) {

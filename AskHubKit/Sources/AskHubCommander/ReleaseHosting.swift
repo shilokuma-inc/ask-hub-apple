@@ -6,6 +6,10 @@ import Foundation
 /// 配信の後作業が使う、対象のリポジトリの GitHub の操作（本物は `GitHubReleaseHosting`。テストでは差し替える）
 public protocol ReleaseHosting: Sendable {
     func workflowRuns(_ repo: RepositoryFullName, createdFrom from: Date, to: Date) async throws(PullRequestError) -> [ActionsRun]
+    /// 実行の job（すべての試行）
+    func runJobs(_ repo: RepositoryFullName, runID: Int) async throws(PullRequestError) -> [ActionsJob]
+    /// job のログの先頭
+    func jobLogHead(_ repo: RepositoryFullName, jobID: Int) async throws(PullRequestError) -> String
     func tagCommit(_ repo: RepositoryFullName, tag: String) async throws(PullRequestError) -> String?
     func createAnnotatedTag(_ repo: RepositoryFullName, _ tag: AnnotatedTag) async throws(PullRequestError)
     func release(_ repo: RepositoryFullName, tag: String) async throws(PullRequestError) -> PublishedRelease?
@@ -109,6 +113,14 @@ public struct GitHubReleaseHosting: ReleaseHosting {
         to: Date
     ) async throws(PullRequestError) -> [ActionsRun] {
         try await github(repo).workflowRuns(createdFrom: from, to: to)
+    }
+
+    public func runJobs(_ repo: RepositoryFullName, runID: Int) async throws(PullRequestError) -> [ActionsJob] {
+        try await github(repo).runJobs(runID: runID)
+    }
+
+    public func jobLogHead(_ repo: RepositoryFullName, jobID: Int) async throws(PullRequestError) -> String {
+        try await github(repo).jobLogHead(jobID: jobID)
     }
 
     public func tagCommit(_ repo: RepositoryFullName, tag: String) async throws(PullRequestError) -> String? {
@@ -253,5 +265,61 @@ public enum ReleaseCommitFinder {
             return .found(numbered[0])
         }
         return .ambiguous(candidates.sorted { $0.startedAt < $1.startedAt })
+    }
+
+    // MARK: - ログで確かめる（`find` で決まらなかったとき）
+
+    /// job のログでビルドの番号を確かめる候補の数の上限。超えたら読まずに人に回す（読む数は、候補ごとに job の一覧とログの数だけ）
+    public static let maximumRunsToRead = 5
+    /// ログで探す、ビルドの番号の設定の名前
+    static let buildSetting = "CURRENT_PROJECT_VERSION"
+
+    /// job のログに、ビルドの番号を `build` にした跡があるか。xcodebuild の引数（`CURRENT_PROJECT_VERSION=<番号>`。
+    /// `${{ }}` で渡した値はログで展開される）と、xcodebuild が始めに出すコマンドラインのビルドの設定（`CURRENT_PROJECT_VERSION = <番号>`）を探す
+    public static func logShowsBuild(_ log: String, build: String) -> Bool {
+        guard !build.isEmpty else { return false }
+        let log = withoutEscapes(log)
+        return log.ranges(of: buildSetting).contains { range in
+            // ほかの名前の一部（`MY_CURRENT_PROJECT_VERSION`・`CURRENT_PROJECT_VERSION_SUFFIX`）は除く
+            if range.lowerBound > log.startIndex, isNamePart(log[log.index(before: range.lowerBound)]) { return false }
+            var rest = log[range.upperBound...].drop { $0 == " " || $0 == "\t" }
+            guard rest.first == "=" else { return false }
+            rest = rest.dropFirst().drop { $0 == " " || $0 == "\t" || $0 == "\"" || $0 == "'" }
+            return rest.prefix { isNamePart($0) || $0 == "." } == build
+        }
+    }
+
+    /// ログでビルドの番号を確かめた候補から決める。head が 1 つにそろえば、そのうち最後に始まった実行。そろわない・無ければ nil
+    public static func pick(confirmed runs: [ActionsRun]) -> ActionsRun? {
+        guard Set(runs.map(\.headSHA)).count == 1 else { return nil }
+        return runs.max { $0.startedAt < $1.startedAt }
+    }
+
+    /// 端末のエスケープシーケンス（CSI: `ESC [ … <0x40〜0x7E>`）を除く。GitHub は `Run` の見出しのスクリプトを色付き（`ESC[36;1m … ESC[0m`）で出すので、
+    /// 字下げの無い行では色の `m` の直後に名前が来る
+    static func withoutEscapes(_ log: String) -> String {
+        let escape: UInt8 = 0x1B
+        guard log.utf8.contains(escape) else { return log }
+        var bytes: [UInt8] = []
+        bytes.reserveCapacity(log.utf8.count)
+        var iterator = log.utf8.makeIterator()
+        while let byte = iterator.next() {
+            guard byte == escape else {
+                bytes.append(byte)
+                continue
+            }
+            guard let next = iterator.next() else { break }
+            guard next == UInt8(ascii: "[") else {
+                bytes.append(next)
+                continue
+            }
+            while let part = iterator.next(), !(0x40...0x7E).contains(part) {}
+        }
+        // 除くのは ASCII のバイトだけなので、UTF-8 のまま読める
+        return String(bytes: bytes, encoding: .utf8) ?? log
+    }
+
+    private static func isNamePart(_ character: Character) -> Bool {
+        character.isASCII && (character.isLetter || character.isNumber || character == "_")
     }
 }

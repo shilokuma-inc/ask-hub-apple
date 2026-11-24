@@ -16,6 +16,15 @@ extension GitHubPullRequests {
         return pages.flatMap(\.workflowRuns).compactMap(\.model)
     }
 
+    /// 実行の job を、すべての試行（Re-run を含む）からページングを最後まで追って読む
+    /// （同時に流れた Upload の実行のどれが配信したビルドを上げたかを、job のログで確かめるのに使う）
+    public func runJobs(runID: Int) async throws(PullRequestError) -> [ActionsJob] {
+        try GitNames.checkNumber(runID)
+        let query = [URLQueryItem(name: "filter", value: "all"), URLQueryItem(name: "per_page", value: "100")]
+        let pages = try await api.pages("actions/runs/\(runID)/jobs", query: query, as: ActionsJobsPage.self)
+        return pages.flatMap(\.jobs).map(\.model)
+    }
+
     // MARK: - タグ
 
     /// タグが指すコミット（注釈付きのタグは、タグのオブジェクトからコミットまでたどる）。タグが無ければ nil
@@ -214,6 +223,20 @@ public struct ActionsRun: Sendable, Equatable {
     }
 }
 
+/// GitHub Actions の実行の job（Upload の実行が上げたビルドを、ログで確かめるのに使う）
+public struct ActionsJob: Sendable, Equatable {
+    public var id: Int
+    public var name: String
+    /// 終わった job の結論（`success`・`failure`・`skipped` など）。終わっていなければ nil
+    public var conclusion: String?
+
+    public init(id: Int, name: String, conclusion: String?) {
+        self.id = id
+        self.name = name
+        self.conclusion = conclusion
+    }
+}
+
 /// 公開した GitHub Release
 public struct PublishedRelease: Sendable, Equatable {
     public var url: URL
@@ -257,6 +280,18 @@ private struct ActionsRunsPage: Decodable {
     }
 
     let workflowRuns: [Run]
+}
+
+private struct ActionsJobsPage: Decodable {
+    struct Job: Decodable {
+        let id: Int
+        let name: String?
+        let conclusion: String?
+
+        var model: ActionsJob { ActionsJob(id: id, name: name ?? "", conclusion: conclusion) }
+    }
+
+    let jobs: [Job]
 }
 
 private struct TagPayload: Decodable {

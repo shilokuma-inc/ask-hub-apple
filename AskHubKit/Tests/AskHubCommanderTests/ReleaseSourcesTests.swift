@@ -58,6 +58,38 @@ struct ReleaseSourcesTests {
         #expect(ReleaseCommitFinder.find(in: runs, build: "41", uploadedAt: Self.base.addingTimeInterval(110 * 60)) == .notFound)
     }
 
+    @Test func findsBuildNumberInUploadLog() {
+        let build = "20261123.114349"
+        // `${{ }}` で渡した xcodebuild の引数（ログで展開される）と、xcodebuild が出すコマンドラインのビルドの設定
+        #expect(ReleaseCommitFinder.logShowsBuild("2026-11-23T11:43:49.0Z     CURRENT_PROJECT_VERSION=\(build) \\\n", build: build))
+        let settings = "Build settings from command line:\n    CURRENT_PROJECT_VERSION = \(build)\n"
+        #expect(ReleaseCommitFinder.logShowsBuild(settings, build: build))
+        #expect(ReleaseCommitFinder.logShowsBuild(#"build_settings+=("CURRENT_PROJECT_VERSION=31")"#, build: "31"))
+        // GitHub は `Run` の見出しのスクリプトを色付きで出す（字下げの無い行は、色の直後に名前が来る）
+        #expect(ReleaseCommitFinder.logShowsBuild("\u{1B}[36;1m  CURRENT_PROJECT_VERSION=\(build)\u{1B}[0m\n", build: build))
+        #expect(ReleaseCommitFinder.logShowsBuild("\u{1B}[36;1mCURRENT_PROJECT_VERSION=\(build)\u{1B}[0m\n", build: build))
+        // 前の行に違う番号があっても、後ろで見つかればよい
+        #expect(ReleaseCommitFinder.logShowsBuild("CURRENT_PROJECT_VERSION=1\nCURRENT_PROJECT_VERSION = \(build)", build: build))
+    }
+
+    @Test func ignoresOtherBuildNumbersAndSettingsInUploadLog() {
+        let build = "20261123.114349"
+        #expect(!ReleaseCommitFinder.logShowsBuild("CURRENT_PROJECT_VERSION=20261123.1143490", build: build))
+        #expect(!ReleaseCommitFinder.logShowsBuild("CURRENT_PROJECT_VERSION=120261123.114349", build: build))
+        #expect(!ReleaseCommitFinder.logShowsBuild("CURRENT_PROJECT_VERSION=${{ steps.build_number.outputs.value }}", build: build))
+        #expect(!ReleaseCommitFinder.logShowsBuild("MY_CURRENT_PROJECT_VERSION=31", build: "31"))
+        #expect(!ReleaseCommitFinder.logShowsBuild("CURRENT_PROJECT_VERSION_SUFFIX=31", build: "31"))
+        #expect(!ReleaseCommitFinder.logShowsBuild("Upload build 31 succeeded", build: "31"))
+        #expect(!ReleaseCommitFinder.logShowsBuild("CURRENT_PROJECT_VERSION=", build: ""))
+    }
+
+    @Test func picksConfirmedRunOnlyWhenCommitsAgree() {
+        let runs = [Self.run(39, Self.commitA, start: 0, end: 40), Self.run(40, Self.commitA, start: 1, end: 41)]
+        #expect(ReleaseCommitFinder.pick(confirmed: runs) == runs[1])
+        #expect(ReleaseCommitFinder.pick(confirmed: runs + [Self.run(41, Self.commitB, start: 2, end: 42)]) == nil)
+        #expect(ReleaseCommitFinder.pick(confirmed: []) == nil)
+    }
+
     // MARK: - 版
 
     @Test func replacesReleasedVersionInBuildSettings() throws {
