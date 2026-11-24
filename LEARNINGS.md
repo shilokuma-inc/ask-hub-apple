@@ -880,6 +880,10 @@
 - 審査で断られた版の出し直しの手順は、App Store Connect の API の文書に無い（2026-11-22 に DocC の JSON を 30 本ほど読んで確かめた）。reviewSubmission の `state` は READY_FOR_REVIEW・WAITING_FOR_REVIEW・IN_REVIEW・UNRESOLVED_ISSUES・CANCELING・COMPLETING・COMPLETE、
   reviewSubmissionItem の `state` は READY_FOR_REVIEW・ACCEPTED・APPROVED・REJECTED・REMOVED で、PATCH できるのは item の `resolved`・`removed` と submission の `submitted`・`canceled`・`platform` だけ（どれも説明が空）。
   AskHub は「断られた項目を `resolved: true` → 同じ提出を `submitted: true`」で出し直し、断られたら人に App Store Connect で押してもらう（#1208）。審査とのやり取り（Resolution Center）の本文を読む API は見当たらない
+- develop と `release/**` が同じコミットにあると、両方の push で Upload が同時に流れ、上げた時刻の窓だけではどれが上げたか分からない。ビルドの番号を UTC の日時にするリポジトリ（prime-pick）では実行番号でも絞れない。
+  上げた番号は job のログの xcodebuild の引数（`${{ }}` で渡した値は、ログの `Run` の見出しで展開される）と、xcodebuild が始めに出す「Build settings from command line」の `CURRENT_PROJECT_VERSION = <番号>` で分かる（2026-11-24、prime-pick 1.4.0。#1291）
+- GitHub Actions の job のログ（`GET /actions/jobs/{id}/logs`）の `Run` の見出しのスクリプトは、色のエスケープシーケンスつき（`ESC[36;1m  CURRENT_PROJECT_VERSION=…ESC[0m`）で返る。ログの中の語を探すときは、先にエスケープシーケンスを除く。
+  `gh api` でこのログを読むと「the response contains terminal escape sequences」で何も出さないので、`--allow-escape-sequences` を付ける（2026-11-24、#1291）
 
 ## ワーカー・司令塔の運用
 
