@@ -43,15 +43,15 @@ struct AppStoreSetupView: View {
                     Label("\(failure.item.title): \(failure.message)", systemImage: "xmark.octagon.fill").foregroundStyle(Theme.danger)
                 }
             }
+            // 残りの項目を先に、済んだ項目は後ろの「済み」にまとめる（ユーザーの決定。2026-11-24）
             if setup.isActive {
                 appSection(setup)
                 if setup.app != nil {
                     settingsSection(setup)
                     webSection(setup)
-                    if setup.items.contains(where: \.kind.isVersionItem) {
-                        versionSection(setup)
-                    }
+                    versionSection(setup)
                 }
+                doneSection(setup)
             }
             exclusionSection(setup)
         }
@@ -88,8 +88,15 @@ struct AppStoreSetupView: View {
     // MARK: - アプリを作る
 
     @ViewBuilder private func appSection(_ setup: AppStoreSetup) -> some View {
+        let items = setup.items.filter { $0.kind.isNeededForApp && !$0.isDone }
+        if !items.isEmpty {
+            appCard(setup, items: items)
+        }
+    }
+
+    private func appCard(_ setup: AppStoreSetup, items: [AppStoreSetup.Item]) -> some View {
         CardSection {
-            ForEach(setup.items.filter(\.kind.isNeededForApp)) { item in
+            ForEach(items) { item in
                 ChecklistRow(item: item)
             }
             if setup.item(.bundleId)?.isDone == false, let identifier = setup.mainBundleID,
@@ -117,15 +124,18 @@ struct AppStoreSetupView: View {
 
     @ViewBuilder private func settingsSection(_ setup: AppStoreSetup) -> some View {
         let kinds = AppStoreSetup.ItemKind.settingKinds
-        CardSection {
-            ForEach(setup.items.filter { kinds.contains($0.kind) && !$0.kind.isVersionItem }) { item in
-                ChecklistRow(item: item)
+        let items = setup.items.filter { kinds.contains($0.kind) && !$0.kind.isVersionItem && !$0.isDone }
+        if !items.isEmpty {
+            CardSection {
+                ForEach(items) { item in
+                    ChecklistRow(item: item)
+                }
+                writeButton(setup, versionItems: false)
+            } header: {
+                Text("AskHub から書けるもの")
+            } footer: {
+                Text("あなたが値を確かめて押したときだけ、司令塔が App Store Connect に書きます。App Store Connect で決めた値は上書きしません")
             }
-            writeButton(setup, versionItems: false)
-        } header: {
-            Text("AskHub から書けるもの")
-        } footer: {
-            Text("あなたが値を確かめて押したときだけ、司令塔が App Store Connect に書きます。App Store Connect で決めた値は上書きしません")
         }
     }
 
@@ -133,23 +143,22 @@ struct AppStoreSetupView: View {
 
     @ViewBuilder private func webSection(_ setup: AppStoreSetup) -> some View {
         let kinds: [AppStoreSetup.ItemKind] = [.ageRating, .appPrivacy, .digitalServicesAct]
-        CardSection {
-            ForEach(setup.items.filter { kinds.contains($0.kind) }) { item in
-                VStack(alignment: .leading, spacing: 6) {
-                    ChecklistRow(item: item)
-                    if !item.isDone, let guide = item.kind.guide {
-                        Text(guide).appFont(.footnote).foregroundStyle(.secondary)
-                    }
+        let items = setup.items.filter { kinds.contains($0.kind) && !$0.isDone }
+        if !items.isEmpty {
+            CardSection {
+                ForEach(items) { item in
+                    ChecklistRow(item: item, showsGuide: true)
+                    confirmButton(setup, item.kind)
                 }
-                confirmButton(setup, item.kind)
+                if let url = setup.app?.url {
+                    Link(destination: url) { Label("App Store Connect でこのアプリを開く", systemImage: "safari") }
+                }
+            } header: {
+                Text("App Store Connect の Web で")
+            } footer: {
+                // 「終わった」を押すことは各行の手順に書いてあるので、ここでは繰り返さない
+                Text("API で書けない項目です。年齢制限は、答えると AskHub が見つけます")
             }
-            if let url = setup.app?.url {
-                Link(destination: url) { Label("App Store Connect でこのアプリを開く", systemImage: "safari") }
-            }
-        } header: {
-            Text("App Store Connect の Web で")
-        } footer: {
-            Text("API が無い・AskHub から書かない項目です。年齢制限は答えると AskHub が見つけます。App のプライバシーと DSA は、終わったら「終わった」を押してください")
         }
     }
 
@@ -157,27 +166,40 @@ struct AppStoreSetupView: View {
 
     @ViewBuilder private func versionSection(_ setup: AppStoreSetup) -> some View {
         let version = store.snapshot?.submissions(of: setup.repositoryID).first { !$0.isEnded }?.version
-        CardSection {
-            ForEach(setup.items.filter(\.kind.isVersionItem)) { item in
-                VStack(alignment: .leading, spacing: 6) {
-                    ChecklistRow(item: item)
-                    if !item.isDone, let guide = item.kind.guide {
-                        Text(guide).appFont(.footnote).foregroundStyle(.secondary)
-                    }
+        let items = setup.items.filter { $0.kind.isVersionItem && !$0.isDone }
+        if !items.isEmpty {
+            CardSection {
+                ForEach(items) { item in
+                    ChecklistRow(item: item, showsGuide: true)
+                    confirmButton(setup, item.kind)
                 }
-                confirmButton(setup, item.kind)
+                writeButton(setup, versionItems: true)
+            } header: {
+                Text(version.map { "初めての版（\($0)）" } ?? "初めての版")
+            } footer: {
+                // 連絡先を写すことは App Review の連絡先の行の手順に書いてあるので、ここでは繰り返さない
+                Text("リリースを始めて App Store Connect に版ができると出ます。あなたが値を確かめて押したら、司令塔が書きます（連絡先は AskHub に置きません）")
             }
-            if let source = setup.settingsRequest?.reviewContactFrom {
-                Label("App Review の連絡先を「\(source)」の版から写しました", systemImage: "person.crop.rectangle.stack")
-                    .appFont(.footnote)
-                    .foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: - 済み
+
+    @ViewBuilder private func doneSection(_ setup: AppStoreSetup) -> some View {
+        let items = setup.items.filter(\.isDone)
+        if !items.isEmpty {
+            CardSection {
+                ForEach(items) { item in
+                    ChecklistRow(item: item)
+                }
+                if let source = setup.settingsRequest?.reviewContactFrom {
+                    Label("App Review の連絡先を「\(source)」の版から写しました", systemImage: "person.crop.rectangle.stack")
+                        .appFont(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("済み · \(items.count)")
             }
-            writeButton(setup, versionItems: true)
-        } header: {
-            Text(version.map { "初めての版（\($0)）" } ?? "初めての版")
-        } footer: {
-            Text("リリースを始めて App Store Connect に版ができると出ます。あなたが値を確かめて押したら、司令塔が書きます"
-                + "（App Review の連絡先は、同じ鍵のほかのアプリの版から写します。連絡先は AskHub に置きません）")
         }
     }
 
@@ -228,9 +250,10 @@ struct AppStoreSetupView: View {
     }
 }
 
-/// チェックリストの 1 行（済み・まだ・確かめられない）
+/// チェックリストの 1 行（済み・まだ・確かめられない）。`showsGuide` なら、まだの項目に App Store Connect の Web でする手順を出す
 private struct ChecklistRow: View {
     let item: AppStoreSetup.Item
+    var showsGuide = false
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
@@ -238,15 +261,34 @@ private struct ChecklistRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.kind.title).appFont(.headline, weight: .semibold)
                 Text(detail).foregroundStyle(.secondary)
+                if let guide = extraGuide {
+                    Text(guide).appFont(.footnote).foregroundStyle(.secondary).padding(.top, 4)
+                }
             }
         }
         .accessibilityElement(children: .combine)
         .accessibilityValue(stateLabel)
     }
 
+    /// Web でする手順（まだの項目だけ）
+    private var guide: String? {
+        showsGuide && !item.isDone ? item.kind.guide : nil
+    }
+
+    /// API で読めない項目は、司令塔の注記（読めないこと・Web でする所）が手順と同じことを言うので、手順だけを出す
+    private var replacesNote: Bool {
+        guide != nil && item.state == .unknown
+    }
+
     private var detail: String {
         if item.confirmed { return "終わった（あなたが押しました）" }
+        if replacesNote, let guide { return guide }
         return item.note ?? (item.state == .done ? "済み" : "まだ")
+    }
+
+    /// 注記（今の様子）の下に足す手順
+    private var extraGuide: String? {
+        replacesNote ? nil : guide
     }
 
     private var symbol: String {
