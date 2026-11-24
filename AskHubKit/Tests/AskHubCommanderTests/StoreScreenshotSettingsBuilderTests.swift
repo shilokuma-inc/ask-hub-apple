@@ -136,6 +136,22 @@ struct StoreScreenshotSettingsBuilderTests {
         #expect(Builder.problems(of: Self.built, screenshots: Self.screenshots, groups: Self.groups).isEmpty)
     }
 
+    /// 配置グループと表示サイズの組み合わせの入れ替わりと、screenshots.json が無い・読めないことも知らせる
+    @Test func reportsSwappedSizesAndUnreadableScreenshots() {
+        var swapped = Self.built
+        swapped.artifacts["IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE"] = "APP_IPHONE_61"
+        swapped.artifacts["IPHONE_DYNAMIC_ISLAND_MEDIUM_PROFILE"] = "APP_IPHONE_67"
+        #expect(Builder.problems(of: swapped, screenshots: Self.screenshots, groups: Self.groups) == [
+            "撮影の設定: build.storeScreenshots.artifacts の配置グループ IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE に APP_IPHONE_61（iPhone 6.3 inch）を撮っている"
+                + "（APP_IPHONE_61 は IPHONE_DYNAMIC_ISLAND_MEDIUM_PROFILE）",
+            "撮影の設定: build.storeScreenshots.artifacts の配置グループ IPHONE_DYNAMIC_ISLAND_MEDIUM_PROFILE に APP_IPHONE_67（iPhone 6.9 inch）を撮っている"
+                + "（APP_IPHONE_67 は IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE）"
+        ])
+        #expect(Builder.problems(of: Self.built, screenshots: nil, groups: Self.groups) == ["撮影の設定: AppStore/screenshots.json が無い・読めない"])
+        #expect(Builder.problems(of: Self.built, screenshots: "{}", groups: Self.groups)
+            == ["撮影の設定: AppStore/screenshots.json の displayTypes を読めない"])
+    }
+
     static func problem<Value>(_ result: Result<Value, Builder.Problem>) -> String? {
         guard case let .failure(problem) = result else { return nil }
         return problem.description

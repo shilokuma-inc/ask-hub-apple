@@ -14,6 +14,7 @@ enum StoreScreenshotSettingsBuilder {
     static let workflowPath = ".github/workflows/\(workflow)"
     static let screenshotsPath = "AppStore/screenshots.json"
     static let languagesPath = "AppStore/languages.json"
+    static let artifactsField = "build.storeScreenshots.artifacts"
     /// ずれ（`appKit.drift`）に書く撮影の設定の問題の頭。ずれの点検で、ほかのずれと見分ける
     static let problemPrefix = "撮影の設定: "
 
@@ -80,15 +81,22 @@ enum StoreScreenshotSettingsBuilder {
     static func problems(of workflow: StoreScreenshotWorkflow, screenshots: String?, groups: [AppStorePlacementProfileGroup]) -> [String] {
         var problems: [String] = []
         let known = Set(groups.map(\.id))
-        for (group, name) in workflow.artifacts.sorted(by: { $0.key < $1.key }) where !known.contains(group) {
-            let hint = (try? placementGroup(for: name, in: groups).get()).map { "。\(name) は \($0)" } ?? ""
-            problems.append(problemPrefix + "build.storeScreenshots.artifacts の配置グループ \(group) が App Store Connect のリファレンスデータに無い\(hint)")
+        for (group, name) in workflow.artifacts.sorted(by: { $0.key < $1.key }) {
+            let resolved = try? placementGroup(for: name, in: groups).get()
+            if !known.contains(group) {
+                let hint = resolved.map { "。\(name) は \($0)" } ?? ""
+                problems.append(problemPrefix + "\(artifactsField) の配置グループ \(group) が App Store Connect のリファレンスデータに無い\(hint)")
+            } else if let resolved, resolved != group {
+                problems.append(problemPrefix + "\(artifactsField) の配置グループ \(group) に \(label(name))を撮っている（\(name) は \(resolved)）")
+            }
         }
+        guard let screenshots else { return problems + [problemPrefix + "\(screenshotsPath) が無い・読めない"] }
+        guard let names = names(in: screenshots) else { return problems + [problemPrefix + "\(screenshotsPath) の displayTypes を読めない"] }
         let configured = Set(workflow.artifacts.values)
-        for name in screenshots.flatMap(names(in:)) ?? [] where !configured.contains(name) {
+        for name in names where !configured.contains(name) {
             switch placementGroup(for: name, in: groups) {
             case let .success(group):
-                problems.append(problemPrefix + "\(screenshotsPath) の \(label(name))が build.storeScreenshots.artifacts に無い（足すなら \(group)）")
+                problems.append(problemPrefix + "\(screenshotsPath) の \(label(name))が \(artifactsField) に無い（足すなら \(group)）")
             case let .failure(problem):
                 problems.append(problem.description)
             }
