@@ -58,6 +58,7 @@ extension VerificationBacklog {
 }
 
 /// 実機確認を畳む規則。次の版を配信したら、前の版の確認は自動で畳む（ユーザーの決定。2026-11-24）。
+/// epic が入った版 N（マージした後で最初に切った配信した版）の次の版 N+1 が配信されたら畳む。N を配信した後も、App Store の版で確かめる余地を残す。
 /// 状態リポジトリには何も書かず、配信の記録（`releases/<版>.json`）とリリースを始めた版の記録からクライアントが決める
 enum VerificationFold {
     /// 版を切った時刻。release ブランチを作った時刻（リリースを始めた版の記録）、分からなければその版のビルドを上げた最も早い時刻、
@@ -67,8 +68,9 @@ enum VerificationFold {
         return submission?.branchCreatedAt ?? release.platforms.compactMap(\.uploadedAt).min() ?? release.detectedAt
     }
 
-    /// epic の残りの確認を畳む、配信した版。そのリポジトリで、epic をマージした時刻と同じか後に切った版のうち、最も早く切ったもの。
-    /// 畳まない（マージした時刻が分からない・そういう版が無い）なら nil
+    /// epic の残りの確認を畳む、配信した版。そのリポジトリで、epic をマージした時刻と同じか後に切った版を切った順に並べ、
+    /// 最初の版（epic が入った版）の次の版。hotfix の版（タグから切るので develop の epic を含まない）は数えない。
+    /// 畳まない（マージした時刻が分からない・次の版がまだ無い）なら nil
     static func foldingRelease(
         mergedAt: Date?,
         repositoryID: TargetRepository.ID,
@@ -78,11 +80,16 @@ enum VerificationFold {
         guard let mergedAt else {
             return nil
         }
-        return releases
-            .filter { $0.repositoryID == repositoryID }
+        let shipped = releases
+            .filter { $0.repositoryID == repositoryID && !isHotfix($0, submissions: submissions) }
             .map { (release: $0, cutAt: cutAt(of: $0, submissions: submissions)) }
             .filter { $0.cutAt >= mergedAt }
-            .min { $0.cutAt < $1.cutAt }?
-            .release
+            .sorted { $0.cutAt < $1.cutAt }
+        return shipped.dropFirst().first?.release
+    }
+
+    /// hotfix の版か（リリースを始めた版の記録に、元にしたタグがある）。App Store Connect で出した版など、記録の無い版は分からないので hotfix とみなさない
+    static func isHotfix(_ release: Release, submissions: [Submission]) -> Bool {
+        submissions.contains { $0.repositoryID == release.repositoryID && $0.version == release.version && $0.hotfixFrom != nil }
     }
 }

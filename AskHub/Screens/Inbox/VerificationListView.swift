@@ -125,7 +125,7 @@ struct VerificationListView: View {
                 versions.append(name)
             }
         }
-        return "\(versions.joined(separator: "・")) を配信したので、それより前にマージした epic の残りの確認を畳みました。"
+        return "\(versions.joined(separator: "・")) を配信したので、その前の版に入った epic の残りの確認を畳みました。"
             + "あなたの番には数えません。開けば答える・閉じることもできます"
     }
 
