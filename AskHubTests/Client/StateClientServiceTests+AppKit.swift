@@ -54,6 +54,17 @@ extension StateClientServiceTests {
         let items = InboxBuilder.items(from: snapshot, now: now).filter { $0.kind == .appKit }
         #expect(Set(items.map(\.title)) == ["app-kit v1.0.1 を広げる", "app-kit のずれを直す"])
         #expect(items.allSatisfy { $0.urgency == .whenFree })
+        // 2 行目は変更点の最初の 1 行を、箇条書きの記号を外して出す
+        #expect(items.first { $0.title == "app-kit v1.0.1 を広げる" }?.detail == "Upload の直し")
+    }
+
+    /// 一覧の 2 行目に出す変更点は、Markdown の記号を外した最初の 1 行
+    @Test
+    func summarizesChangesAsPlainText() {
+        #expect(AppKitOverview.plainSummary(of: "- macOS の Archive・`.pkg` の書き出し\n- **Upload** を扱う") == "macOS の Archive・.pkg の書き出し")
+        #expect(AppKitOverview.plainSummary(of: "\n## 変更点\n1. 直した") == "変更点")
+        #expect(AppKitOverview.plainSummary(of: "2. 直した") == "直した")
+        #expect(AppKitOverview.plainSummary(of: " \n- \n") == nil)
     }
 
     /// 広げる途中で止まったら、進行が止まっていますに出し、同じ版のもう一度試すとやめるを送れる。ほかの版は広げられない

@@ -139,6 +139,29 @@ struct RepositoryAppKit: Hashable {
     var rolloutTarget: AppKitOverview.Target?
 }
 
+extension AppKitOverview {
+    /// 変更点（Markdown）の最初の 1 行を、一覧の 2 行目に出す平文にする。箇条書き・見出しの記号と、コード・強調の記号を外す。
+    /// 中身のある行が無ければ nil
+    static func plainSummary(of changes: String) -> String? {
+        for line in changes.split(separator: "\n") {
+            var text = line.trimmingCharacters(in: .whitespaces)
+            while let first = text.first, "-*+#>".contains(first) {
+                text = String(text.dropFirst()).trimmingCharacters(in: .whitespaces)
+            }
+            if let range = text.range(of: #"^\d+[.)]\s+"#, options: .regularExpression) {
+                text.removeSubrange(range)
+            }
+            for mark in ["`", "**", "__"] {
+                text = text.replacingOccurrences(of: mark, with: "")
+            }
+            if !text.isEmpty {
+                return text
+            }
+        }
+        return nil
+    }
+}
+
 // MARK: - あなたの番
 
 extension InboxBuilder {
@@ -157,7 +180,7 @@ extension InboxBuilder {
         let installed = snapshot.repositories.compactMap { $0.appKit?.installed } + appKit.templates.compactMap(\.installed)
         if let release = appKit.newRelease, appKit.canRollOut(release),
            installed.contains(where: { $0.version.map { AppKitOverview.isNewer(release.version, than: $0) } ?? true }) {
-            let detail = release.changes.map { $0.split(separator: "\n").prefix(2).joined(separator: " ") } ?? "変更点を見て広げる"
+            let detail = release.changes.flatMap { AppKitOverview.plainSummary(of: $0) } ?? "変更点を見て広げる"
             let title = "app-kit \(release.version) を広げる"
             let id = "release/\(release.version)"
             items.append(appKitItem(id: id, urgency: .whenFree, title: title, detail: detail, since: release.foundAt))
