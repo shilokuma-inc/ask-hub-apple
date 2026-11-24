@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/startRelease.schema.json",
   "title": "リリースを始める人の意図（kind が startRelease）の payload",
-  "description": "封筒の repo が対象のリポジトリ。target・targetVersion は書かない。version は始める版（MARKETING_VERSION の形）。hotfix（true だけ）なら配信中の版だけを直す hotfix で、version は配信中の版の次のパッチ。suspend は hotfix の間一時停止する進行中のリリースの版（hotfix のときだけ）。知らない欄のある payload は読まない",
+  "description": "封筒の repo が対象のリポジトリ。target・targetVersion は書かない。version は始める版（MARKETING_VERSION の形）。hotfix（true だけ）なら配信中の版だけを直す hotfix で、version は配信中の版の次のパッチ。suspend は hotfix の間一時停止する進行中のリリースの版（hotfix のときだけ）。skipScreenshots（true だけ）なら App Store のスクショを撮らずに進む（撮影の設定の無いアプリで、人が選んだとき。記録のスクショを notConfigured にして始める）。知らない欄のある payload は読まない",
   "type": "object",
   "required": [
     "version"
@@ -17,6 +17,9 @@
     },
     "suspend": {
       "$ref": "../state/release.schema.json#/$defs/marketingVersion"
+    },
+    "skipScreenshots": {
+      "const": true
     }
   }
 }

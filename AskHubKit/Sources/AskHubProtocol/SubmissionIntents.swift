@@ -40,7 +40,8 @@ public struct SubmissionTarget: Equatable, Sendable {
 /// リリースを始める人の意図（`kind` が `startRelease`）。封筒の `repo` が対象のリポジトリで、`target`・`targetVersion` は持たない。
 /// `version` は始める版（既定は前に配信した版の次のマイナー）。司令塔が release ブランチを作り、準備を進める。
 /// `hotfix` なら配信中の版だけを直す hotfix（版は配信中の版の次のパッチ。release ブランチは配信中の版のタグから作り、develop に触れない）。
-/// `suspend` は、hotfix の間一時停止する進行中のリリースの版（人が確かめたもの。進行中のリリースがあるときは要る）
+/// `suspend` は、hotfix の間一時停止する進行中のリリースの版（人が確かめたもの。進行中のリリースがあるときは要る）。
+/// `skipScreenshots` なら、App Store のスクショを撮らずに進む（撮影の設定の無いアプリで、人が選んだとき。`docs/renewal/store-screenshots.md`）
 public struct StartReleaseIntent: Equatable, Sendable {
     public static let kind = "startRelease"
 
@@ -48,6 +49,7 @@ public struct StartReleaseIntent: Equatable, Sendable {
     public var version: MarketingVersion
     public var hotfix: Bool
     public var suspend: MarketingVersion?
+    public var skipScreenshots: Bool
     public var intent: IntentReference
 
     public init(
@@ -55,12 +57,14 @@ public struct StartReleaseIntent: Equatable, Sendable {
         version: MarketingVersion,
         hotfix: Bool = false,
         suspend: MarketingVersion? = nil,
+        skipScreenshots: Bool = false,
         intent: IntentReference
     ) {
         self.repo = repo
         self.version = version
         self.hotfix = hotfix
         self.suspend = suspend
+        self.skipScreenshots = skipScreenshots
         self.intent = intent
     }
 
@@ -68,16 +72,11 @@ public struct StartReleaseIntent: Equatable, Sendable {
         guard envelope.kind == Self.kind else { throw .init(detail: "kind が startRelease でない") }
         guard let repo = envelope.repo else { throw .init(detail: "repo が無い") }
         guard envelope.target == nil, envelope.targetVersion == nil else { throw .init(detail: "リリースを始める意図に target か targetVersion がある") }
-        let reader = try PayloadReader(envelope.payload, allowed: ["version", "hotfix", "suspend"])
+        let reader = try PayloadReader(envelope.payload, allowed: ["version", "hotfix", "suspend", "skipScreenshots"])
         guard let version = MarketingVersion(rawValue: try reader.text("version", required: true, limit: 32)) else {
             throw .init(detail: "version が版の番号の形でない")
         }
-        var hotfix = false
-        switch reader.payload["hotfix"] {
-        case nil: break
-        case .bool(true)?: hotfix = true
-        default: throw .init(detail: "hotfix は true だけ（hotfix でなければ書かない）")
-        }
+        let hotfix = try Self.trueOnly(reader, "hotfix", detail: "hotfix は true だけ（hotfix でなければ書かない）")
         var suspend: MarketingVersion?
         if reader.payload["suspend"] != nil {
             guard hotfix else { throw .init(detail: "suspend は hotfix のときだけ") }
@@ -86,14 +85,25 @@ public struct StartReleaseIntent: Equatable, Sendable {
             }
             suspend = version
         }
+        let skipScreenshots = try Self.trueOnly(reader, "skipScreenshots", detail: "skipScreenshots は true だけ（撮るなら書かない）")
         let intent = IntentReference(keyId: envelope.keyId, nonce: envelope.nonce)
-        self.init(repo: repo, version: version, hotfix: hotfix, suspend: suspend, intent: intent)
+        self.init(repo: repo, version: version, hotfix: hotfix, suspend: suspend, skipScreenshots: skipScreenshots, intent: intent)
+    }
+
+    /// true だけを書ける欄（無ければ false）
+    private static func trueOnly(_ reader: PayloadReader, _ key: String, detail: String) throws(MalformedIntent) -> Bool {
+        switch reader.payload[key] {
+        case nil: return false
+        case .bool(true)?: return true
+        default: throw .init(detail: detail)
+        }
     }
 
     public var payload: [String: JSONValue] {
         var payload: [String: JSONValue] = ["version": .string(version.rawValue)]
         if hotfix { payload["hotfix"] = .bool(true) }
         if let suspend { payload["suspend"] = .string(suspend.rawValue) }
+        if skipScreenshots { payload["skipScreenshots"] = .bool(true) }
         return payload
     }
 }
