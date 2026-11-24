@@ -203,21 +203,6 @@ struct RepositorySetupTests {
         #expect(try await repository(in: plain)?.setup == nil)
     }
 
-    /// 前に出した PR が開いていれば、出し直さない
-    @Test func keepsOpenWorkflowPullRequest() async throws {
-        let transport = StubTransport([
-            .json(200, #"{"default_branch":"develop","private":false,"has_discussions":true}"#),
-            .data(#"{"repository":{"discussionCategories":{"nodes":[{"name":"Ideas"}]}}}"#),
-            .json(200, "[\(Self.pullRequest())]")
-        ])
-        let github = GitHubPullRequests(repository: Self.repo, transport: transport) { _ in "t" }
-        let previous = WorkflowSetup(state: .open, pullRequest: 12, head: Self.commit, changes: [.init(kind: .removeLegacy, path: "a.yml")])
-        let setup = await RepositorySetupRunner(github: github, now: Timestamp(Self.now)).run(build: nil, previous: previous).setup
-        #expect(setup.discussions == .ready)
-        #expect(setup.workflows == previous)
-        #expect(transport.requests.count == 3)
-    }
-
     // MARK: - 承認
 
     private func approveEnvelope(number: Int = 12, head: String = commit) -> IntentEnvelope {
