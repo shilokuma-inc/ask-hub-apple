@@ -119,7 +119,7 @@ struct BuilderTests {
     /// どのカードでも、自由回答の選択肢（2 つあるときは既定の方）は推奨の対角（右手は ↙・左手は ↘）にあり、「自由回答」の札が付く
     @Test
     func freeTextChoicesSitOppositeRecommended() throws {
-        let cards = DeckBuilder.cards(from: snapshot, scope: .all)
+        let cards = DeckBuilder.cards(from: snapshot, scope: .all) + DeckBuilder.cards(from: snapshot, scope: .allVerifications)
         let withFreeText = cards.filter { $0.choices.contains(where: \.asksText) }
         // 判断の確認（直してほしい）と実機確認（問題あり）。質問の選択肢には自由回答が無い
         let kinds = Set(withFreeText.map { card in
@@ -200,11 +200,15 @@ struct BuilderTests {
         #expect(ended.choices.map(\.id) == ["confirmed", "problem"])
     }
 
-    /// 実機確認のまとめ（通知から開く）は、アプリをまたいで実機確認だけを流す。TestFlight の版が無い項目は出さない
+    /// 実機確認の一覧から開く山札は、アプリをまたいで実機確認だけを、新しくマージした epic から流す。TestFlight の版が無い項目と、
+    /// 配信した版の確認（献立メモの 2.0.1 を配信して畳んだ epic）は出さない
     @Test
     func allVerificationsScopeSpansEpics() throws {
         var snapshot = snapshot
-        #expect(DeckBuilder.cards(from: snapshot, scope: .allVerifications).map(\.epicID) == ["habit-review", "habit-review"])
+        let epicIDs = DeckBuilder.cards(from: snapshot, scope: .allVerifications).map(\.epicID)
+        #expect(epicIDs == ["rain-widget", "rain-widget", "rain-widget", "habit-review", "habit-review"])
+        // 畳んだ epic も、その epic だけの山札なら流せる
+        #expect(DeckBuilder.cards(from: snapshot, scope: .verifications("recipe-cart")).count == 2)
 
         // 積読の検索の版が TestFlight に上がると、その項目も並ぶ
         let index = try #require(snapshot.epics.firstIndex { $0.id == "tsundoku-search" })
@@ -215,21 +219,24 @@ struct BuilderTests {
             return item
         }
         let cards = DeckBuilder.cards(from: snapshot, scope: .allVerifications)
-        #expect(Set(cards.map(\.epicID)) == ["habit-review", "tsundoku-search"])
-        #expect(Set(cards.map(\.repositoryID)).count == 2)
+        #expect(Set(cards.map(\.epicID)) == ["rain-widget", "habit-review", "tsundoku-search"])
+        #expect(Set(cards.map(\.repositoryID)).count == 3)
         // リリースが進行中の習慣ログだけ、「問題あり」を「このリリースで直す」と「次のリリースで直す」に分ける
         #expect(cards.filter { $0.epicID == "tsundoku-search" }.allSatisfy { $0.choices.map(\.id) == ["confirmed", "problem"] })
         #expect(cards.filter { $0.epicID == "habit-review" }.allSatisfy { $0.choices.count == 3 })
         // 質問・最終 PR の判断のカードは混ぜない
-        #expect(cards.count == 4)
+        #expect(cards.count == 7)
     }
 
-    /// まとめて判断するはアプリをまたいで流す
+    /// まとめて判断するはアプリをまたいで流す。実機確認は入れない（実機確認の一覧から流す）
     @Test
     func allScopeSpansApps() {
         let cards = DeckBuilder.cards(from: snapshot, scope: .all)
         #expect(Set(cards.map(\.repositoryID)).count >= 3)
-        #expect(cards.count == 9)
+        #expect(cards.count == 7)
+        #expect(!cards.contains { card in
+            if case .verification = card.content { true } else { false }
+        })
     }
 
     // MARK: epic のいま
