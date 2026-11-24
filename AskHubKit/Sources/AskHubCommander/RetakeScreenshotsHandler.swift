@@ -21,7 +21,9 @@ public struct RetakeScreenshotsHandler: IntentHandler {
         }
         // 前の周で写した（やり直し）
         if file.screenshots?.retake?.approval == retake.intent { return .accept }
-        if let problem = Self.problem(retaking: file) { return .reject(problem) }
+        let repository = try await context.read(RepositoryFile.self, at: StatePath.repository(target.repo))
+        let canCapture = repository?.canCaptureStoreScreenshots ?? false
+        if let problem = Self.problem(retaking: file, canCapture: canCapture) { return .reject(problem) }
         let request = SubmissionFile.Retake(
             displayTypes: retake.displayTypes, locales: retake.locales, approval: retake.intent, at: context.timestamp
         )
@@ -29,7 +31,7 @@ public struct RetakeScreenshotsHandler: IntentHandler {
         do {
             let message = "\(target.repo) の \(target.version) のスクショを撮り直す"
             saved = try await context.files.update(SubmissionFile.self, at: path, message: message) { file in
-                guard Self.problem(retaking: file) == nil else { return false }
+                guard Self.problem(retaking: file, canCapture: canCapture) == nil else { return false }
                 file.screenshots?.retake = request
                 file.updatedAt = context.timestamp
                 return true
@@ -42,7 +44,7 @@ public struct RetakeScreenshotsHandler: IntentHandler {
     }
 
     /// 撮り直せないわけ（記録の決まり。アプリも同じものを使う）
-    static func problem(retaking file: SubmissionFile) -> String? {
-        file.retakeProblem
+    static func problem(retaking file: SubmissionFile, canCapture: Bool) -> String? {
+        file.retakeProblem(canCapture: canCapture)
     }
 }

@@ -4,13 +4,14 @@ import Foundation
 
 extension SubmissionFile {
     /// スクショを撮り直せないわけ（`retakeScreenshots`）。撮り直せるなら nil。審査に出した後・UI テストで撮っている途中・
-    /// 頼んだ撮り直しを始める前は撮り直せない
-    public var retakeProblem: String? {
+    /// 頼んだ撮り直しを始める前は撮り直せない。撮らなかった版（`notConfigured`）は、リポジトリで撮れる（`canCapture`。
+    /// `RepositoryFile.canCaptureStoreScreenshots`）なら後から撮れる
+    public func retakeProblem(canCapture: Bool) -> String? {
         if origin != .askhub { return "AskHub で始めたリリースだけ、スクショを撮り直せる" }
         if isEnded { return "\(version) のリリースはもう終わっている" }
         if submit != nil || isSubmitting || hasReviewInFlight { return "\(version) は審査に出した後なので、スクショを撮り直せない" }
         guard let shots = screenshots else { return "\(version) のスクショはまだ撮り始めていない" }
-        if shots.state == .notConfigured { return "スクショの撮り方の設定（build.storeScreenshots）が無い" }
+        if shots.state == .notConfigured, !canCapture { return "スクショの撮り方の設定（build.storeScreenshots）が無い" }
         if shots.state == .capturing, shots.run == nil, shots.library == nil {
             return "UI テストでスクショを撮っている途中。撮り終えてから撮り直す"
         }
