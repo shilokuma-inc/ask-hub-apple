@@ -212,6 +212,14 @@ extension FinalReview {
             && !headChangedAfterReview && headCommit != nil
     }
 
+    /// 最終 PR をマージした時刻。マージしていなければ nil
+    var mergedAt: Date? {
+        guard case let .merged(date, _) = state else {
+            return nil
+        }
+        return date
+    }
+
     /// マージ済みのとき、自動でかどうかとマージした時刻（例: 自動でマージしました（15:42））。マージ済みでなければ nil
     var mergedNote: String? {
         guard case let .merged(date, automatic) = state else {

@@ -57,6 +57,8 @@ struct Release: Identifiable, Hashable {
         var name: String
         /// ビルドの番号
         var build: String
+        /// そのビルドを App Store Connect に上げた時刻。分からなければ nil（実機確認を畳むかを決めるのに使う。`VerificationFold`）
+        var uploadedAt: Date?
     }
 
     struct Commit: Hashable {
