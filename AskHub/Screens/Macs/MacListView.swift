@@ -100,7 +100,11 @@ struct ConnectionBadge: View {
             // 開始に選べるのは 30 分まで（オンライン）だが、あなたの番は印が 15 分途絶えると警告するので、同じところから注意の色にする
             let now = store.currentDate()
             let isStale = now.timeIntervalSince(lastSeen) >= ConnectionStatusView.staleHeartbeat
-            Label("\(isStale ? "印が途絶えています" : "オンライン") · \(Self.checked(lastSeen, now: now))", systemImage: "circle.fill")
+            // 注意のときは、あなたの番の司令塔の警告と同じ言い方（「20 分 印がありません」）にする
+            let text = isStale
+                ? "\(RelativeTime.duration(since: lastSeen, now: now)) 印がありません"
+                : "オンライン · \(Self.checked(lastSeen, now: now))"
+            Label(text, systemImage: "circle.fill")
                 .appFont(.caption)
                 .foregroundStyle(isStale ? Theme.warning : Theme.success)
                 .labelStyle(DotLabelStyle())
