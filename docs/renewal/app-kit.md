@@ -119,6 +119,7 @@ app-kit/
 ```
 
 - `project`・`scheme`: 今は「プロジェクトと同じ名前の共有スキーム」を決め打ちにしている。改名したリポジトリやスキームの名前が違うリポジトリでも動くよう、書いて持つ
+  - プラットフォームでスキームが違うアプリ（shilokuma-inc/kawarin-apple の macOS 版の `KawarinMac`）は、`schemes` に違うものだけを書く（v1.6.0。下の「プラットフォームごとのスキーム」）
 - `platforms`: ビルドとテストの行き先（`iOS`・`macOS`・`visionOS`）。`generate` は XcodeGen で作るリポジトリの `"xcodegen"`（ワーカーのビルドの設定の `generate` と同じ）
 - `uiTests`: UI テストのターゲット。作業ブランチへの push では飛ばす（今と同じ）。無いリポジトリは `null`
 - `xcodeVersion`: 版の既定（今は 26.6）と違う Xcode を使うときだけ書く
@@ -166,6 +167,21 @@ v1.6.0 は、App Extension の entitlements（v1.5.0。app-kit#24・#1255）の�
 - 呼ぶ側（`upload.yml`・`archive.yml`）は、Secrets に `GOOGLE_SERVICE_INFO_PLIST_DEV`・`_PROD` を足し、入力 `configuration` を足す。今の設定はそのまま動くので minor にする
 - 司令塔の初めての入れ替えは、`.github/app-kit.json` があれば変えない。dokogacha は、準備をやり直す前に、リポジトリに上の形の `.github/app-kit.json` を入れておく
 - 審査の提出の道具: `manifest.json` の `replaces` の `Tools/app_store_config.py`・`app_store_connect.py`・`upload_app_info.py`・`upload_metadata.py` に、`keepIfPresent` として `.github/workflows/app-store-submit.yml`・`Tools/submit_for_review.py` を足す（theater-player の Submit/App Store が読む。審査の提出を司令塔に寄せたら外す）
+
+### プラットフォームごとのスキーム（v1.6.0）
+
+2026-11-24 にユーザーが決めた。shilokuma-inc/kawarin-apple は、iOS 版がスキーム `Kawarin`、macOS 版が別のターゲットとスキーム `KawarinMac`（製品は同じ `Kawarin.app`、Bundle ID も同じ）で、v1.5.0 までの app-kit は 1 つの `scheme` でしか Build・Archive できない。構成の切り替えと同じ版に入れる（app-kit の書き手を重ねないため）。
+
+- 設定は `schemes`（プラットフォーム → スキーム）。`scheme` と違うプラットフォームだけを書く。書かないプラットフォームは `scheme` を使う
+
+  ```json
+  { "project": "Kawarin.xcodeproj", "scheme": "Kawarin", "schemes": { "macOS": "KawarinMac" }, "platforms": ["iOS", "macOS"], "archive": { "platforms": ["iOS", "macOS"] } }
+  ```
+
+- キーは `platforms` にあるプラットフォームだけ。値はスキームの形（`scheme` と同じ）
+- Build: テストは先頭のプラットフォームのスキームで流す（`uiTests` もそのスキームのもの）。2 つ目からのプラットフォームは、それぞれのスキームでビルドだけを確かめる。パッケージの解決と SwiftLint は `scheme` で行う（同じプロジェクト）
+- Archive・Upload: プラットフォームごとのジョブが、そのプラットフォームのスキームで Archive し、entitlements もそのスキームの設定で入れる。App Store Connect のアプリの確かめの名前は `scheme` のまま
+- 司令塔のずれの点検・初めての入れ替えで比べるのは、今までどおり `scheme`（ワーカーのビルドの設定のスキーム）だけ
 
 ### 再利用ワークフロー
 
