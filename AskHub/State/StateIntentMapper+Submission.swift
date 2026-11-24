@@ -9,7 +9,7 @@ extension StateIntentMapper {
     /// ほかは、最後に読んだ状態でその操作を出しているときだけ（審査に出す・配信する・取り下げ・やめる）
     func supportsSubmissionIntent(_ intent: HumanIntent) -> Bool {
         switch intent {
-        case let .startRelease(repositoryID, version):
+        case let .startRelease(repositoryID, version, _):
             guard index.repositories[repositoryID] != nil, !index.releasingRepositories.contains(repositoryID),
                   let version = MarketingVersion(rawValue: version) else { return false }
             return index.releasedVersions[repositoryID].map { version > $0 } ?? true
@@ -97,14 +97,14 @@ extension StateIntentMapper {
     /// リリースを始める・hotfix を始める
     private func startDraft(_ intent: HumanIntent) throws(ClientServiceError) -> IntentDraft {
         switch intent {
-        case let .startRelease(repositoryID, version):
+        case let .startRelease(repositoryID, version, skipScreenshots):
             guard let parsed = MarketingVersion(rawValue: version) else {
                 throw ClientServiceError(message: "版は 1.2.0 のように、数を . でつないで書いてください")
             }
             guard supportsSubmissionIntent(intent) else {
                 throw ClientServiceError(message: "このリポジトリでは、いまはリリースを始められません（終わっていないリリースがあるか、配信した版より大きくありません）")
             }
-            return .startRelease(try repository(repositoryID), version: parsed)
+            return .startRelease(try repository(repositoryID), version: parsed, skipScreenshots: skipScreenshots)
 
         case let .startHotfix(repositoryID, version, suspend):
             if let problem = hotfixProblem(repositoryID, version: version, suspend: suspend) { throw ClientServiceError(message: problem) }

@@ -155,16 +155,18 @@ public struct IntentDraft: Equatable, Sendable {
         )
     }
 
-    /// リリースを始める（司令塔が release ブランチを作り、準備を進める）
+    /// リリースを始める（司令塔が release ブランチを作り、準備を進める）。`skipScreenshots` なら、App Store のスクショを撮らずに進む
     public static func startRelease(
         _ repo: RepositoryFullName,
         version: MarketingVersion,
         hotfix: Bool = false,
-        suspend: MarketingVersion? = nil
+        suspend: MarketingVersion? = nil,
+        skipScreenshots: Bool = false
     ) -> Self {
         var payload: [String: JSONValue] = ["version": .string(version.rawValue)]
         if hotfix { payload["hotfix"] = .bool(true) }
         if let suspend { payload["suspend"] = .string(suspend.rawValue) }
+        if skipScreenshots { payload["skipScreenshots"] = .bool(true) }
         return Self(kind: StartReleaseIntent.kind, repo: repo, payload: payload)
     }
 

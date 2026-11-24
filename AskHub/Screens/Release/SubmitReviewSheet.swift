@@ -335,14 +335,19 @@ struct ListingLocaleEditor: View {
     }
 }
 
-/// リリースを始めるシート。版の既定は、前に配信した版の次のマイナー
+/// リリースを始めるシート。版の既定は、前に配信した版の次のマイナー。App Store のスクショの撮り方の無いアプリでは、
+/// 司令塔が撮り方を作って撮ることを知らせ、「撮らずに進む」を選べるようにする（`docs/renewal/store-screenshots.md` の「撮影の設定の漏れを防ぐ」）
 struct StartReleaseSheet: View {
     let repository: TargetRepository
     let onClose: () -> Void
 
     @Environment(ClientStore.self) private var store
     @State private var version = ""
+    @State private var skipsScreenshots = false
     @State private var sending = SheetSendState()
+
+    /// スクショの撮り方（`build.storeScreenshots`）が無い
+    private var lacksScreenshotSettings: Bool { repository.build?.hasStoreScreenshots != true }
 
     var body: some View {
         NavigationStack {
@@ -372,6 +377,9 @@ struct StartReleaseSheet: View {
                 } footer: {
                     Text("App Store Connect にはまだ何も書きません。審査に出すときに、あなたが確かめてから書きます")
                 }
+                if lacksScreenshotSettings {
+                    screenshotsSection
+                }
             }
             .formStyle(.grouped)
             .pastelBackground()
@@ -393,13 +401,34 @@ struct StartReleaseSheet: View {
         .sheetSize(.form)
     }
 
+    /// 撮り方の無いアプリのスクショ。既定は、司令塔が app-kit の撮影のワークフローと `AppStore/` のファイルから撮り方を作って撮る
+    private var screenshotsSection: some View {
+        Section {
+            Label("スクショの撮り方の設定がまだありません", systemImage: "camera.badge.ellipsis")
+                .foregroundStyle(.orange)
+            Toggle("スクショを撮らずに進む", isOn: $skipsScreenshots)
+                .accessibilityIdentifier("release-skip-screenshots")
+        } header: {
+            Text("スクショ")
+        } footer: {
+            Text(skipsScreenshots
+                ? "この版ではスクショを撮りません。撮りたくなったら、リリースの画面の「スクショを撮る」で後から撮れます"
+                : "司令塔が app-kit の撮影のワークフローと AppStore/screenshots.json・languages.json から撮り方を作り、release ブランチで撮ります。"
+                    + "app-kit の撮影を使っていないアプリは撮りません")
+        }
+    }
+
     private var canStart: Bool {
         let version = version.trimmingCharacters(in: .whitespaces)
         return Submission.isVersion(version) && store.supports(.startRelease(repositoryID: repository.id, version: version))
     }
 
     private func start() {
-        let intent = HumanIntent.startRelease(repositoryID: repository.id, version: version.trimmingCharacters(in: .whitespaces))
+        let intent = HumanIntent.startRelease(
+            repositoryID: repository.id,
+            version: version.trimmingCharacters(in: .whitespaces),
+            skipScreenshots: lacksScreenshotSettings && skipsScreenshots
+        )
         if sending.submit(intent, in: store) { onClose() }
     }
 }
