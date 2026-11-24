@@ -102,7 +102,7 @@ extension StateClientServiceTests {
         #expect(paused.activities.count == 1)
         #expect(paused.activities.allSatisfy { if case .step(_, .running) = $0.kind { true } else { false } })
         let lines = EpicStatus.lines(for: paused, in: pausedSnapshot, now: now)
-        #expect(lines.first?.text == "一時停止しています（2分）。再開するまで次の作業を始めません")
+        #expect(lines.first?.text == "一時停止しています（2 分）。再開するまで次の作業を始めません")
         #expect(lines.count == 2)
         #expect(EpicStatus.isPausedByYou(paused))
 
