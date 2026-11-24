@@ -4,7 +4,7 @@ import Foundation
 
 extension DemoData {
     /// 実機確認が残っている、マージした epic（振り返りの epic のほか）。雨雲チェックは確かめるもの、
-    /// 献立メモは、マージした後に 2.0.1 を配信したので「配信した版の確認」として畳む
+    /// 献立メモは、マージした後に 2.0.0（この epic が入った版）と 2.0.1（次の版）を配信したので「配信した版の確認」として畳む
     func verificationEpics() -> [Epic] {
         [
             mergedEpic(MergedSample(
