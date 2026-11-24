@@ -18,6 +18,8 @@ final class FakeAppStore: AppStoreConnecting {
         /// 掲載文の id ごとのスクショの組（配置を作る・消すと変わる）
         var screenshotSets: [String: [AppStoreScreenshotSet]] = [:]
         /// 表示サイズ（配置グループ）ごとのプラットフォーム
+        /// リファレンスデータの配置グループ（無ければ `displayTypePlatforms` から作る）
+        var placementGroups: [AppStorePlacementProfileGroup]?
         var displayTypePlatforms: [String: AppStorePlatform] = [
             "IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE": .iOS, "IPHONE_DUO_PROFILE": .iOS, "MAC_PROFILE": .macOS
         ]
@@ -161,16 +163,6 @@ final class FakeAppStore: AppStoreConnecting {
     func downloadScreenshot(_ url: URL) async throws(AppStoreConnectError) -> Data {
         guard let data = state.withLock({ $0.images[url] }) else { throw .refused(status: 404, detail: "画像が無い") }
         return data
-    }
-
-    func displayTypePlatforms() async throws(AppStoreConnectError) -> [String: AppStorePlatform] {
-        state.withLock { $0.displayTypePlatforms }
-    }
-
-    func placementProfileGroups() async throws(AppStoreConnectError) -> [AppStorePlacementProfileGroup] {
-        state.withLock { $0.displayTypePlatforms }.sorted { $0.key < $1.key }.map { id, platform in
-            AppStorePlacementProfileGroup(id: id, platform: platform == .macOS ? "MAC_APP_STORE" : "IPHONE_APP_STORE")
-        }
     }
 
     func assetLibrary(of appID: String) async throws(AppStoreConnectError) -> String {
@@ -448,6 +440,26 @@ extension FakeAppStore {
         state.withLock { state in
             state.reads += 1
             return state.appNames
+        }
+    }
+}
+
+// MARK: - リファレンスデータ
+
+extension FakeAppStore {
+    func displayTypePlatforms() async throws(AppStoreConnectError) -> [String: AppStorePlatform] {
+        state.withLock { state in
+            guard let groups = state.placementGroups else { return state.displayTypePlatforms }
+            return Dictionary(groups.compactMap { group in
+                AppStoreConnectClient.platform(ofPlacement: group.platform).map { (group.id, $0) }
+            }) { first, _ in first }
+        }
+    }
+
+    func placementProfileGroups() async throws(AppStoreConnectError) -> [AppStorePlacementProfileGroup] {
+        if let groups = state.withLock({ $0.placementGroups }) { return groups }
+        return state.withLock { $0.displayTypePlatforms }.sorted { $0.key < $1.key }.map { id, platform in
+            AppStorePlacementProfileGroup(id: id, platform: platform == .macOS ? "MAC_APP_STORE" : "IPHONE_APP_STORE")
         }
     }
 }

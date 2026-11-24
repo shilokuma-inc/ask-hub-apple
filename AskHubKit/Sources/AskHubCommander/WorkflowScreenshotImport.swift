@@ -52,8 +52,7 @@ struct WorkflowScreenshotImport: Sendable {
             skipped: skipped,
             retake: retake
         )
-        for (type, name) in workflow.artifacts.sorted(by: { $0.key < $1.key })
-            where retake.map({ $0.displayTypes.isEmpty || $0.displayTypes.contains(type) }) ?? true {
+        for (type, name) in try await importable(workflow, retake: retake, skipped: &imported.skipped) {
             switch try await download(name, from: artifacts, repo: file.repo, into: workspace) {
             case let .success(folders):
                 try await imported.compare(type, artifact: name, folders: folders, live: live, workflow: workflow)
@@ -75,6 +74,26 @@ struct WorkflowScreenshotImport: Sendable {
         log("\(file.repo) の \(file.version) のスクショを取り込んだ（実行 \(runID)。差のある組 \(sets.filter(\.isChanged).count) / \(sets.count)\(first)）")
         let finished = context.timestamp
         return .init(state: .captured, commit: commit, startedAt: started, finishedAt: finished, sets: sets, skipped: skipped, run: run)
+    }
+
+    /// 取り込む組（配置グループ → artifact の表示サイズの名前。配置グループの順）。一部だけ撮り直すときは撮り直す組だけ。
+    /// リファレンスデータに無い配置グループ（撮り方の書き間違い）は、審査に出すときに黙って落ちるので、取り込まずに `skipped` にわけを足す
+    private func importable(
+        _ workflow: StoreScreenshotWorkflow,
+        retake: SubmissionFile.Retake?,
+        skipped: inout [SubmissionFile.SkippedDisplayType]
+    ) async throws -> [(type: String, name: String)] {
+        let known = try await call { () throws(AppStoreConnectError) in try await store.displayTypePlatforms() }
+        var importable: [(type: String, name: String)] = []
+        for (type, name) in workflow.artifacts.sorted(by: { $0.key < $1.key })
+            where retake.map({ $0.displayTypes.isEmpty || $0.displayTypes.contains(type) }) ?? true {
+            guard known[type] != nil else {
+                skipped.append(.init(displayType: type, reason: Self.unknownPlacementReason(type)))
+                continue
+            }
+            importable.append((type, name))
+        }
+        return importable
     }
 
     /// 取り込んだ組と見本（状態リポジトリのパス → base64 の文字）と、取り込めなかった組のわけ
@@ -192,6 +211,10 @@ struct WorkflowScreenshotImport: Sendable {
 
     /// 撮り方に無い表示サイズのわけ
     static let unconfiguredReason = "撮り方の設定（build.storeScreenshots.artifacts）にこの表示サイズが無い"
+
+    static func unknownPlacementReason(_ type: String) -> String {
+        "配置グループ \(type) が App Store Connect のリファレンスデータに無い。build.storeScreenshots.artifacts を直す"
+    }
 
     private func call<Value>(_ body: () async throws(AppStoreConnectError) -> Value) async throws -> Value {
         do {
