@@ -64,6 +64,23 @@ public struct AppStoreScreenshot: Equatable, Sendable {
     }
 }
 
+/// App Asset Library のリファレンスデータの配置グループ（`placementProfileGroups` の 1 つ）。id は文書に無いものが多く、
+/// 決め打ちせずに、配置のプラットフォームと表示クラスで引く（`docs/renewal/store-screenshots.md` の「設定の組み立て」）
+public struct AppStorePlacementProfileGroup: Equatable, Sendable {
+    /// 配置グループ（`IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE` など。スクショの表示サイズ）
+    public var id: String
+    /// 配置のプラットフォーム（`AppAssetLibraryPlacementPlatform`。`IPHONE_APP_STORE`・`IPAD_APP_STORE`・`VISION_PRO_APP_STORE` など）
+    public var platform: String
+    /// 表示クラス（`AppAssetLibraryDisplayClass`。`IPHONE_DYNAMIC_ISLAND_LARGE_DISPLAY`・`IPAD_13_DISPLAY` など）。無ければ nil
+    public var displayClass: String?
+
+    public init(id: String, platform: String, displayClass: String? = nil) {
+        self.id = id
+        self.platform = platform
+        self.displayClass = displayClass
+    }
+}
+
 /// ライブラリの画像
 public struct AppStoreLibraryImage: Equatable, Sendable {
     public var id: String
@@ -102,6 +119,8 @@ public protocol AppStoreConnectScreenshots: Sendable {
     func downloadScreenshot(_ url: URL) async throws(AppStoreConnectError) -> Data
     /// 表示サイズ（配置グループ）ごとのプラットフォーム（App Asset Library のリファレンスデータ）
     func displayTypePlatforms() async throws(AppStoreConnectError) -> [String: AppStorePlatform]
+    /// リファレンスデータの配置グループ（id・配置のプラットフォーム・表示クラス）
+    func placementProfileGroups() async throws(AppStoreConnectError) -> [AppStorePlacementProfileGroup]
     /// アプリの App Asset Library の id
     func assetLibrary(of appID: String) async throws(AppStoreConnectError) -> String
     /// ライブラリの、参照名が `referenceName` の画像
@@ -185,15 +204,23 @@ extension AppStoreConnectClient: AppStoreConnectScreenshots {
     }
 
     public func displayTypePlatforms() async throws(AppStoreConnectError) -> [String: AppStorePlatform] {
-        let query = [URLQueryItem(name: "fields[appAssetLibraryRefData]", value: "placementProfileGroups")]
-        let response = try await get("v1/appAssetLibraryRefData", query: query, as: AppStoreConnectRefDataResponse.self)
         var platforms: [String: AppStorePlatform] = [:]
-        for group in response.data.flatMap({ $0.attributes?.placementProfileGroups ?? [] }) {
-            guard let id = group.placementProfileGroupId, StoreScreenshotSettings.isDisplayType(id),
-                  let platform = group.platform.flatMap(Self.platform(ofPlacement:)) else { continue }
-            platforms[id] = platform
+        for group in try await placementProfileGroups() {
+            guard let platform = Self.platform(ofPlacement: group.platform) else { continue }
+            platforms[group.id] = platform
         }
         return platforms
+    }
+
+    public func placementProfileGroups() async throws(AppStoreConnectError) -> [AppStorePlacementProfileGroup] {
+        let query = [URLQueryItem(name: "fields[appAssetLibraryRefData]", value: "placementProfileGroups")]
+        let response = try await get("v1/appAssetLibraryRefData", query: query, as: AppStoreConnectRefDataResponse.self)
+        return response.data.flatMap { $0.attributes?.placementProfileGroups ?? [] }.compactMap { group in
+            guard let id = group.placementProfileGroupId, StoreScreenshotSettings.isDisplayType(id),
+                  let platform = group.platform, StoreScreenshotSettings.isDisplayType(platform) else { return nil }
+            let displayClass = group.displayClassId.flatMap { StoreScreenshotSettings.isDisplayType($0) ? $0 : nil }
+            return AppStorePlacementProfileGroup(id: id, platform: platform, displayClass: displayClass)
+        }
     }
 
     /// 配置のプラットフォーム（`AppAssetLibraryPlacementPlatform`）を、載せる版のプラットフォームにする。

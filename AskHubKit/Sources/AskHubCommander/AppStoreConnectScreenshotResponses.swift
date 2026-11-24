@@ -81,6 +81,7 @@ struct AppStoreConnectRefDataResponse: Decodable {
     struct Group: Decodable {
         var placementProfileGroupId: String?
         var platform: String?
+        var displayClassId: String?
     }
 
     struct Attributes: Decodable {
