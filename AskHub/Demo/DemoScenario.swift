@@ -20,6 +20,8 @@ enum DemoScenario: String, CaseIterable {
     case manyFinished
     /// 初めの 1 回だけ読め、その後は GitHub の上限に当たる（戻る時刻まで取り直しを休む画面）
     case rateLimited
+    /// 標準の場面に、app-kit の新しい版（変更点が長い）を足す（app-kit の画面の「広げる」と変更点の開閉を見せる）
+    case appKitRelease
 
     /// 機械の反応までの秒数を決める UserDefaults のキー（UI テストは起動引数 `-demoReactionDelay 0` で渡す）
     static let reactionDelayKey = "demoReactionDelay"
@@ -81,6 +83,11 @@ enum DemoScenario: String, CaseIterable {
         case .manyFinished:
             var snapshot = data.standard()
             snapshot.epics += data.pastEpics()
+            return snapshot
+
+        case .appKitRelease:
+            var snapshot = data.standard()
+            snapshot.appKit = data.appKitWithNewRelease()
             return snapshot
         }
     }

@@ -82,6 +82,7 @@ extension DemoScenario {
         case .started: "開始した後の段取り"
         case .manyFinished: "終わったものが多い"
         case .rateLimited: "GitHub の上限に当たった"
+        case .appKitRelease: "app-kit の新しい版が出た"
         }
     }
 }
