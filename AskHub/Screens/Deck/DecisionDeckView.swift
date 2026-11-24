@@ -13,6 +13,10 @@ struct DecisionDeckView: View {
     @State private var skippedIDs: [DeckCard.ID] = []
     @State private var textRequest: TextRequest?
     @State private var detailCard: DeckCard?
+    /// 「詳しく」のシートで選んだ選択肢と、そのカード。シートを閉じてから、そのカードをその方向へ飛ばす
+    /// （カードを決めておかないと、飛んだ後に前に来た次のカードも同じ合図を受け取って答えてしまう）
+    @State private var requestedCommit: SwipeCommitRequest?
+    @State private var requestedCardID: DeckCard.ID?
     /// 自由回答の方向で止めたカード（シートで送ったら飛ばし、閉じたら戻す）
     @State private var hold = SwipeHold()
     /// 文を書くシートを閉じたときに、止めたカードを元の位置に戻すための番号
@@ -108,7 +112,15 @@ struct DecisionDeckView: View {
             }
         }
         .sheet(item: $detailCard) { card in
-            DeckCardDetailSheet(card: card)
+            DeckCardDetailSheet(card: card) { index in
+                detailCard = nil
+                Task {
+                    // シートが閉じてから飛ばす（閉じる前に動かすと、カードが飛ぶのが見えない）
+                    try? await Task.sleep(for: .milliseconds(450))
+                    requestedCardID = card.id
+                    requestedCommit = SwipeCommitRequest(id: (requestedCommit?.id ?? 0) + 1, index: index)
+                }
+            }
         }
     }
 
@@ -198,7 +210,8 @@ struct DecisionDeckView: View {
             isInteractive: isTop,
             heldChoices: SwipeHold.heldChoices(card.choices),
             releaseToken: hold.releaseToken,
-            resetToken: generation
+            resetToken: generation,
+            requestedCommit: isTop && card.id == requestedCardID ? requestedCommit : nil
         ) { index in
             choose(card, index: index)
         } onLeave: { index in
