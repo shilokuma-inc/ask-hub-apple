@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shilokuma-inc/ask-hub-apple/protocol/schemas/payloads/closeVerifications.schema.json",
+  "title": "実機確認をまとめて答える人の意図（kind が closeVerifications）の payload",
+  "description": "封筒の target は {type: epic, epic}、targetVersion は人が見たときのゴールの版。最終 PR をマージした epic の、まだ答えていない完了の条件の項目すべてに同じ答えを付ける。confirmed（まとめて確認した）は note を持たず、skipped（確かめずに閉じた）の note は任意（読む側で確かめる）。知らない欄のある payload は読まない",
+  "type": "object",
+  "required": [
+    "result"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "result": {
+      "enum": [
+        "confirmed",
+        "skipped"
+      ]
+    },
+    "note": {
+      "type": "string",
+      "maxLength": 2000,
+      "description": "確かめずに閉じた理由（任意）"
+    }
+  }
+}

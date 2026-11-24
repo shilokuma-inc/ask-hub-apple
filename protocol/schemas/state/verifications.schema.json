@@ -34,7 +34,8 @@
           "result": {
             "enum": [
               "confirmed",
-              "problem"
+              "problem",
+              "skipped"
             ]
           },
           "note": {
