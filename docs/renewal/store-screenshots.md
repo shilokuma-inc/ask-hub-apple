@@ -402,3 +402,133 @@ app-kit の撮影の再利用ワークフローは、表示サイズを 1 本ず
 2. app-kit の fixture（2 言語 × 1 画面）で、言語を分ける形（part → merge → derive）を本物で流す（ユーザーが承認した。一時ブランチで流し、流した後に消す）
 3. 司令塔: ユニットテスト（数の決め方・覚え方・送ってよいリポジトリ・422 の送り直し）
 4. 試しの 1 本（ユーザーが承認した）: shinkeisuijaku の一時ブランチで、`max_parallel` 1 と 3 を撮り比べ、撮影が終わるまでの時間を比べる
+
+## 撮影の設定の漏れを防ぐ（#1297）
+
+2026-11-24 の tm-family/shinkeisuijaku-app-ios 1.0.0 のリリースで、`build.storeScreenshots` が無いまま「リリースを始める」を押したため、司令塔は撮影を `notConfigured` で飛ばした。
+人が後から設定を書き、撮影のワークフローを手で起動したが、司令塔は自分で起動した実行しか取り込まない（上の「安全」）ので使われず、リリースが手作業になった。
+この節は、設定が漏れたままリリースが進むのを防ぐ設計。
+
+状態: 2026-11-25 にユーザーが決めた（下の「決めたこと」。どれも推奨の案）。実装は「PR の分け方」の順に進める。
+
+### 分かったこと（2026-11-25）
+
+develop（311b4312）と、状態リポジトリ（読むだけ）・shinkeisuijaku・template-app-ios・app-kit（v1.6.0 と、v1.7.0 の `assetsFrom` のブランチ）を読んだ。
+
+| 見たもの | 分かったこと |
+| --- | --- |
+| 設定を作る仕組み | 無い。`build.storeScreenshots` は人が `configureRepository` で書くだけ。入れ替えの PR（`AppKitAdoptionPlanner`）が作るのは `.github/app-kit.json` だけ |
+| リリースを始めたとき | 設定が無ければ、`ReleaseWatch.prepareScreenshots` が理由を残さずに `notConfigured` にする |
+| `notConfigured` の版 | 撮り直せない。`SubmissionFile.retakeProblem` が「撮り方の設定が無い」で断り、クライアントも撮った組が無いので「撮り直す」を出さない。**後から設定を書いても、shinkeisuijaku の 1.0.0 は今のままでは撮れない** |
+| `repo.json` の `appKit` | ずれの点検（`AppKitWatch.check`）は `appKit` の無いリポジトリを読まない。呼んでいる版を書くのは「準備をやり直す」（`RepositorySetupStep`）だけで、shinkeisuijaku は準備を流していない（`setup` も `null`）。shinkeisuijaku の develop は v1.2.0（`0cba55e`）を呼んでいる |
+| 配置グループの id | Apple の文書にあるのは 6.9 inch の `IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE`・`MAC_PROFILE`・`IMESSAGE_IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE` だけで、「参照データの id は決め打ちしない」と書かれている（Discovering asset specifications）。表示クラス（参照データの `placementProfileGroups[].displayClassId`）の値は文書にある（`IPHONE_DYNAMIC_ISLAND_LARGE_DISPLAY`・`IPHONE_DYNAMIC_ISLAND_MEDIUM_DISPLAY`・`IPHONE_DUO`・`IPAD_13_DISPLAY` など 20 個。Vision Pro・Mac の表示クラスは無い） |
+| shinkeisuijaku の今の設定 | `IPAD_13_PROFILE`・`IPHONE_DUO_PROFILE` は表示クラスの名前から当てた値で、参照データで確かめていない。違っていると、審査に出すときにその組は黙って置かれない（`AppStoreSubmission.writeScreenshots` が参照データのプラットフォームで組を絞る） |
+| template の `AppStore/` | `screenshots.json` の `displayTypes` は `APP_IPHONE_61`（6.3 inch。6.9 inch から縮めて作る `deriveFrom`）・`APP_IPHONE_DUO`・`APP_IPHONE_67`・`APP_IPAD_PRO_3GEN_129`。`languages.json` は `language`（artifact のフォルダ）・`storeLocale`（App Store Connect の言語）。app-kit v1.7.0 から、`assetsFrom` を書いた言語は撮らずに流用元の画像を使い、App Store Connect の言語との読み替えは司令塔の設定（`languages`）が持つ |
+| 古い司令塔 | `startRelease` の知らない欄を断る（`PayloadReader` の `allowed`）。新しい欄は、送るときだけ要る形にする |
+
+### 設定の組み立て
+
+司令塔が、対象のリポジトリのあるコミットのファイルと、App Store Connect の参照データから組み立てる（部品は 1 つで、下の 2 か所から呼ぶ）。
+
+| 欄 | 決め方 |
+| --- | --- |
+| `capture`・`workflow` | `actions`・`app-store-screenshots.yml`（app-kit の写すファイル。リポジトリのファイルからは読まない） |
+| `artifacts` | `AppStore/screenshots.json` の `displayTypes` の名前ごとに、下の表の表示クラスとプラットフォームで参照データの配置グループを引く。1 つに決まらない名前は入れず、わけを残す |
+| `languages` | `AppStore/languages.json` の並びの `storeLocale` → `{ "language": <assetsFrom があればその言語、無ければ language> }` |
+| `baseLocale` | `languages.json` の先頭の `storeLocale` |
+
+| `screenshots.json` の名前 | 参照データで引く配置グループ |
+| --- | --- |
+| `APP_IPHONE_67`（6.9 inch） | プラットフォーム `IPHONE_APP_STORE`・表示クラス `IPHONE_DYNAMIC_ISLAND_LARGE_DISPLAY` |
+| `APP_IPHONE_61`（6.3 inch） | `IPHONE_APP_STORE`・`IPHONE_DYNAMIC_ISLAND_MEDIUM_DISPLAY`（決めたこと 3） |
+| `APP_IPHONE_DUO` | `IPHONE_APP_STORE`・`IPHONE_DUO` |
+| `APP_IPAD_PRO_3GEN_129`（iPad 13 inch） | `IPAD_APP_STORE`・`IPAD_13_DISPLAY` |
+| `APP_APPLE_VISION_PRO` | `VISION_PRO_APP_STORE` の配置グループ（表示クラスが無いので、プラットフォームだけで 1 つに決まるとき。決めたこと 3） |
+| ほか（`APP_DESKTOP` など） | 入れない（app-kit が撮らない） |
+
+- 組み立てるのは、`.github/workflows/app-store-screenshots.yml` があって `.github/app-kit.json` の `unmanaged` に入っていない（app-kit の撮影を使う）とき。撮らないアプリは、mullion-macos と同じく `unmanaged` に入れる
+- 作れないとき（`AppStore/` のファイルが無い・読めない・言語が App Store Connect の言語でない・配置グループが 1 つも引けない）は、わけを人が読む文で返す
+- 参照データは司令塔の鍵のどれかで読み（アプリによらない）、1 日メモリーに覚える。読めなければ組み立てない（次の機会にやり直す）
+
+### いつ作るか（決めたこと 1）
+
+**司令塔が自動で作り、人の承認は挟まない**。値はリポジトリのファイルと参照データから機械的に決まり、人は入れ替えの PR の承認と、審査に出す前の画像の確かめで見ているため。
+
+- ずれの点検（6 時間ごと）で、`appKit` があり、ビルドの設定（`build`）があり、`build.storeScreenshots` が無く、app-kit の撮影を使うリポジトリに、base の先頭のファイルから作って書く
+  - 入れ替えの PR をマージして `appKit` を書いたリポジトリは、次の生きている印（10 分ごと）で点検する（6 時間を待たない）
+  - 作れなければ、わけを `appKit.drift` に書く（クライアントの「ずれ」と「あなたの番」の「時間のあるときに」に出る）
+- 人が書いた設定は書き換えない。ただし、`capture: actions` の `artifacts` の配置グループが参照データに無ければ、`appKit.drift` に書く（shinkeisuijaku の推測の値を、審査に出す前に見つける）
+
+### リリースを始めるとき（決めたこと 2）
+
+**始めるシートで知らせ、既定は「設定を作って撮る」、選べば「撮らずに進む」**。
+
+- クライアント: `appKit` があり `build.storeScreenshots` が無いリポジトリでは、「リリースを始める」のシートに「スクショ」の節を出す
+  - 「撮影の設定がまだありません。始めると、司令塔が release ブランチの `AppStore/screenshots.json`・`languages.json` から作って撮ります」と、作れなかったわけ（`appKit.drift` にあれば）
+  - 「撮らずに進む」を選ぶと、`startRelease` に `skipScreenshots: true` を付ける（選ばなければ送らない。古い司令塔も今どおり受け付ける）
+- 司令塔: スクショの段取りで設定が無ければ
+  - `start.skipScreenshots` があれば `notConfigured`（わけ「撮らずに進むを選んだ」）
+  - 無ければ、release ブランチの先頭のファイルから組み立てる。作れたら `build.storeScreenshots` に書いてから撮影を起動する。app-kit の撮影を使わないリポジトリは `notConfigured`（わけ「撮影の設定が無く、app-kit の撮影のワークフローも無い」）、使うのに作れなければ `failed`（わけを書く。直してから「スクショを撮る」）
+  - 古いクライアントからの、選んでいない `startRelease` も同じ扱い（黙って飛ばさない）
+- `notConfigured`・`failed` のわけは、記録の `screenshots.failure` に書き、クライアントの「スクショ」の節に出す
+
+### 後から撮る（`notConfigured` の版）
+
+- 設定がある・作れる（`build.storeScreenshots` か `appKit` がある）リポジトリでは、`notConfigured` の版でも `retakeScreenshots` を受け付ける（`retakeProblem` にリポジトリの様子を渡す）
+- クライアントは、撮った組の無い版では「撮り直す」を「スクショを撮る」にして出す（表示サイズ・言語は選ばず、すべて撮る）
+- 司令塔は今の撮り直しと同じく、今の release ブランチの先頭で撮る。設定が無ければ、上と同じく組み立ててから撮る
+- これで、今の shinkeisuijaku 1.0.0（審査の前の `prepareForSubmission`）も、司令塔とアプリを更新した後に「スクショを撮る」で撮れる
+
+### 呼んでいる版の記録（`appKit`）
+
+- ずれの点検で、`appKit` が `null` のリポジトリも base の先頭を読む。`build.yml` が app-kit を呼んでいれば、呼んでいるコミットと、見つけた版ならそのタグを `appKit` に書く（`installedAt` は分からないので書かない）
+  - 写すファイルがその版の中身と違えば、今のずれの点検と同じく `appKit.drift` に書く（今は、ずれの無いときしか別の版とみなさない）
+  - 見つけた版に無いコミットなら、`version` を書かずに、ずれに「見つけた版に無い」と書く
+  - `build.yml` の `uses:` のコミットと `app-kit-ref` が違えば、ずれに書く
+- これで、手で入れ替えたリポジトリも、版を広げる相手とずれの点検に入る。読む数は、app-kit を呼ばないリポジトリでも 6 時間ごとに 3〜4 回（ブランチ・tree・中身）
+
+### 配置グループの確かめ
+
+- 撮った artifact を取り込むとき、`artifacts` の配置グループが参照データに無ければ、その組を取り込まずに `skipped` に「配置グループ <id> が App Store Connect に無い。build.storeScreenshots.artifacts を直す」と書く（審査に出すときに黙って落ちないように）
+- 司令塔が参照データを初めて読んだとき、配置グループ（id・プラットフォーム・表示クラス）を 1 行ログに出す。司令塔を更新した後にログを読み、6.3 inch・iPad 13 inch・iPhone Duo・Vision Pro の本当の id を LEARNINGS.md とこの文書に書く
+
+### プロトコル
+
+| どこ | 変える所 |
+| --- | --- |
+| `startRelease` の `payload` | `skipScreenshots`（true だけ。撮らずに進むときだけ書く） |
+| `submissions/<版>.json` の `start` | `skipScreenshots`（true だけ） |
+| `screenshots.failure` | `notConfigured` でも書ける（わけ） |
+| `retakeScreenshots` の受け付け | `notConfigured` でも、リポジトリに設定がある・作れるなら受け付ける |
+| `repo.json` | 足す欄は無い（作った設定は `build.storeScreenshots`、作れないわけは `appKit.drift`） |
+
+### PR の分け方
+
+それぞれ独立してマージでき、司令塔の PR は司令塔を更新するまで動きを変えない。アプリの PR は、司令塔を更新してからマージする（develop へのマージで TestFlight の版が置き換わり、古い司令塔は `skipScreenshots` を断るため）。
+
+| 順 | 中身 |
+| --- | --- |
+| 0 | この設計 |
+| 1 | 司令塔: `appKit` が `null` のリポジトリの呼んでいる版を書く（ずれの点検）とテスト |
+| 2 | プロトコル: 上の表（Swift の型・スキーマ・ベクタ・protocol.md）。`retakeProblem` の呼び出しは今の動きのまま渡す |
+| 3 | 司令塔: 設定の組み立て（参照データの表示クラス）と、ずれの点検での自動の作成・配置グループの確かめ、参照データのログ。テストは shinkeisuijaku と template の本物のファイルで |
+| 4 | 司令塔: リリースを始めたときの組み立て・`skipScreenshots`・`notConfigured` から撮る・取り込むときの配置グループの確かめ |
+| 5 | クライアント: 始めるシートの「スクショ」の節・「スクショを撮る」・わけの表示（スクショを PR に付ける） |
+
+文書（この節・release.md・protocol.md・app-kit.md の「ずれの点検」・operations.md）と LEARNINGS.md は、各 PR で変えた所を直す。
+
+### 確かめ方
+
+1. ユニットテスト: 組み立て（shinkeisuijaku・template・askhub-create-check の `AppStore/` の本物のファイルと、参照データの偽物）、ずれの点検（`appKit` が無い・版の分かる/分からないコミット・中身のずれ・`app-kit-ref` の食い違い・設定の自動の作成）、リリースの段取り（作れる・作れない・撮らずに進む・`notConfigured` から撮る）
+2. 状態リポジトリと本物のリポジトリを読むだけで、shinkeisuijaku の `appKit`（v1.2.0 と、そのずれ）と、組み立てた設定が今の手書きの設定と同じになるか（手書きに無い 6.3 inch を除く。配置グループの値は、司令塔を更新した後のログで確かめる）
+3. 司令塔の更新（ユーザーの承認のうえ）の後に、ログで参照データの配置グループと、shinkeisuijaku の `appKit` が書かれたことを確かめる
+
+### 決めたこと
+
+2026-11-25 にユーザーが決めた。
+
+| # | 決めたこと | 採らなかった案 |
+| --- | --- | --- |
+| 1 | 設定は司令塔が自動で作り、人の承認は挟まない（ずれの点検で作る。入れ替えの PR をマージした直後は次の生きている印で） | 案を出して人が入れる（あなたの番から `configureRepository`）／リリースを始めるときだけ作る |
+| 2 | 始めるシートで知らせ、既定は作って撮る。「撮らずに進む」を選べば撮らない。選んでいない `startRelease` も作って撮る | どちらかを必ず選ぶ（司令塔も、選んでいない `startRelease` を断る） |
+| 3 | 6.3 inch と visionOS も、`screenshots.json` にあれば入れる（参照データから引けなければ外して知らせる） | 6.3 inch は入れない（App Store が 6.9 inch を縮める前提）／どちらも入れない（本物の id を確かめてから足す） |
