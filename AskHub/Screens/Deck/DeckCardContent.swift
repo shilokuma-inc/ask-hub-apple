@@ -39,6 +39,13 @@ struct DeckCardContent: View {
         }
     }
 
+    private var isVerification: Bool {
+        if case .verification = card.content {
+            return true
+        }
+        return false
+    }
+
     private var summary: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
@@ -47,7 +54,8 @@ struct DeckCardContent: View {
                     .foregroundStyle(.secondary)
                 Text(card.title)
                     .appFont(.title3, weight: .semibold)
-                    .lineLimit(3)
+                    // 実機確認は条件の文そのものがカードの主役なので、空いている所を使って切らずに出す
+                    .lineLimit(isVerification ? 8 : 3)
                 Text(card.detail)
                     .appFont(.subheadline)
                     .foregroundStyle(.secondary)

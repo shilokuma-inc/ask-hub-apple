@@ -10,20 +10,17 @@ struct DeckCardDetailSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                CardSection {
-                    AppHeaderView(repository: store.repository(card.repositoryID), subtitle: store.epic(card.epicID)?.title ?? "")
-                    if let epic = store.epic(card.epicID) {
-                        LabeledContent("依頼", value: epic.request.summary)
-                    }
-                }
                 switch card.content {
                 case .question(let question):
+                    requestSection
                     QuestionDetailSections(question: question, epic: store.epic(card.epicID))
 
                 case .decision(let decision):
+                    requestSection
                     DecisionDetailSections(decision: decision)
 
                 case .verification(let item):
+                    // 実機を手に持って確かめるので、確かめることを先に出す。依頼の要約（実装の細部を含む）は後ろに置く
                     CardSection("確かめること") {
                         Text(item.text)
                         // 状態リポジトリの項目（ゴールの完了の条件）には手順が無い
@@ -31,11 +28,12 @@ struct DeckCardDetailSheet: View {
                             LabeledContent("手順", value: item.steps)
                         }
                     }
+                    requestSection
                 }
             }
             .pastelBackground()
             .compactList()
-            .navigationTitle(card.kindLabel)
+            .navigationTitle(title)
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
@@ -46,6 +44,24 @@ struct DeckCardDetailSheet: View {
             }
         }
         .sheetSize(.page)
+    }
+
+    /// どのアプリのどの依頼のカードか
+    private var requestSection: some View {
+        CardSection {
+            AppHeaderView(repository: store.repository(card.repositoryID), subtitle: store.epic(card.epicID)?.title ?? "")
+            if let epic = store.epic(card.epicID) {
+                LabeledContent("依頼", value: epic.request.summary)
+            }
+        }
+    }
+
+    /// 実機確認の種類の札には確かめる版の説明が続いて長いので、題は「実機で確かめる」だけにする（版の説明はカードに出ている）
+    private var title: String {
+        if case .verification = card.content {
+            return "実機で確かめる"
+        }
+        return card.kindLabel
     }
 }
 
