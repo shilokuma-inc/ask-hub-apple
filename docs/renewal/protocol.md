@@ -570,7 +570,8 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
 
 - 何を確かめるか（項目）は、ゴールの完了の条件（`doneWhen`）。順に `v1`・`v2`… と数える（最終 PR の本文の「実機で確かめてほしいこと」と同じ id）
 - ここには人が答えた項目だけを、答えた順に置く。1 つの項目に答えるのは 1 回だけ（答え直さない）。ファイルは最初の答えで司令塔が作る
-- `result` は `confirmed`（確認した）・`problem`（問題あり）。`note` は問題ありの説明（問題ありは空にしない。確認したは空で、意図に `note` があれば読まない）
+- `result` は `confirmed`（確認した）・`problem`（問題あり）・`skipped`（確かめずに閉じた）。`note` は問題ありの説明か、確かめずに閉じた理由（問題ありは空にしない。確かめずに閉じたは空でもよい。確認したは空で、意図に `note` があれば読まない）
+- まとめて答えた（`closeVerifications`）ときは、その時点で答えていなかった項目をすべて、同じ意図（`intent`）・同じ時刻で、項目の順に置く。`skipped` を知らない古いクライアントは、このファイルを読めないので、その epic の確認を出さない（閉じた確認が残らない向きに倒れる）
 - 型は `VerificationsFile`、スキーマは `protocol/schemas/state/verifications.schema.json`
 
 ### jobs/<job>.json（ジョブ）
@@ -944,6 +945,7 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `humanTaskDone` | 人がする作業（`{ "type": "humanTask", "epic", "id": "h1" }`） | ゴールの `version` | `none` は空、`file` は `attachments`（1 件。依頼の添付と同じ形・置き場所・上限）、`secret` は `secret`（`keyId` と `encryptedValue`。クライアントが `repo.json` の `secretsKey` で sealed box にした暗号文の base64。値は 1 バイトから 48 KB。平文は入れない）か空（人が GitHub の画面で入れた）。`attachments` と `secret` は一緒に持たない。司令塔は `secret` があれば、管理用のトークンで今の公開鍵を読み、`keyId` が同じときだけ Secrets（`handover.name`）に入れてから作業を終える。違えば新しい鍵を `secretsKey` に書いて断る（クライアントが入れ直す） |
 | `readSecretsKey` | リポジトリ（封筒の `repo`） | — | 空（`payloads/readSecretsKey.schema.json`）。司令塔が管理用のトークンでリポジトリの Actions の Secrets の公開鍵を読み、`repo.json` の `secretsKey` に書く。クライアントは、人がする作業の `secret` の値を入れる画面で鍵が無いとき、人が押して送る |
 | `verify` | 実機確認の項目（`{ "type": "verification", "epic", "id": "v1" }`） | ゴールの `version` | `result`（`confirmed`・`problem`）、`note`（問題ありの説明。`payloads/verify.schema.json`）。最終 PR をマージした（`merged` の）epic の、完了の条件の項目に 1 回だけ。答えは `verifications.json` に書く。問題ありの直しは、クライアントが同時に送る依頼（`request`）が新しい epic になる |
+| `closeVerifications` | epic（`{ "type": "epic", "epic" }`） | ゴールの `version` | `result`（`confirmed`・`skipped`）、`note`（確かめずに閉じた理由。任意で 2000 文字まで。確認したは空。`payloads/closeVerifications.schema.json`）。最終 PR をマージした（`merged` の）epic の、まだ答えていない完了の条件の項目すべてに、まとめて 1 回で答える（「まとめて確認した」「確かめずに閉じる」。[flows.md](flows.md) の「実機で確かめてほしいこと」）。答えていない項目が無ければ、何も書かずに受け付ける |
 | `pauseEpic`・`resumeEpic` | epic | —（epic の今の状態に対してだけ意味を持つ） | 空（`payloads/pauseEpic.schema.json`・`payloads/resumeEpic.schema.json`）。開始した後の epic（`running`・`finalizing`・`reviewing`）だけ一時停止できる。止めている epic の一時停止と、止めていない epic の再開は、何もせずに受け付ける |
 | `handover` | epic | —（同上） | `mac`（移す先の Mac。オフラインでもよい。`payloads/handover.schema.json`）。開始した後の epic で、一時停止中か、epic の Mac で動いている（`running` の）ジョブが無いときだけ受け付ける。登録されていない Mac（`macs/<mac>.json` が無い）は断る |
 | `abandonEpic` | epic | —（どの段階でも取り下げの意味は変わらない） | 空（`payloads/abandonEpic.schema.json`）。開始した後の epic も受け付け、開いている子 PR と最終 PR を閉じる（ブランチは残す）。マージした epic は断る |
@@ -977,7 +979,7 @@ HTML のコメントの形で、本文の末尾に置く。1 つのコメント�
 | `removeCleanupCandidates` | —（同上） | — | `mac`、`scannedAt`（選んだ候補を探した時刻）、`candidates`（消す候補の id。パスは送らない。`payloads/removeCleanupCandidates.schema.json`）。積み方は `findCleanupCandidates` と同じ（上の「片付けの候補」） |
 | `registerKey`・`revokeKey` | 公開鍵 | — | 公開鍵 |
 
-テンプレートからの作成・実機確認の「確認した」「問題あり」の `kind` は、段階 4 で足す（名前と形は実装で決めて、この表に書く）。リリースの操作の `kind`（`startRelease`・`submitForReview`・`distributeRelease`・`withdrawSubmission`・`abandonRelease`）は、段階 5 の 3 で足した。スクショを撮り直す `kind`（`retakeScreenshots`）は、2026-11-22 に足した（#1200）。新しいアプリを App Store に載せる準備の `kind`（`registerBundleId`・`applyAppStoreSettings`・`confirmAppStoreItem`・`excludeFromAppStore`）は、2026-11-20 に足した。クリエイティブアセットの `kind`（`draftCreativeAssets`・`approveCreativeAssets`）は、2026-11-23 に足した（#1235）。
+テンプレートからの作成・実機確認の「確認した」「問題あり」の `kind` は、段階 4 で足す（名前と形は実装で決めて、この表に書く）。リリースの操作の `kind`（`startRelease`・`submitForReview`・`distributeRelease`・`withdrawSubmission`・`abandonRelease`）は、段階 5 の 3 で足した。スクショを撮り直す `kind`（`retakeScreenshots`）は、2026-11-22 に足した（#1200）。新しいアプリを App Store に載せる準備の `kind`（`registerBundleId`・`applyAppStoreSettings`・`confirmAppStoreItem`・`excludeFromAppStore`）は、2026-11-20 に足した。クリエイティブアセットの `kind`（`draftCreativeAssets`・`approveCreativeAssets`）は、2026-11-23 に足した（#1235）。実機確認をまとめて答える `kind`（`closeVerifications`）と、`verifications.json` の `result` の `skipped` は、2026-11-24 に足した（#1259）。
 
 ### 署名のしかた
 
