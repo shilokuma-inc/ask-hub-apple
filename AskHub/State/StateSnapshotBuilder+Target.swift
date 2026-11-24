@@ -85,7 +85,7 @@ extension StateSnapshotBuilder {
         }
     }
 
-    /// epic の全体（ゴール・分け方・最終 PR・対処・epic の操作）を対象にする意図の対象。ジョブを対象にする意図は「対処が要ります」に出す
+    /// epic の全体（ゴール・分け方・最終 PR・対処・epic の操作・実機確認のまとめての答え）を対象にする意図の対象。ジョブを対象にする意図は「対処が要ります」に出す
     private static func epicTarget(kind: String, epicID: Epic.ID) -> IntentTarget? {
         switch kind {
         case StartEpicIntent.kind, ReviseGoalIntent.kind:
@@ -102,6 +102,9 @@ extension StateSnapshotBuilder {
 
         case AbandonEpicIntent.kind, PauseEpicIntent.kind, ResumeEpicIntent.kind, HandoverIntent.kind:
             .epicControl(epicID: epicID)
+
+        case CloseVerificationsIntent.kind:
+            .verifications(epicID: epicID)
 
         default:
             nil

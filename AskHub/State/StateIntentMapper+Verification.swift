@@ -6,7 +6,7 @@ import Foundation
 
 extension StateIntentMapper {
     /// マージした後の操作を送れるか。リリース文の公開は下書きがあってまだ公開していない版だけ、プロモーションテキストは配信中の版だけ、
-    /// 実機確認への答えはマージした epic の、まだ答えていない項目だけ
+    /// 実機確認への答えはマージした epic の、まだ答えていない項目だけ。まとめての答えは、答えていない項目が残っている epic だけ
     func supportsAfterMerge(_ intent: HumanIntent) -> Bool {
         switch intent {
         case let .publishRelease(repositoryID, version, _, _):
@@ -17,6 +17,9 @@ extension StateIntentMapper {
 
         case let .verify(epicID, itemID, _):
             index.epics[epicID]?.verification?.unanswered.contains(itemID) == true
+
+        case .closeVerifications(let epicID, _):
+            index.epics[epicID]?.verification?.unanswered.isEmpty == false
 
         default:
             false
@@ -52,6 +55,28 @@ extension StateIntentMapper {
             return [.verify(target, result: .confirmed)]
         }
         return [.verify(target, result: .problem, note: problem), request]
+    }
+
+    /// 実機確認のまとめての答え（「まとめて確認した」「確かめずに閉じる」）。確かめたゴールの版に結びつける。
+    /// 司令塔は、受け取った時点でまだ答えていない項目すべてに付けるので、項目の id は送らない。確かめずに閉じた理由は空でもよい
+    func closeVerificationsDraft(_ intent: HumanIntent) throws(ClientServiceError) -> IntentDraft {
+        guard case let .closeVerifications(epicID, reply) = intent else {
+            throw Self.unsupported
+        }
+        let epic = try epic(epicID)
+        guard let verification = epic.verification, !verification.unanswered.isEmpty else {
+            throw ClientServiceError(message: "この epic には、答えていない実機確認がありません（もう答えたか、マージした epic でない）。取り直してください")
+        }
+        let target = EpicTarget(repo: epic.repo, epic: epic.id, version: verification.goalVersion)
+        guard case .skipped(let note) = reply else {
+            return .closeVerifications(target, result: .confirmed)
+        }
+        let reason = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        // 司令塔（`PayloadReader`）と同じく、Unicode のコードポイントで数える
+        guard reason.unicodeScalars.count <= CloseVerificationsIntent.maximumNoteLength else {
+            throw ClientServiceError(message: "閉じる理由は \(CloseVerificationsIntent.maximumNoteLength) 文字までにしてください")
+        }
+        return .closeVerifications(target, result: .skipped, note: reason)
     }
 
     private static let notAnswerable = ClientServiceError(message: "この項目には、いまは答えられません（もう答えたか、マージした epic でない）。取り直してください")

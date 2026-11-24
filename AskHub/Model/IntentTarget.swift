@@ -22,6 +22,8 @@ nonisolated enum IntentTarget: Hashable {
     case epicControl(epicID: Epic.ID)
     case humanTask(epicID: Epic.ID, taskID: HumanTask.ID)
     case verification(epicID: Epic.ID, itemID: VerificationItem.ID)
+    /// epic の実機確認のまとめての答え（まとめて確認した・確かめずに閉じる）
+    case verifications(epicID: Epic.ID)
     /// 依頼から作られる epic（送り終えて id が分かってから）
     case request(epicID: Epic.ID)
     /// 対象に加えるリポジトリ
@@ -43,7 +45,8 @@ nonisolated enum IntentTarget: Hashable {
     var epicID: Epic.ID? {
         switch self {
         case let .question(epicID, _), let .goal(epicID), let .split(epicID), let .decision(epicID, _), let .finalPullRequest(epicID),
-             let .blocker(epicID), let .epicControl(epicID), let .humanTask(epicID, _), let .verification(epicID, _), let .request(epicID):
+             let .blocker(epicID), let .epicControl(epicID), let .humanTask(epicID, _), let .verification(epicID, _),
+             let .verifications(epicID), let .request(epicID):
             epicID
 
         case .repository, .cleanup, .release, .submission, .appStore, .appKit, .creative:
@@ -88,6 +91,9 @@ extension HumanIntent {
 
         case let .verify(epicID, itemID, _):
             [.verification(epicID: epicID, itemID: itemID)]
+
+        case let .closeVerifications(epicID, _):
+            [.verifications(epicID: epicID)]
 
         case let .cleanUp(macID, _), let .findCleanupCandidates(macID):
             [.cleanup(macID: macID)]
