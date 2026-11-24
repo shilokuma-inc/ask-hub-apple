@@ -19,6 +19,8 @@ struct SwipeCard<Content: View>: View {
     let onHold: (Int) -> Void
     /// 変わったら、飛ばしたカードを元の位置に戻す（文を書くシートを閉じたときなど）
     let resetToken: Int
+    /// カードの外で選んだ選択肢（「詳しく」のシートで選んだとき）。変わったら、その選択肢をスワイプと同じ動きで決める
+    let requestedCommit: SwipeCommitRequest?
     let onCommit: (Int) -> Void
     /// 決まってカードが飛び始めたとき（`onCommit` より先に呼ぶ。後ろのカードをめくり始めるため）。
     /// 自由回答で止めている間は呼ばず、シートで送って飛ばすときに呼ぶ
@@ -48,6 +50,7 @@ struct SwipeCard<Content: View>: View {
         heldChoices: Set<Int> = [],
         releaseToken: Int = 0,
         resetToken: Int = 0,
+        requestedCommit: SwipeCommitRequest? = nil,
         onCommit: @escaping (Int) -> Void,
         onLeave: @escaping (Int) -> Void = { _ in },
         onHold: @escaping (Int) -> Void = { _ in },
@@ -61,6 +64,7 @@ struct SwipeCard<Content: View>: View {
         self.releaseToken = releaseToken
         self.onHold = onHold
         self.resetToken = resetToken
+        self.requestedCommit = requestedCommit
         self.onCommit = onCommit
         self.onLeave = onLeave
         self.content = content
@@ -129,6 +133,11 @@ struct SwipeCard<Content: View>: View {
                 if let held {
                     isLeaving = false
                     commit(held)
+                }
+            }
+            .onChange(of: requestedCommit) {
+                if let requestedCommit {
+                    commit(requestedCommit.index)
                 }
             }
             .onChange(of: resetToken) {
@@ -374,4 +383,10 @@ private extension CGSize {
     static func + (lhs: CGSize, rhs: CGSize) -> CGSize {
         CGSize(width: lhs.width + rhs.width, height: lhs.height + rhs.height)
     }
+}
+
+/// カードの外から選ばせる選択肢。同じ選択肢を続けて選んでも合図が変わるよう、`id` を毎回変える
+struct SwipeCommitRequest: Equatable {
+    let id: Int
+    let index: Int
 }

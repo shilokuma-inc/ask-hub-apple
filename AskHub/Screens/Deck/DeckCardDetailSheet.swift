@@ -3,6 +3,8 @@ import SwiftUI
 /// カードの全文（質問の選択肢ごとの違い・説明の履歴・Before / After の大きな画像 など）
 struct DeckCardDetailSheet: View {
     let card: DeckCard
+    /// 選択肢を選んだとき（実機確認だけ、シートからも答えられる）。選択肢の添字を渡す
+    var onChoose: ((Int) -> Void)?
 
     @Environment(ClientStore.self) private var store
     @Environment(\.dismiss) private var dismiss
@@ -26,6 +28,30 @@ struct DeckCardDetailSheet: View {
                         // 状態リポジトリの項目（ゴールの完了の条件）には手順が無い
                         if !item.steps.isEmpty {
                             LabeledContent("手順", value: item.steps)
+                        }
+                    }
+                    if let onChoose {
+                        // 読んだその場で答えられるよう、カードと同じ選択肢を置く（押すとシートを閉じ、カードをその方向へ飛ばす）
+                        CardSection {
+                            ForEach(Array(card.choices.enumerated()), id: \.element.id) { index, choice in
+                                Button {
+                                    onChoose(index)
+                                } label: {
+                                    Label {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(choice.label).rowFont(.title)
+                                            Text(choice.detail).rowFont(.detail).foregroundStyle(.secondary)
+                                        }
+                                    } icon: {
+                                        Image(systemName: choice.id == "confirmed" ? "checkmark.circle" : "exclamationmark.bubble")
+                                            .foregroundStyle(choice.id == "confirmed" ? Theme.success : Theme.warning)
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .contentShape(.rect)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityIdentifier("detail-choice-\(choice.id)")
+                            }
                         }
                     }
                     requestSection

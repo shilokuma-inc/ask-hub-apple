@@ -13,6 +13,10 @@ struct DecisionDeckView: View {
     @State private var skippedIDs: [DeckCard.ID] = []
     @State private var textRequest: TextRequest?
     @State private var detailCard: DeckCard?
+    /// 「詳しく」のシートで選んだ選択肢と、そのカード。シートを閉じてから、そのカードをその方向へ飛ばす
+    /// （カードを決めておかないと、飛んだ後に前に来た次のカードも同じ合図を受け取って答えてしまう）
+    @State private var requestedCommit: SwipeCommitRequest?
+    @State private var requestedCardID: DeckCard.ID?
     /// 自由回答の方向で止めたカード（シートで送ったら飛ばし、閉じたら戻す）
     @State private var hold = SwipeHold()
     /// 文を書くシートを閉じたときに、止めたカードを元の位置に戻すための番号
@@ -108,7 +112,9 @@ struct DecisionDeckView: View {
             }
         }
         .sheet(item: $detailCard) { card in
-            DeckCardDetailSheet(card: card)
+            DeckCardDetailSheet(card: card) { index in
+                requestCommitFromDetail(card, index: index)
+            }
         }
     }
 
@@ -198,14 +204,17 @@ struct DecisionDeckView: View {
             isInteractive: isTop,
             heldChoices: SwipeHold.heldChoices(card.choices),
             releaseToken: hold.releaseToken,
-            resetToken: generation
+            resetToken: generation,
+            requestedCommit: isTop && card.id == requestedCardID ? requestedCommit : nil
         ) { index in
             choose(card, index: index)
         } onLeave: { index in
+            consumeRequestedCommit(of: card)
             flipDirection = directions[index].unit.dx < 0 ? -1 : 1
             leavingID = card.id
             lastThrow = DeckThrow(id: card.id, direction: directions[index])
         } onHold: { index in
+            consumeRequestedCommit(of: card)
             holdForText(card, index: index)
         } content: { commit in
             VStack(spacing: 0) {
@@ -348,6 +357,31 @@ struct DecisionDeckView: View {
             skippedIDs.removeAll { $0 == card?.id }
             leavingID = nil
         }
+    }
+}
+
+// MARK: - 「詳しく」のシートから選ぶ
+
+extension DecisionDeckView {
+    /// 「詳しく」のシートで選んだ選択肢を、シートを閉じてから、そのカードにスワイプと同じ動きで決めさせる
+    /// （閉じる前に動かすと、カードが飛ぶのが見えない）
+    fileprivate func requestCommitFromDetail(_ card: DeckCard, index: Int) {
+        detailCard = nil
+        Task {
+            try? await Task.sleep(for: .milliseconds(450))
+            requestedCardID = card.id
+            requestedCommit = SwipeCommitRequest(id: (requestedCommit?.id ?? 0) + 1, index: index)
+        }
+    }
+
+    /// 「詳しく」のシートで選んだ合図を、受け取ったカードが飛び始めた・止まったら消す。
+    /// 残したままだと、問題ありを取り消して「あとで」で後ろに回したカードが前に戻ったときに、古い合図でまた選ばれる
+    fileprivate func consumeRequestedCommit(of card: DeckCard) {
+        guard card.id == requestedCardID else {
+            return
+        }
+        requestedCardID = nil
+        requestedCommit = nil
     }
 }
 
