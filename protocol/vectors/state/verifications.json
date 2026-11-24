@@ -33,6 +33,46 @@
       "read": "valid"
     },
     {
+      "name": "closed-together",
+      "value": {
+        "v": 1,
+        "answers": [
+          {
+            "id": "v1",
+            "result": "confirmed",
+            "note": "",
+            "intent": {
+              "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+              "nonce": "01JCN0NCE00000000000000001"
+            },
+            "at": "2026-11-12T10:00:00Z"
+          },
+          {
+            "id": "v2",
+            "result": "skipped",
+            "note": "次の版を配信した",
+            "intent": {
+              "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+              "nonce": "01JCN0NCE00000000000000003"
+            },
+            "at": "2026-11-24T09:00:00Z"
+          },
+          {
+            "id": "v3",
+            "result": "skipped",
+            "note": "",
+            "intent": {
+              "keyId": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+              "nonce": "01JCN0NCE00000000000000003"
+            },
+            "at": "2026-11-24T09:00:00Z"
+          }
+        ]
+      },
+      "schemaValid": true,
+      "read": "valid"
+    },
+    {
       "name": "empty",
       "value": {
         "v": 1,

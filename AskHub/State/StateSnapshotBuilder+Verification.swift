@@ -51,6 +51,7 @@ extension StateSnapshotBuilder {
         switch result {
         case .confirmed: .confirmed
         case .problem: .problem(note: note)
+        case .skipped: .skipped(note: note)
         }
     }
 }
