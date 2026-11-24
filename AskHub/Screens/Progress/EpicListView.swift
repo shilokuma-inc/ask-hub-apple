@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// 「進行中」。epic を、人が待たれているもの・一時停止しているもの・機械が進めているもの・終わったものに分けて並べる
+/// 「進行中」。epic を、人が待たれているもの・一時停止しているもの・機械が進めているもの・終わったものに分けて並べ、
+/// 進めているリリース（審査・配信の後作業）も並べる（`docs/renewal` の「進行中 = epic とリリースの一覧」）
 struct EpicListView: View {
     /// 終わったものは、新しい順にこの件数だけ出す。それより前のものは「すべて見る」から見返す（増え続けて一覧が長くならないように。ユーザーが決めた。2026-11-11）
     static let finishedLimit = 10
@@ -8,15 +9,30 @@ struct EpicListView: View {
     let selection: Binding<AppRoute?>?
 
     @Environment(ClientStore.self) private var store
+    @Environment(AppNavigator.self) private var navigator
 
     var body: some View {
         let epics = (store.snapshot?.epics ?? []).sorted { $0.updatedAt > $1.updatedAt }
+        let releases = store.snapshot.map(ReleaseProgress.items) ?? []
         let active = epics.filter(\.isActive)
         let waiting = active.filter(EpicStatus.waitsForYou)
         let paused = active.filter(EpicStatus.isPausedByYou)
         let working = active.filter { !EpicStatus.waitsForYou($0) && !EpicStatus.isPausedByYou($0) }
         let finished = epics.filter { !$0.isActive }
         RouteList(selection: selection) {
+            // 終わったものだけのときに、いきなり終わったものから並べず、いま進めているものが無いことを先に出す
+            if active.isEmpty, releases.isEmpty, !finished.isEmpty {
+                CardSection {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("いま進めているものはありません").rowFont(.title)
+                        Text("＋ から依頼すると、ここに並びます").rowFont(.detail).foregroundStyle(.secondary)
+                        Button("新しい依頼を出す", systemImage: "plus") { navigator.isShowingNewRequest = true }
+                            .buttonStyle(.borderless)
+                            .accessibilityIdentifier("progress-new-request")
+                    }
+                    .compactRow()
+                }
+            }
             if !waiting.isEmpty {
                 CardSection("あなた待ち · \(waiting.count)") {
                     ForEach(waiting) { epic in
@@ -38,6 +54,13 @@ struct EpicListView: View {
                     }
                 }
             }
+            if !releases.isEmpty {
+                CardSection("リリース · \(releases.count)") {
+                    ForEach(releases) { release in
+                        NavigationLink(value: release.route) { ReleaseProgressRow(release: release) }
+                    }
+                }
+            }
             if !finished.isEmpty {
                 CardSection("終わったもの") {
                     ForEach(finished.prefix(Self.finishedLimit)) { epic in
@@ -52,7 +75,7 @@ struct EpicListView: View {
             }
         }
         .overlay {
-            LoadStateOverlay(isEmpty: epics.isEmpty, empty: ContentUnavailableView {
+            LoadStateOverlay(isEmpty: epics.isEmpty && releases.isEmpty, empty: ContentUnavailableView {
                 Label("進めているものはありません", systemImage: "tray")
             } description: {
                 Text("＋ から依頼すると、ここに並びます")
@@ -179,5 +202,33 @@ struct StageDots: View {
             return isBlocked ? Theme.danger : Theme.accent
         }
         return .secondary.opacity(0.3)
+    }
+}
+
+/// 進めているリリースの 1 行。アプリのアイコン・版と種類・今の段取りの一言を出す
+struct ReleaseProgressRow: View {
+    let release: ReleaseProgress
+
+    @Environment(ClientStore.self) private var store
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            AppIconView(repository: store.repository(release.repositoryID), size: 40)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("\(release.version) · \(release.kindLabel)").rowFont(.title)
+                    ReflectionBadge([release.target])
+                }
+                Text(store.repository(release.repositoryID)?.appName ?? release.repositoryID)
+                    .rowFont(.subtitle)
+                    .foregroundStyle(.secondary)
+                Text(release.summary)
+                    .rowFont(.detail)
+                    .foregroundStyle(release.needsHuman ? Theme.danger : .secondary)
+                    .lineLimit(2)
+            }
+        }
+        .compactRow()
+        .accessibilityElement(children: .combine)
     }
 }
