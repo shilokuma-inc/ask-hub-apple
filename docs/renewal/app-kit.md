@@ -5,6 +5,7 @@
 
 状態: 2026-11-22 にユーザーが決め、設計を承認した（下の「決めたこと」）。同じ日に `shilokuma-inc/app-kit` を作り、v1.0.0 を出した（下の「実装の順と PR の分け方」の 1〜5。app-kit の #2・#4・#6・#8・#10）。試しの 1 本の入れ替えは tm-family/shinkeisuijaku-app-ios#83。
 macOS のアプリの Archive・Upload は、2026-11-23 にユーザーが決め、app-kit の v1.4.0 で足す（下の「macOS のアプリ」。app-kit#21）。
+App Extension などの中のバンドルの entitlements は、2026-11-24 にユーザーが決め、app-kit の v1.5.0 で足す（下の「App Extension の entitlements」。app-kit#23）。
 
 ## ねらい
 
@@ -195,6 +196,7 @@ v1.6.0 は、App Extension の entitlements（v1.5.0。app-kit#24・#1255）の�
 - 使うアクション（`actions/checkout`・`maxim-lobanov/setup-xcode` など）は、コミットで固定する（今はタグ）
 - visionOS（テンプレート）の Archive・Upload も、`archive.platforms` で扱う。macOS は v1.0.0〜v1.3.0 では扱わず、v1.4.0 で足す（下の「macOS のアプリ」）
 - 書き出した IPA・pkg は artifact に上げない（今のテンプレートは上げている。public のリポジトリでは誰でも取れるため。[release.md](release.md) の「ワークフロー」）
+- v1.5.0 から、バンドルごとの entitlements の記録（JSON）を artifact `entitlements-<プラットフォーム>` に上げる（下の「App Extension の entitlements」）。配信したアプリからも読める値だけで、IPA・pkg は上げない
 
 ### 版
 
@@ -204,7 +206,7 @@ v1.6.0 は、App Extension の entitlements（v1.5.0。app-kit#24・#1255）の�
 
 ### app-kit 自身の確かめ
 
-- `self-test.yml` が、PR と develop への push で、`fixtures/App`（iOS の小さなアプリ）と `fixtures/MacApp`（macOS の小さなアプリ。v1.4.0 から）に対して、同じリポジトリの再利用ワークフロー（`./.github/workflows/app-build.yml`）と、Upload しない Archive（書き出しの手前まで。鍵が要らない所まで）を流す
+- `self-test.yml` が、PR と develop への push で、`fixtures/App`（iOS の小さなアプリ）と `fixtures/MacApp`（macOS の小さなアプリ。v1.4.0 から）と `fixtures/ExtensionApp`（ウィジェットを持つ iOS の小さなアプリ。v1.5.0 から。Archive だけ）に対して、同じリポジトリの再利用ワークフロー（`./.github/workflows/app-build.yml`）と、Upload しない Archive（書き出しの手前まで。鍵が要らない所まで）を流す
 - 写すファイルの目印が埋まること、`manifest.json` と `managed/` の中身が合うこと、`schema/` の形で `fixtures/` の設定が読めることを確かめる
 - 本物のリポジトリでの確かめは、試しの 1 本で行う（下の「版を広げる」）
 
@@ -378,6 +380,69 @@ app-kit の v1.4.0 で、macOS（Mac App Store）の Archive・`.pkg` の書き�
 | mullion-macos | `platforms`・`archive.platforms` を `["macOS"]`、`uiTests` を `MullionUITests`。`AppStore/` が無いので、`unmanaged` に撮影（`app-store-screenshots.yml`）とクリエイティブ（`app-store-creative.yml`）を入れる。Xcode は 26.3 から app-kit の既定（26.6）になる。書き出した `.pkg` は artifact に上がらなくなる |
 | quick-key-assistant-macos | mullion と同じに加え、`swiftlint` を false にする（SwiftLint を入れていない）。共有の Scheme が無いので、先に作ってコミットする。ビルド番号は UTC の日時から Xcode の採番に替わる（App Store Connect の一番大きい番号から続く） |
 | このリポジトリ | `platforms` の先頭だけでテストが流れる（今は iOS と macOS の両方でテストし、`AskHubKit` を `swift test` で確かめる）。撮影（macOS の撮影を含む）と掲載文のワークフローは今のまま残す（`unmanaged`・`replaces` の `keepIfPresent`）。`.coderabbit.yaml`・`.swiftlint.yml` は `unmanaged`。最後にする（上の「今あるリポジトリをそろえる手順」） |
+
+## App Extension の entitlements
+
+app-kit の v1.5.0 で、Archive に entitlements を入れる手順と、書き出した IPA・pkg の確かめを、アプリ本体だけでなく、中の App Extension などのすべてのバンドルに広げる（#1254・app-kit#23）。
+v1.4.0 までは本体しか扱わないので、ウィジェットなどの entitlement（App Groups など）が配信ビルドから抜けても Upload まで通る。拡張を持つアプリ（shariverse/oshikatsu-countdown-ios・shilokuma-inc/otanecho-ios）は、このままでは入れ替えられない（2026-11-24 の全アプリの配信ビルドの点検）。
+設定の形・入力・Secrets の名前は変えないので、minor の版にする。
+
+### 分かっていること
+
+2026-11-24 に、app-kit v1.4.0（b2982f0）・oshikatsu-countdown-ios・kawarin-apple を読み、手元の Xcode 26.6 で小さなアプリ（iOS のアプリと、App Groups を持つウィジェット）を作って確かめた。
+
+| 見たもの | 分かったこと |
+| --- | --- |
+| v1.4.0 の作り | `embed` は Archive の `ApplicationPath` の `.app` 1 つだけを署名する。ビルドの設定は `-scheme` の `-showBuildSettings` から、製品の名前で本体を選ぶ。`check` は `Payload/*.app` の 1 つ（pkg も入れ子を除いた `.app`）しか見ない。確かめは「Archive の署名」と「書き出したもの」を比べるだけなので、`embed` が入れ損ねる（拡張を飛ばした・`CODE_SIGN_ENTITLEMENTS` が空に解決された）と、両方に無いので通る |
+| 署名なしの Archive（iOS・visionOS） | 本体も `PlugIns/*.appex` も署名が無い（`code object is not signed at all`）。Export は各バンドルの署名の entitlement だけを引き継ぐので、拡張も Archive の後に署名しておかないと抜ける |
+| 署名の順 | 内側（拡張）を先に、外側（本体）を後に署名すると、`codesign --verify --deep --strict` が通る。外側を先にすると、内側を署名した時点で外側の封が壊れる（`a sealed resource is missing or invalid`） |
+| ビルドの設定 | `-showBuildSettings -scheme` には、依存先の拡張のターゲットが出ない。`-alltargets` には出る（先頭のターゲットを 2 回出す）。`-alltargets` は `-derivedDataPath` と一緒に使えない |
+| 名前の重なり | kawarin は、iOS のターゲット `Kawarin` と macOS のターゲット `KawarinMac` が、同じ `Kawarin.app`・同じ Bundle ID を作る。`-sdk` を付けると、どのターゲットもそのプラットフォームの値になる（`SUPPORTED_PLATFORMS` も）。`-sdk` を付けなければ、ターゲットごとのプラットフォームが出る |
+| 手本 | oshikatsu の `.github/scripts/embed-entitlements.rb`（`-alltargets`・`FULL_PRODUCT_NAME` で突き合わせ・内側から署名）と、`_archive.yml` の全バンドルの確かめ。develop（run 45182829544）・release/1.2.0（run 44670515560）とも、本体とウィジェットに App Groups が入っている |
+| macOS で profile の要る entitlement | kawarin は、本体の `com.apple.developer.system-extension.install` などのため、macOS を API キーの自動の署名で Archive している（アドホック署名では `requires a provisioning profile` で止まる、と kawarin の `_archive.yml` にある）。camera extension の entitlements は sandbox と App Groups（`$(TeamIdentifierPrefix)…`）だけ |
+
+### 決めたこと
+
+2026-11-24 にユーザーが決めた。
+
+| 決めたこと | 決定 | 採らなかった案 |
+| --- | --- | --- |
+| 対象のバンドル | Archive の `.app` の中の、`.app`・`.appex`・`.systemextension`・`.xpc` のバンドルをすべて扱う（`.framework` の中は除く）。watchOS のアプリ（Archive したプラットフォームと違うバンドル）は、見つけたら理由を出して止める | watchOS も `-sdk watchos` の設定を別に読んで扱う／`.appex` だけを扱う |
+| 記録 | バンドルごとの entitlements を、artifact `entitlements-<プラットフォーム>`（JSON。IPA・pkg は上げない）と Job Summary に出す | Job Summary とログだけ |
+| macOS で profile の要る entitlement を持つ拡張（kawarin） | v1.5.0 では扱わない。macOS の拡張は Xcode のアドホック署名のまま（足さない）にし、確かめだけを全バンドルに広げる。kawarin は今のワークフローのまま | 拡張にも自動の署名で読んだ項目を足す（アプリ側の xcconfig で自動の署名のときだけ付ける形）／`.github/app-kit.json` に macOS の Archive を自動の署名にする入力を足す（Archive にも鍵が要り、self-test で流せない） |
+| app-kit の確かめ | `fixtures/ExtensionApp`（XcodeGen。iOS のアプリと、App Groups を持つウィジェット）を足し、self-test で Archive（書き出しの手前まで）を流す。macOS は `fixtures/MacApp` にウィジェットを足す。どちらも artifact の記録で、拡張に App Groups が入ったことを確かめる | 今の `fixtures/App` にウィジェットを足す（Xcode で作った pbxproj を手で直す）／iOS だけ足す |
+
+この設計で決めた既定（承認のときに一緒に確かめた）:
+
+- ターゲットとの突き合わせ
+  - 本体は今と同じく、`-scheme` の設定から製品の名前で選ぶ
+  - 中のバンドルがあるときだけ、`-alltargets -sdk <SDK>` を 1 回読む。`FULL_PRODUCT_NAME` が同じターゲットを選ぶ（同じ名前のターゲットは 1 つにまとめる）
+  - Archive のバンドルの `CFBundleIdentifier` と `PRODUCT_BUNDLE_IDENTIFIER` が合うものに絞る（候補が 1 つでも確かめる。別のターゲットの entitlements で署名しないように。Info.plist に `CFBundleIdentifier` が無いバンドルは確かめられないので、製品の名前だけで選ぶ。配信するバンドルは普通持つ）。まだ 2 つ以上なら、`-sdk` なしの設定の `SUPPORTED_PLATFORMS` で、Archive したプラットフォームのターゲットに絞る
+  - 見つからない・1 つに決まらないときは、候補を出して止める（黙って飛ばさない）
+- 署名の順: 深い（内側の）バンドルから署名する。あるバンドルを署名し直したら、それを入れている外側のバンドルも、足すものが無くても署名し直して封をし直す
+  - iOS・visionOS（署名なしの Archive）: 各バンドルを、`CODE_SIGN_ENTITLEMENTS` の `$(…)` を展開したファイルでアドホック署名する。どのバンドルにも entitlements が無ければ、今と同じく何も署名しない
+  - macOS（アドホック署名の Archive）: 本体は今と同じく、署名の entitlement に、プロジェクトの既定の署名（自動）で読んだファイルの項目を足す。中のバンドルには足さない。自動の署名で読んだファイルに、中のバンドルの署名に無い項目があれば、配信ビルドから抜けるので止める
+- 確かめ
+  - `embed` は、バンドルごとに、ソースの entitlements（`CODE_SIGN_ENTITLEMENTS` を展開したもの）と署名の結果を記録（JSON）に書く
+  - `check` は、Archive のすべてのバンドルについて、書き出した IPA・pkg の同じ場所のバンドルを探し、Archive の署名のキーと、記録のソースのキーが、すべてあるかを見る。バンドルが無い・キーが無い・`$(…)` が残っていれば止める（値は今と同じく見ない。Export が `aps-environment` などを書き換えるため）
+  - 記録の artifact の名前は、`working-directory` が `.` 以外なら、その道を `-` でつないで後ろに付ける（self-test は 1 回の実行で fixture ごとに呼ぶため）
+- スタブのフレームワークの署名の直しは、拡張の中の `Frameworks/` にも広げる
+- 版は v1.5.0（minor）。入力・Secrets・設定の形は変えない。ただし、中のバンドルにターゲットが見つからないアプリと、watchOS のアプリを含むアプリは、今まで通っていた Archive が止まるようになる（今の約 30 件には無い）
+- 初めての入れ替えで外すファイル（`manifest.json` の `replaces`）に、oshikatsu の `.github/scripts/embed-entitlements.rb` を足す
+
+### 確かめ方
+
+- 単体テスト: 入れ子のバンドルの署名の順・外側の署名し直し・名前の重なり・watchOS で止まること・macOS の拡張に足りない項目で止まること・拡張だけ抜けた IPA で止まること
+- self-test: 上の「app-kit の確かめ」
+- 本物: oshikatsu の一時ブランチで、新しい版の `archive.yml`（Upload しない）を流し、書き出した IPA の本体とウィジェットに App Groups があることを確かめる。拡張の無い shinkeisuijaku-app-ios でも今まで通り通るかを確かめる
+
+### 入れ替えるときに要ること
+
+| リポジトリ | 要ること |
+| --- | --- |
+| oshikatsu-countdown-ios | v1.5.0 以上で入れ替える（v1.4.0 ではウィジェットの App Groups が抜ける）。`embed-entitlements.rb` は `replaces` で外れる |
+| otanecho-ios | v1.5.0 以上で入れ替えれば、本体・ウィジェット・共有拡張の 3 つに App Groups が入る見込み（別のセッションが、今のワークフローのまま直している） |
+| kawarin-apple | v1.5.0 では入れ替えない（今のワークフローのまま）。profile の要る項目は本体の `com.apple.developer.system-extension.install` だけで、本体には v1.4.0 から自動の署名のときだけの項目を足せるので、本体の entitlements のファイルを分ければ通る見込みはある（camera extension の sandbox・App Groups がアドホック署名で通るかは確かめていない） |
 
 ## 決めずに残すこと
 
