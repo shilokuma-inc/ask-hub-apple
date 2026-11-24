@@ -166,7 +166,9 @@ private struct ReleaseSection: View {
     /// 広げると PR を出す相手の数
     private var rolloutSummary: String {
         let count = store.snapshot?.appKitRolloutCount(release) ?? 0
-        return count > 0 ? "入れ替え済みで古い版の \(count) 本に、1 本ずつ PR を出します" : "古い版のリポジトリはありません（ずれを直すときに広げます）"
+        return count > 0
+            ? "入れ替え済みの \(count) 本（古い版・ずれのあるもの）に、1 本ずつ PR を出します。major の違う相手には出しません"
+            : "PR を出す相手はありません（入れ替え済みの相手は、この版が入っているか major が違います）"
     }
 
     /// 変更点が長い（7 行から。閉じておく）

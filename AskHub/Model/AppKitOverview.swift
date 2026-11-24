@@ -132,6 +132,21 @@ struct AppKitInstallation: Hashable {
     func isOlder(than other: String) -> Bool {
         version.map { AppKitOverview.isNewer(other, than: $0) } ?? true
     }
+
+    /// その版を広げたとき、司令塔が PR を出す相手か（`AppKitRollout` と同じ決まり）。入っている版の major が違えば出さない
+    /// （major を上げる入れ替えは人が手で行う）。同じコミットでずれも無ければ、入っているので出さない。
+    /// それ以外（古い版・タグの無いコミット・同じ版のずれ）には出す
+    func receivesRollout(of release: AppKitOverview.Release) -> Bool {
+        if let version, Self.major(of: version) != Self.major(of: release.version) {
+            return false
+        }
+        return !(ref == release.ref && drift.isEmpty)
+    }
+
+    /// 版（`v1.2.0`）の major
+    static func major(of version: String) -> Int {
+        Int(version.dropFirst().split(separator: ".").first ?? "") ?? 0
+    }
 }
 
 /// 対象のリポジトリの app-kit の様子（入っている版と、広げている版のこのリポジトリの PR）
@@ -145,10 +160,10 @@ struct RepositoryAppKit: Hashable {
 }
 
 extension ClientSnapshot {
-    /// 版を広げると PR を出す相手の数（入れ替え済みで、その版より古い版が入っているリポジトリとテンプレート）
+    /// 版を広げると PR を出す相手の数（入れ替え済みのリポジトリとテンプレートのうち、司令塔が PR を出す相手。`receivesRollout(of:)`）
     func appKitRolloutCount(_ release: AppKitOverview.Release) -> Int {
         let installed = repositories.compactMap { $0.appKit?.installed } + (appKit?.templates.compactMap(\.installed) ?? [])
-        return installed.count { $0.isOlder(than: release.version) }
+        return installed.count { $0.receivesRollout(of: release) }
     }
 }
 

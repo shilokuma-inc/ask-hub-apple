@@ -129,7 +129,8 @@ extension RepositoryTodo {
         if let version = appKit.rolloutVersion, let target = appKit.rolloutTarget, target.state == .failed {
             let detail = target.problem ?? "app-kit の画面で、もう一度試すか、やめる"
             items.append(todo("failed", title: "app-kit \(version) を広げる途中で止まりました", detail: detail))
-        } else if let overview, let release = overview.newRelease, overview.canRollOut(release), installed.isOlder(than: release.version) {
+        } else if let overview, let release = overview.newRelease, overview.canRollOut(release), installed.isOlder(than: release.version),
+                  installed.receivesRollout(of: release) {
             let detail = "このリポジトリは \(installed.versionLabel)。app-kit の画面で変更点を見て広げます"
             items.append(todo("release", title: "app-kit \(release.version) を広げる", detail: detail))
         }

@@ -56,15 +56,27 @@ struct RepositoryTodoTests {
         #expect(released.allSatisfy { $0.action == .route(.appKit) })
     }
 
-    /// 広げると PR を出す相手は、入れ替え済みで古い版のリポジトリとテンプレート（まだ入れ替えていないものは数えない）
+    /// 広げると PR を出す相手は、入れ替え済みで古い版か、ずれのあるリポジトリとテンプレート（まだ入れ替えていないものは数えない）
     @Test
     func countsRolloutTargetsWithOlderVersions() throws {
         let standard = DemoScenario.standard.snapshot(now: now)
         let latest = try #require(standard.appKit?.latest)
-        #expect(standard.appKitRolloutCount(latest) == 0)
+        // 最新の版がどこにも入っていても、ずれのある相手（積読リスト）には同じ版を広げ直す PR を出す
+        #expect(standard.appKitRolloutCount(latest) == 1)
         let released = DemoScenario.appKitRelease.snapshot(now: now)
         let release = try #require(released.appKit?.newRelease)
         // 習慣ログ・献立メモ・雨雲チェック・おこづかい帳・積読リストと、テンプレート 1 つ（家事シェアと visionOS のテンプレートはまだ入れ替えていない）
         #expect(released.appKitRolloutCount(release) == 6)
+    }
+
+    /// PR を出す相手の決まりは司令塔と同じ: major が違えば出さず、同じコミットでもずれがあれば出す
+    @Test
+    func rolloutTargetsFollowCommanderRules() throws {
+        let release = AppKitOverview.Release(version: "v2.0.0", ref: "new", changes: nil, foundAt: now)
+        #expect(!AppKitInstallation(version: "v1.9.0", ref: "old").receivesRollout(of: release))
+        #expect(AppKitInstallation(version: "v2.0.0", ref: "new", drift: [".swiftlint.yml が無い"]).receivesRollout(of: release))
+        #expect(!AppKitInstallation(version: "v2.0.0", ref: "new").receivesRollout(of: release))
+        #expect(AppKitInstallation(version: "v2.0.0-beta", ref: "beta").receivesRollout(of: release))
+        #expect(AppKitInstallation(version: nil, ref: "abc1234").receivesRollout(of: release))
     }
 }
