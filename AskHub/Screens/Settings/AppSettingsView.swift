@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 設定。テーマと、スワイプの持ち手と、データ（状態リポジトリ・GitHub のトークン・この端末の鍵・通知、またはデモの場面）と、このアプリのバージョン
+/// 設定。テーマと、スワイプの持ち手（iOS だけ）と、データ（状態リポジトリ・GitHub のトークン・この端末の鍵・通知、またはデモの場面）と、このアプリのバージョン
 struct AppSettingsView: View {
     @AppStorage(ThemePreferences.themeKey) private var theme: AppTheme = .system
     @AppStorage(SwipePreferences.handKey) private var hand: Handedness = .right
@@ -10,16 +10,8 @@ struct AppSettingsView: View {
         NavigationStack {
             Form {
                 themeSection
-                Section {
-                    Picker("スマホを持つ手", selection: $hand) {
-                        ForEach(Handedness.allCases, id: \.self) { hand in
-                            Text(hand.label).tag(hand)
-                        }
-                    }
-                } header: {
-                    Text("スワイプ")
-                } footer: {
-                    Text(SwipeLayout.summary(hand: hand))
+                if SwipePreferences.choosesHand {
+                    swipeSection
                 }
                 ConnectionSettingsSections()
                 SiriShortcutsSection()
@@ -53,6 +45,21 @@ struct AppSettingsView: View {
             Text("テーマ")
         } footer: {
             Text("システムは端末の外観の設定に従います")
+        }
+    }
+
+    /// スマホを持つ手で、選択肢を置く方向を鏡写しにする（iOS だけ）
+    private var swipeSection: some View {
+        Section {
+            Picker("スマホを持つ手", selection: $hand) {
+                ForEach(Handedness.allCases, id: \.self) { hand in
+                    Text(hand.label).tag(hand)
+                }
+            }
+        } header: {
+            Text("スワイプ")
+        } footer: {
+            Text(SwipeLayout.summary(hand: hand))
         }
     }
 
