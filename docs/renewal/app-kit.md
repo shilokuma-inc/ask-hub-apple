@@ -96,6 +96,7 @@ app-kit/
 - `managed/` の呼ぶ側のワークフローは、版を `{{APP_KIT_REF}}`（コミット）・`{{APP_KIT_VERSION}}`（タグ）の目印で持ち、司令塔が写すときに埋める。ほかの写すファイルは版の中身そのまま
 - `manifest.json` は、写すファイルのパスの一覧（`managed`）と、初めての入れ替えで外すファイル（`replaces`。`_build.yml`・`_archive.yml`・`.github/scripts/*.rb`・App Store の素材のワークフローと道具・今の仕組みの跡）を持つ。司令塔は、この一覧に無いファイルに触れない
   - 外すファイルには、残す条件（`keepIfPresent`）を持たせられる。クリエイティブ素材のワークフローが残るリポジトリでは、それが使う `Tools/app_store_config.py`・`app_store_connect.py`・`remove_alpha.swift` を外さない
+  - 審査の提出のワークフロー（`app-store-submit.yml`。shilokuma-vision/theater-player-app-vision）が残るリポジトリでは、`Tools/submit_for_review.py` が読む `Tools/app_store_config.py`・`app_store_connect.py`・`upload_app_info.py`・`upload_metadata.py` を外さない（v1.6.0。下の「構成の切り替えと Firebase」）
   - 版を埋めた写すファイルは `tools/render-managed.sh <コミット> <タグ> <出力のフォルダ>` で作れる（司令塔は同じことを Swift で行う。手で入れ替えるときにも使う）
 
 ### 各リポジトリの設定（`.github/app-kit.json`）
@@ -120,10 +121,50 @@ app-kit/
 - `platforms`: ビルドとテストの行き先（`iOS`・`macOS`・`visionOS`）。`generate` は XcodeGen で作るリポジトリの `"xcodegen"`（ワーカーのビルドの設定の `generate` と同じ）
 - `uiTests`: UI テストのターゲット。作業ブランチへの push では飛ばす（今と同じ）。無いリポジトリは `null`
 - `xcodeVersion`: 版の既定（今は 26.6）と違う Xcode を使うときだけ書く
-- `archive`: Upload する行き先（`platforms`。省くと `platforms` の先頭）と、Secret から書き出す `GoogleService-Info.plist` のパス（`googleServiceInfo`。kobosu。使わなければ `null`）
+- `archive`: Upload する行き先（`platforms`。省くと `platforms` の先頭）と、Secret から書き出す `GoogleService-Info.plist` のパス（`googleServiceInfo`。kobosu。使わなければ `null`）。構成をブランチで切り替えるアプリは `configurations` を書く（下の「構成の切り替えと Firebase」）
 - `unmanaged`: 写すファイルのうち、このリポジトリでは配らないもの（ask-hub-apple の `.coderabbit.yaml`・`.swiftlint.yml` のように、リポジトリで足した設定があるもの）。版を上げる PR でも、ずれの点検でも触れない
 - `.github/` の下なので、ワーカーの epic で変えると、マージの規則で人の確認に回る（[flows.md](flows.md) の「マージの規則」）
 - ワーカーのビルドの設定（`repo.json` の `build.xcode`）と値が重なる。初めての入れ替えでは、ビルドの設定から作る。食い違いは、ずれの点検で知らせる
+
+### 構成の切り替えと Firebase（v1.6.0）
+
+2026-11-24 にユーザーが決めた。shariverse/dokogacha-app-ios を入れ替えるため（案: app-kit に足す／dokogacha の Archive をリポジトリだけのワークフローとして残す → app-kit に足す）。
+v1.6.0 は、App Extension の entitlements（v1.5.0。app-kit#24・#1255）の次の版にする。
+
+- わけ: v1.5.0 までの Archive は `-configuration Release` 決め打ちで、`GoogleService-Info.plist` は Secret `GOOGLE_SERVICE_INFO_PLIST_BASE64` の 1 つだけを `archive.googleServiceInfo` に書き出す。
+  dokogacha は develop の TestFlight を Stg（Bundle ID `jp.shilokuma.Dokogacha.stg`、App Store Connect では別のアプリ。Firebase は dev）、`release/**` と main を Release（Firebase は prod）で作り、dSYM を Crashlytics に上げている。
+  そのまま入れ替えると、develop の Upload が本番のアプリに Firebase に繋がらないビルドを上げ、Crashlytics の記号化も止まる
+- 設定は `archive.configurations`（並び）と `archive.crashlytics`:
+
+  ```json
+  "archive": {
+    "platforms": ["iOS"],
+    "configurations": [
+      {
+        "name": "Release",
+        "branches": ["main", "release/*"],
+        "googleServiceInfo": { "path": "Dokogacha/Resources/Firebase/GoogleService-Info-Prod.plist", "secret": "GOOGLE_SERVICE_INFO_PLIST_PROD", "required": true }
+      },
+      {
+        "name": "Stg",
+        "googleServiceInfo": { "path": "Dokogacha/Resources/Firebase/GoogleService-Info-Dev.plist", "secret": "GOOGLE_SERVICE_INFO_PLIST_DEV" }
+      }
+    ],
+    "crashlytics": true
+  }
+  ```
+
+  - `name`: Archive するビルドの構成（`xcodebuild -configuration`）。entitlements を展開するときの構成も同じにする
+  - `branches`: その構成で Archive するブランチのパターン（`*` は `/` もまたぐ）。上から順に見て、最初に合ったものを使う。`branches` の無いものはどのブランチにも合う（最後に 1 つだけ置ける）。どれにも合わなければ、理由を出して止める
+  - 手動の実行（`archive.yml`・`upload.yml` の `workflow_dispatch`）は、入力 `configuration` で構成の名前を選べる。空ならブランチで決める
+  - `googleServiceInfo.path`: 書き出す先（リポジトリの直下から。ファイル名は `GoogleService-Info` で始まる `.plist`）。`secret`: 読む Secret。再利用ワークフローの Secrets は名前を決めて渡すので、`GOOGLE_SERVICE_INFO_PLIST_BASE64`・`GOOGLE_SERVICE_INFO_PLIST_DEV`・`GOOGLE_SERVICE_INFO_PLIST_PROD` のどれかに限る
+  - `required`: true なら、Upload するときに Secret が無ければ止める（Firebase に繋がらないビルドを App Store 用に出さない）。false（既定）なら、今と同じく注釈を出して進む
+  - Archive の後に、書き出した plist がアプリに入ったか、ほかの構成の plist が入っていないかを確かめる（取り違えて本番のアプリが dev に繋がらないように）
+  - `configurations` が無ければ、今と同じ（Release と `archive.googleServiceInfo`・`GOOGLE_SERVICE_INFO_PLIST_BASE64`）。`configurations` と `archive.googleServiceInfo` を両方書いたら断る
+- `crashlytics`: true なら、Upload するときに、書き出した plist で dSYM を Crashlytics に上げる（SPM が取ってきた firebase-ios-sdk の `Crashlytics/upload-symbols`）。plist が無い・道具が無い・失敗したときは、注釈を出して Upload は止めない
+- 呼ぶ側（`upload.yml`・`archive.yml`）は、Secrets に `GOOGLE_SERVICE_INFO_PLIST_DEV`・`_PROD` を足し、入力 `configuration` を足す。今の設定はそのまま動くので minor にする
+- 司令塔の初めての入れ替えは、`.github/app-kit.json` があれば変えない。dokogacha は、準備をやり直す前に、リポジトリに上の形の `.github/app-kit.json` を入れておく
+- 審査の提出の道具: `manifest.json` の `replaces` の `Tools/app_store_config.py`・`app_store_connect.py`・`upload_app_info.py`・`upload_metadata.py` に、`keepIfPresent` として `.github/workflows/app-store-submit.yml`・`Tools/submit_for_review.py` を足す（theater-player の Submit/App Store が読む。審査の提出を司令塔に寄せたら外す）
 
 ### 再利用ワークフロー
 
