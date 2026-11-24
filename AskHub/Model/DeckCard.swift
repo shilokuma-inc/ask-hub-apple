@@ -70,6 +70,8 @@ struct TextRequest: Hashable {
         case finalInstruction(epicID: Epic.ID, headCommit: String)
         /// 実機確認の「問題あり」。`release` があれば「このリリースで直す」、nil なら次のリリースで直す
         case verificationProblem(epicID: Epic.ID, itemID: VerificationItem.ID, release: String? = nil)
+        /// 実機確認の「確かめずに閉じる」（epic の残りの項目をまとめて閉じる理由。空でもよい）
+        case closingVerifications(epicID: Epic.ID)
         case blockerInstruction(epicID: Epic.ID)
         case goalRevision(epicID: Epic.ID)
     }
@@ -91,12 +93,22 @@ struct TextRequest: Hashable {
         case let .verificationProblem(epicID, itemID, release):
             .verify(epicID: epicID, itemID: itemID, reply: .problem(note: text, release: release))
 
+        case .closingVerifications(let epicID):
+            .closeVerifications(epicID: epicID, reply: .skipped(note: text))
+
         case .blockerInstruction(let epicID):
             .resolveBlocker(epicID: epicID, action: .fixWithInstruction, instruction: text)
 
         case .goalRevision(let epicID):
             .reviseGoal(epicID: epicID, request: text)
         }
+    }
+}
+
+extension TextRequest {
+    /// 実機確認の「確かめずに閉じる」の理由を書いてもらう（書かずに閉じてもよい）
+    static func closingVerifications(epicID: Epic.ID) -> Self {
+        TextRequest(title: "確かめずに閉じる", prompt: "閉じる理由（任意）", purpose: .closingVerifications(epicID: epicID), allowsEmpty: true)
     }
 }
 

@@ -75,6 +75,13 @@ extension TextRequestSheet.Subject {
     }
 }
 
+extension TextRequestSheet.Subject {
+    /// 実機確認をまとめて閉じる epic から作る（例: 習慣ログ · 実機で確かめる · 残り 2 項目 と、epic の題）
+    init(closing epic: Epic, count: Int, appName: String?) {
+        self.init(context: [appName, "実機で確かめる", "残り \(count) 項目"].compactMap(\.self).joined(separator: " · "), title: epic.title)
+    }
+}
+
 /// 入力欄の上に出す、何について書いているかの行
 private struct SubjectRow: View {
     let subject: TextRequestSheet.Subject

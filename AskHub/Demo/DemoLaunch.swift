@@ -4,11 +4,12 @@ import Foundation
 /// UI テストと撮影のために、起動引数で開く画面を決める（DEBUG だけ）。
 ///
 /// 例: `-demoOpen deck:all`・`-demoOpen deck:verifications`（アプリをまたいだ実機確認）・`-demoOpen epic:rain-draft`・`-demoOpen section:macs`・`-demoOpen finished`（終わったものをすべて）、
+/// `-demoOpen verifications`（実機確認の一覧。`verifications:folded` なら配信した版の確認を開いておく）、
 /// `-demoOpen release:demo-studio/habit-ios:1.2.0`（配信した版）・`-demoOpen appStore:demo-studio/pocket-budget-ios`（App Store の準備）、
 /// スワイプの途中の色を撮るときは `-demoDrag 0:0.8`（選択肢の添字:進み具合）、
 /// 開いた画面のシートを撮るときは `-demoSheet start`（ゴールの画面の、Mac を選ぶシート）・`-demoSheet submitReview`（審査に出す）・
 /// `-demoSheet startRelease`（リリースを始める）・`-demoSheet fixRelease`（このリリースを直す依頼）・`-demoSheet rejectionReport`（リジェクトの理由を貼る）・`-demoSheet appStoreSettings`（App Store Connect に決まった値を書く）・
-/// `-demoSheet settings`（iOS の設定のシート）。
+/// `-demoSheet settings`（iOS の設定のシート）・`-demoSheet closeVerifications`（実機確認の一覧の、確かめずに閉じる理由のシート）。
 /// テーマは `-appTheme dark` のように保存のキーを起動引数で渡すと、保存された値によらずその見た目で撮れる
 enum DemoLaunch {
     static let openKey = "demoOpen"
@@ -31,10 +32,17 @@ enum DemoLaunch {
         case appStoreSettings
         /// 設定のシート（iOS。macOS は設定のウィンドウなので開かない）
         case settings
+        /// 実機確認の一覧の、先頭の epic を確かめずに閉じる理由のシート
+        case closeVerifications
     }
 
     static func initialSheet(defaults: UserDefaults = .standard) -> Sheet? {
         defaults.string(forKey: sheetKey).flatMap(Sheet.init(rawValue:))
+    }
+
+    /// 実機確認の一覧で、配信した版の確認（畳んだもの）を開いておくか（`-demoOpen verifications:folded`）
+    static func expandsFoldedVerifications(defaults: UserDefaults = .standard) -> Bool {
+        defaults.string(forKey: openKey) == "verifications:folded"
     }
 
     static func initialDestination(defaults: UserDefaults = .standard) -> (section: AppSection, route: AppRoute?)? {
@@ -52,6 +60,9 @@ enum DemoLaunch {
         let argument = parts.dropFirst().first ?? ""
         if let (section, makeRoute) = singleArgumentRoutes[kind] {
             return (section, makeRoute(argument))
+        }
+        if let (section, route) = noArgumentRoutes[kind] {
+            return (section, route)
         }
         switch kind {
         case "section":
@@ -71,16 +82,17 @@ enum DemoLaunch {
             // `submission:<リポジトリの id>:<版>`（例: `submission:demo-studio/recipe-apple:2.1.0`）
             return parts.count == 3 ? (.repositories, .submission(repositoryID: parts[1], version: parts[2])) : nil
 
-        case "finished":
-            return (.progress, .finishedEpics)
-
-        case "appKit":
-            return (.repositories, .appKit)
-
         default:
             return nil
         }
     }
+
+    /// 引数の要らない行き先（例: `finished`。`verifications:folded` は一覧を開き、畳んだ確認を開いておく）
+    private static let noArgumentRoutes: [String: (AppSection, AppRoute)] = [
+        "finished": (.progress, .finishedEpics),
+        "appKit": (.repositories, .appKit),
+        "verifications": (.inbox, .verifications)
+    ]
 
     /// 引数が 1 つの行き先（例: `epic:rain-draft`）
     private static let singleArgumentRoutes: [String: (AppSection, (String) -> AppRoute)] = [

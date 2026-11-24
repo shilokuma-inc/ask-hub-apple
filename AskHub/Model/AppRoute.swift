@@ -33,6 +33,8 @@ enum AppRoute: Hashable {
     case epic(Epic.ID)
     /// 判断のカード（スワイプで選ぶ）
     case deck(DeckScope)
+    /// 実機確認の一覧（epic ごとの残りの数・まとめての操作・配信した版の確認）
+    case verifications
     case goal(Epic.ID)
     case humanTask(epicID: Epic.ID, taskID: HumanTask.ID)
     case finalReview(Epic.ID)
