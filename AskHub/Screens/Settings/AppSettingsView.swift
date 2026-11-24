@@ -19,9 +19,7 @@ struct AppSettingsView: View {
                 } header: {
                     Text("スワイプ")
                 } footer: {
-                    Text(hand == .right
-                        ? "推奨はいつも ↗。2 択は ↗↙、3 択は ↗↖↙、4 択は ↗↖↙↘ に割り当てます。自由回答の選択肢は、推奨の対角の ↙ に置きます"
-                        : "推奨はいつも ↖。2 択は ↖↘、3 択は ↖↗↘、4 択は ↖↗↘↙ に割り当てます。自由回答の選択肢は、推奨の対角の ↘ に置きます")
+                    Text(SwipeLayout.summary(hand: hand))
                 }
                 ConnectionSettingsSections()
                 SiriShortcutsSection()
