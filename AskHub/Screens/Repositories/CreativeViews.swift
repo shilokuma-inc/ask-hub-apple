@@ -125,7 +125,19 @@ struct CreativeView: View {
                     + "ライブラリの画像は、審査に出すまで App Store に出ません")
             }
         } else {
-            ContentUnavailableView("ヘッダーと検索結果の案はまだありません", systemImage: "photo.on.rectangle.angled")
+            // 案がまだ無いときも、地とタイトルはほかの画面と同じにし、リポジトリの画面と同じ「作る」を置く（ここで行き止まりにしない）
+            ContentUnavailableView {
+                Label("ヘッダーと検索結果の案はまだありません", systemImage: "photo.on.rectangle.angled")
+            } description: {
+                Text(CreativeDraftButton.summary)
+            } actions: {
+                CreativeDraftButton(repositoryID: repositoryID, title: "案を作る…")
+                    .buttonStyle(.glassProminent)
+                    .keepsControlSize()
+                ReflectionStatusView(.creative(repositoryID), framed: true)
+            }
+            .pastelBackground()
+            .navigationTitle("ヘッダーと検索結果")
         }
     }
 
