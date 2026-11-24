@@ -896,6 +896,10 @@
   上げた番号は job のログの xcodebuild の引数（`${{ }}` で渡した値は、ログの `Run` の見出しで展開される）と、xcodebuild が始めに出す「Build settings from command line」の `CURRENT_PROJECT_VERSION = <番号>` で分かる（2026-11-24、prime-pick 1.4.0。#1291）
 - GitHub Actions の job のログ（`GET /actions/jobs/{id}/logs`）の `Run` の見出しのスクリプトは、色のエスケープシーケンスつき（`ESC[36;1m  CURRENT_PROJECT_VERSION=…ESC[0m`）で返る。ログの中の語を探すときは、先にエスケープシーケンスを除く。
   `gh api` でこのログを読むと「the response contains terminal escape sequences」で何も出さないので、`--allow-escape-sequences` を付ける（2026-11-24、#1291）
+- App Asset Library のリファレンスデータの配置グループの id（`placementProfileGroupId`）は、文書に 6.9 インチの `IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE`・`MAC_PROFILE`・`IMESSAGE_IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE` しか無く、文書は「id は決め打ちしない」と求めている。
+  一方、要素の表示クラス（`displayClassId`。`AppAssetLibraryDisplayClass`）の値は文書にある（`IPHONE_DUO`・`IPHONE_DYNAMIC_ISLAND_LARGE_DISPLAY`・`IPHONE_DYNAMIC_ISLAND_MEDIUM_DISPLAY`・`IPAD_13_DISPLAY` など 20 個。Vision Pro・Mac の表示クラスは無い）。
+  型の名前は `AppAssetLibraryRefDatum`（`…refdata.json` の DocC は 404）。同じ表示クラスでも iMessage など別のプラットフォームの配置グループがあるので、配置のプラットフォーム（`IPHONE_APP_STORE` など）と表示クラスの両方で引く。
+  `IPAD_13_PROFILE`・`IPHONE_DUO_PROFILE` は表示クラスの名前から当てた値で、本物で確かめていない（2026-11-25、#1303）
 
 ## ワーカー・司令塔の運用
 
