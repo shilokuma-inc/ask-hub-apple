@@ -65,6 +65,10 @@ extension StateClientServiceTests {
         #expect(AppKitOverview.plainSummary(of: "\n## 変更点\n1. 直した") == "変更点")
         #expect(AppKitOverview.plainSummary(of: "2. 直した") == "直した")
         #expect(AppKitOverview.plainSummary(of: " \n- \n") == nil)
+        // 記号の後ろに空白が無いもの（負の符号）は残し、1 文字の強調も外す。語の途中の記号は残す
+        #expect(AppKitOverview.plainSummary(of: "- -1 を返す場合の処理を修正") == "-1 を返す場合の処理を修正")
+        #expect(AppKitOverview.plainSummary(of: "- 認証の *再試行* と _待ち_ を直す") == "認証の 再試行 と 待ち を直す")
+        #expect(AppKitOverview.plainSummary(of: "- `snake_case` と a*b はそのまま") == "snake_case と a*b はそのまま")
     }
 
     /// 広げる途中で止まったら、進行が止まっていますに出し、同じ版のもう一度試すとやめるを送れる。ほかの版は広げられない
