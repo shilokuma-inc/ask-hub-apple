@@ -18,6 +18,12 @@ public actor AppKitWatch {
     nonisolated let log: @Sendable (String) -> Void
     nonisolated let releaseInterval: TimeInterval
     nonisolated let driftInterval: TimeInterval
+    /// App Store Connect のリファレンスデータの配置グループを読む部品（撮影の設定を作る・確かめる）。nil（鍵が無い・テスト）なら作らない
+    nonisolated let placementGroups: (@Sendable () async throws -> [AppStorePlacementProfileGroup])?
+    /// リファレンスデータを読み直す間隔
+    static let placementGroupsInterval: TimeInterval = 24 * 60 * 60
+    private var groupsCache: (at: Date, groups: [AppStorePlacementProfileGroup])?
+    private var groupsLogged = false
     private var releasesCheckedAt: Date?
     private var driftCheckedAt: [RepositoryFullName: Date] = [:]
     private var running = false
@@ -28,6 +34,7 @@ public actor AppKitWatch {
         github: @escaping @Sendable (RepositoryFullName) -> GitHubPullRequests,
         admin: AdminGitHub?,
         log: @escaping @Sendable (String) -> Void,
+        placementGroups: (@Sendable () async throws -> [AppStorePlacementProfileGroup])? = nil,
         releaseInterval: Duration = .seconds(60 * 60),
         driftInterval: Duration = .seconds(6 * 60 * 60)
     ) {
@@ -36,6 +43,7 @@ public actor AppKitWatch {
         self.github = github
         self.admin = admin
         self.log = log
+        self.placementGroups = placementGroups
         self.releaseInterval = TimeInterval(releaseInterval.components.seconds)
         self.driftInterval = TimeInterval(driftInterval.components.seconds)
     }
@@ -168,41 +176,106 @@ public actor AppKitWatch {
         let observed = try await AppKitObserved.read(github(repo), base: build?.baseBranch)
         let catalog = AppKitCatalog(releases: releases, source: source)
         let now = context.timestamp
-        let next = try await Self.installation(installed: installed, observed: observed, build: build, catalog: catalog, now: now)
-        guard next != installed else { return }
-        try await record(next, for: repo, isTemplate: isTemplate, previous: installed)
+        // 撮影の設定は、app-kit を呼ぶリポジトリ（テンプレートを除く）だけ作る・確かめる。確かめられなければ、前のずれを引き継ぐ
+        let screenshots = isTemplate || observed.callerRef == nil
+            ? ScreenshotPlan() : await screenshotPlan(build: build, observed: observed)
+        let extra = screenshots?.problems ?? Self.screenshotProblems(in: installed)
+        let next = try await Self.installation(
+            installed: installed, observed: observed, build: build, catalog: catalog, now: now, extra: extra
+        )
+        let created = next == nil ? nil : screenshots?.created
+        guard next != installed || created != nil else { return }
+        try await record(next, for: repo, isTemplate: isTemplate, previous: installed, created: created)
+    }
+
+    // MARK: - 撮影の設定
+
+    /// 撮影の設定を作る・確かめた結果
+    struct ScreenshotPlan: Equatable {
+        /// 作った設定（`build.storeScreenshots` が無いときだけ）
+        var created: StoreScreenshotCapture?
+        /// ずれに書く撮影の設定の問題
+        var problems: [String] = []
+    }
+
+    /// app-kit の撮影を使うリポジトリの撮影の設定を、base の先頭のファイルから作る（無ければ）か、確かめる（あれば）
+    /// （`docs/renewal/store-screenshots.md` の「いつ作るか」）。リファレンスデータを読めなければ nil
+    func screenshotPlan(build: RepositoryFile.Build?, observed: AppKitObserved) async -> ScreenshotPlan? {
+        guard let sources = observed.screenshotSources else { return ScreenshotPlan() }
+        let builder = StoreScreenshotSettingsBuilder.self
+        guard let build else {
+            return ScreenshotPlan(problems: [builder.problemPrefix + "ビルドの設定（build）が無いので作れない。先にビルドの設定を入れる"])
+        }
+        if case .uiTest? = build.storeScreenshots { return ScreenshotPlan() }
+        guard let groups = await referenceGroups() else { return nil }
+        if case let .actions(workflow)? = build.storeScreenshots {
+            return ScreenshotPlan(problems: builder.problems(of: workflow, screenshots: sources.screenshots, groups: groups))
+        }
+        switch builder.build(screenshots: sources.screenshots, languages: sources.languages, groups: groups) {
+        case let .success(built): return ScreenshotPlan(created: .actions(built.workflow), problems: built.omitted)
+        case let .failure(problem): return ScreenshotPlan(problems: [problem.description])
+        }
+    }
+
+    /// 前に書いた撮影の設定の問題（リファレンスデータを読めないときに引き継ぐ）
+    static func screenshotProblems(in installed: RepositoryFile.AppKit?) -> [String] {
+        installed?.drift?.problems.filter { $0.hasPrefix(StoreScreenshotSettingsBuilder.problemPrefix) } ?? []
+    }
+
+    /// App Store Connect のリファレンスデータの配置グループ（アプリによらない）。1 日覚える。読めなければ前に読んだもの（無ければ nil）。
+    /// 初めて読んだときに、配置グループをログに出す（文書に無い id を確かめるため）
+    func referenceGroups() async -> [AppStorePlacementProfileGroup]? {
+        if let cached = groupsCache, context.now().timeIntervalSince(cached.at) < Self.placementGroupsInterval { return cached.groups }
+        guard let placementGroups else { return groupsCache?.groups }
+        do {
+            let groups = try await placementGroups()
+            groupsCache = (context.now(), groups)
+            if !groupsLogged {
+                groupsLogged = true
+                let listed = groups.map { "\($0.id)（\([$0.platform, $0.displayClass].compactMap { $0 }.joined(separator: "・"))）" }
+                log("App Store Connect のリファレンスデータの配置グループ: \(listed.joined(separator: "、"))")
+            }
+            return groups
+        } catch {
+            log("App Store Connect のリファレンスデータを読めない（\(error)）。撮影の設定は次の点検で作る・確かめる")
+            return groupsCache?.groups
+        }
     }
 
     /// 読んだ様子から、入っている版とずれを決める。呼んでいるコミットが見つけた別の版で、写すファイルがその版と同じなら、
     /// その版が入ったとみなす（人が GitHub で版の上げの PR をマージした・手で入れ替えたテンプレート）。
     /// まだ記録の無いリポジトリ（手で入れ替えた）は、ずれがあっても呼んでいる版を書き、ずれも書く（入れた時刻は分からないので書かない）
+    /// `extra` は、写すファイルのほかに書くずれ（撮影の設定の問題）
     static func installation(
         installed: RepositoryFile.AppKit?,
         observed: AppKitObserved,
         build: RepositoryFile.Build?,
         catalog: AppKitCatalog,
-        now: Timestamp
+        now: Timestamp,
+        extra: [String] = []
     ) async throws -> RepositoryFile.AppKit? {
         if let caller = observed.callerRef, caller != installed?.ref, let candidate = try await catalog.release(ref: caller) {
             let problems = AppKitDrift.problems(release: candidate, observed: observed, build: build)
             let pin = candidate.pin
             if problems.isEmpty {
-                return RepositoryFile.AppKit(ref: pin.ref, version: pin.version, installedAt: installed == nil ? nil : now)
+                let at = installed == nil ? nil : now
+                return RepositoryFile.AppKit(ref: pin.ref, version: pin.version, installedAt: at, drift: AppKitDrift.drift(extra, at: now))
             }
             if installed == nil {
-                return RepositoryFile.AppKit(ref: pin.ref, version: pin.version, drift: AppKitDrift.drift(problems, at: now))
+                return RepositoryFile.AppKit(ref: pin.ref, version: pin.version, drift: AppKitDrift.drift(problems + extra, at: now))
             }
         }
         if installed == nil, let caller = observed.callerRef {
-            return RepositoryFile.AppKit(ref: caller, drift: AppKitDrift.drift([AppKitDrift.unknownRef(caller)], at: now))
+            return RepositoryFile.AppKit(ref: caller, drift: AppKitDrift.drift([AppKitDrift.unknownRef(caller)] + extra, at: now))
         }
         guard var installed else { return nil }
-        let problems: [String]
+        var problems: [String]
         if let release = try await catalog.release(ref: installed.ref) {
             problems = AppKitDrift.problems(release: release, observed: observed, build: build)
         } else {
             problems = [AppKitDrift.unknownRef(installed.ref)]
         }
+        problems += extra
         let limited = Array(problems.prefix(AppKitDrift.maximumProblems))
         if limited != installed.drift?.problems ?? [] {
             installed.drift = limited.isEmpty ? nil : ProtectionDrift(foundAt: now, problems: limited)
@@ -210,12 +283,14 @@ public actor AppKitWatch {
         return installed
     }
 
-    /// 読み始めた後に、入れた版が変わっていたら（広げた・準備の PR をマージした）書かない
+    /// 読み始めた後に、入れた版が変わっていたら（広げた・準備の PR をマージした）書かない。作った撮影の設定は、
+    /// ビルドの設定があって撮影の設定がまだ無いときだけ書く（人が書いた設定は書き換えない）
     private func record(
         _ next: RepositoryFile.AppKit?,
         for repo: RepositoryFullName,
         isTemplate: Bool,
-        previous: RepositoryFile.AppKit?
+        previous: RepositoryFile.AppKit?,
+        created: StoreScreenshotCapture? = nil
     ) async throws {
         let message = "\(repo) の app-kit のずれを書く"
         if isTemplate {
@@ -226,16 +301,30 @@ public actor AppKitWatch {
                 return true
             }
         } else {
+            let saved: RepositoryFile
             do {
-                try await context.files.update(RepositoryFile.self, at: StatePath.repository(repo), message: message) {
+                let message = created == nil ? message : "\(repo) の撮影の設定を作り、app-kit のずれを書く"
+                saved = try await context.files.update(RepositoryFile.self, at: StatePath.repository(repo), message: message) {
                     guard !$0.isRemoved, $0.appKit == previous else { return false }
-                    $0.appKit = next
-                    return true
-                }
+                    var changed = false
+                    if $0.appKit != next {
+                        $0.appKit = next
+                        changed = true
+                    }
+                    if let created, $0.build != nil, $0.build?.storeScreenshots == nil {
+                        $0.build?.storeScreenshots = created
+                        changed = true
+                    }
+                    return changed
+                }.file
             } catch {
                 throw CommanderError.files(error)
             }
+            if let created, saved.build?.storeScreenshots == created, case let .actions(workflow) = created {
+                log("\(repo) の撮影の設定を作った（\(StoreScreenshotSettingsBuilder.summary(workflow))）")
+            }
         }
+        guard next != previous else { return }
         if next?.ref != previous?.ref {
             log("\(repo) は app-kit \(next?.version?.rawValue ?? next?.ref ?? "") を呼んでいる")
         } else {
@@ -266,6 +355,14 @@ struct AppKitObserved: Equatable {
     var callerRef: String?
     /// `build.yml` が再利用ワークフローに渡す app-kit のコミット（`app-kit-ref`）。無ければ nil
     var callerKitRef: String?
+    /// app-kit の撮影のワークフローを使う（写すファイルがあって `unmanaged` でない）なら、撮影の設定の元のファイル。使わなければ nil
+    var screenshotSources: ScreenshotSources?
+
+    /// 撮影の設定の元のファイル（`AppStore/screenshots.json`・`languages.json`。無い・読めないものは nil）
+    struct ScreenshotSources: Equatable {
+        var screenshots: String?
+        var languages: String?
+    }
 
     static func read(_ github: GitHubPullRequests, base configured: String?) async throws -> Self {
         let base: String
@@ -273,7 +370,12 @@ struct AppKitObserved: Equatable {
         guard let head = try await github.branchHead(base) else { throw PullRequestError.notFound }
         let tree = try await github.files(at: head)
         let files = Dictionary(tree.map { ($0.path, $0.sha) }) { first, _ in first }
-        let wanted = [AppKitPolicy.configPath, ".github/workflows/build.yml"].compactMap { files[$0] }
+        let builder = StoreScreenshotSettingsBuilder.self
+        let usesWorkflow = files[builder.workflowPath] != nil
+        // 撮影の設定の元のファイルも、同じ 1 回の読み込みで読む
+        let screenshotPaths = usesWorkflow ? [builder.screenshotsPath, builder.languagesPath] : []
+        let paths = [AppKitPolicy.configPath, ".github/workflows/build.yml"] + screenshotPaths
+        let wanted = paths.compactMap { files[$0] }
         let texts = wanted.isEmpty ? [:] : try await github.blobTexts(wanted)
         let text = { (path: String) -> String? in
             guard let sha = files[path], case let .some(.some(text)) = texts[sha] else { return nil }
@@ -282,7 +384,11 @@ struct AppKitObserved: Equatable {
         let build = ".github/workflows/build.yml"
         let caller = text(build).flatMap { AppKitCaller.ref(in: [WorkflowFile(path: build, text: $0)]) }
         let kitRef = text(build).flatMap(AppKitCaller.kitRef(in:))
-        return Self(files: files, config: text(AppKitPolicy.configPath), callerRef: caller, callerKitRef: kitRef)
+        let config = text(AppKitPolicy.configPath)
+        let unmanaged = Set(AppKitAdoptionPlanner.existingUnmanaged(config))
+        let sources = usesWorkflow && !unmanaged.contains(builder.workflowPath)
+            ? ScreenshotSources(screenshots: text(builder.screenshotsPath), languages: text(builder.languagesPath)) : nil
+        return Self(files: files, config: config, callerRef: caller, callerKitRef: kitRef, screenshotSources: sources)
     }
 }
 

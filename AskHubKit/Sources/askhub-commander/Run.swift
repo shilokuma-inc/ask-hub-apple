@@ -54,7 +54,7 @@ extension AskHubCommanderMain {
             admin: admin,
             appKit: appKit,
             appKitPilot: configuration.appKitPilot ?? AppKitPolicy.defaultPilot,
-            appKitWatch: appKitWatch(appKit: appKit, admin: admin, secrets: secrets, context: context, transport: transport),
+            appKitWatch: appKitWatch(appKit: appKit, admin: admin, runtime: runtime, context: context, transport: transport),
             cleanup: runtime.cleanupService(context: context, log: log)
         )
         logStarted(configuration)
@@ -95,20 +95,28 @@ extension AskHubCommanderMain {
         )
     }
 
-    /// app-kit の見張り。ずれの点検は毎日のトークンで読むだけにし、版を広げるのは人の意図を受けた後だけ管理用のトークンで行う
+    /// app-kit の見張り。ずれの点検は毎日のトークンで読むだけにし、版を広げるのは人の意図を受けた後だけ管理用のトークンで行う。
+    /// 撮影の設定を作るときに読む App Store Connect のリファレンスデータは、アプリによらないので、最初の鍵で読む
     private static func appKitWatch(
         appKit: GitAppKitSource,
         admin: AdminGitHub?,
-        secrets: KeychainSecretStore,
+        runtime: MachineRuntime,
         context: CommanderContext,
         transport: any HTTPTransport
     ) -> AppKitWatch {
-        AppKitWatch(
+        let secrets = runtime.secrets
+        var placementGroups: (@Sendable () async throws -> [AppStorePlacementProfileGroup])?
+        if let configuration = runtime.configuration.appStoreConnect?.first {
+            let store = AppStoreConnectClient(configuration: configuration, secrets: secrets, transport: transport)
+            placementGroups = { @Sendable () async throws -> [AppStorePlacementProfileGroup] in try await store.placementProfileGroups() }
+        }
+        return AppKitWatch(
             context: context,
             source: appKit,
             github: { GitHubPullRequests(repository: $0, transport: transport, token: MachineRuntime.githubTokens(in: secrets)) },
             admin: admin,
-            log: log
+            log: log,
+            placementGroups: placementGroups
         )
     }
 
