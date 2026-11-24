@@ -3,7 +3,7 @@ import AskHubProtocol
 import Foundation
 import Testing
 
-/// 手で入れ替えたリポジトリの、呼んでいる版の記録（#1299）
+/// 手で入れ替えたリポジトリの、呼んでいる版の記録と、呼ぶ側の `app-kit-ref` のずれ（#1299）
 struct AppKitDriftTests {
     static let now = Timestamp(AppKitRolloutTests.now)
 
@@ -46,11 +46,34 @@ struct AppKitDriftTests {
         var observed = AppKitRolloutTests.observed(AppKitRolloutTests.release(AppKitRolloutTests.old))
         let unknown = String(repeating: "9", count: 40)
         observed.callerRef = unknown
+        observed.callerKitRef = unknown
         #expect(try await Self.installation(nil, observed, releases: releases) == RepositoryFile.AppKit(
             ref: unknown,
             drift: ProtectionDrift(foundAt: Self.now, problems: ["呼んでいる app-kit のコミット 9999999 が、見つけた版に無い"])
         ))
         observed.callerRef = nil
+        observed.callerKitRef = nil
         #expect(try await Self.installation(nil, observed, releases: releases) == nil)
+    }
+
+    /// `uses:` のコミットと `app-kit-ref` の食い違い・`app-kit-ref` が無いことを、ずれに書く
+    @Test func findsAppKitRefDifferentFromUses() {
+        let old = AppKitRolloutTests.old
+        let release = AppKitRolloutTests.release(old)
+        var observed = AppKitRolloutTests.observed(release)
+        observed.callerKitRef = String(repeating: "9", count: 40)
+        let build = ".github/workflows/build.yml"
+        #expect(AppKitDrift.problems(release: release, observed: observed, build: nil).first
+            == "\(build) の app-kit-ref（9999999）が、uses: のコミット（\(old.ref.prefix(7))）と違う")
+        observed.callerKitRef = nil
+        #expect(AppKitDrift.problems(release: release, observed: observed, build: nil).first == "\(build) に app-kit-ref が無い")
+    }
+
+    @Test func readsAppKitRefOfCaller() {
+        let ref = String(repeating: "a", count: 40)
+        let pin = AppKitFile.Pin(version: AppKitRolloutTests.old.version, ref: ref)
+        #expect(AppKitCaller.kitRef(in: AppKitRelease.render(AppKitAdoptionTests.callerBuild, pin: pin)) == ref)
+        #expect(AppKitCaller.kitRef(in: "with:\n  app-kit-ref: \(ref)\n") == ref)
+        #expect(AppKitCaller.kitRef(in: "# 版（app-kit-ref）は司令塔が書く\nwith:\n  app-kit-ref: '{{APP_KIT_REF}}'\n") == nil)
     }
 }

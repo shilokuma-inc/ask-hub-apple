@@ -262,8 +262,10 @@ struct AppKitObserved: Equatable {
     var files: [String: String]
     /// `.github/app-kit.json` の中身。無ければ nil
     var config: String?
-    /// `build.yml` が呼んでいる app-kit のコミット。呼んでいなければ nil
+    /// `build.yml` が呼んでいる app-kit のコミット（`uses:` の `@` の後ろ）。呼んでいなければ nil
     var callerRef: String?
+    /// `build.yml` が再利用ワークフローに渡す app-kit のコミット（`app-kit-ref`）。無ければ nil
+    var callerKitRef: String?
 
     static func read(_ github: GitHubPullRequests, base configured: String?) async throws -> Self {
         let base: String
@@ -279,7 +281,8 @@ struct AppKitObserved: Equatable {
         }
         let build = ".github/workflows/build.yml"
         let caller = text(build).flatMap { AppKitCaller.ref(in: [WorkflowFile(path: build, text: $0)]) }
-        return Self(files: files, config: text(AppKitPolicy.configPath), callerRef: caller)
+        let kitRef = text(build).flatMap(AppKitCaller.kitRef(in:))
+        return Self(files: files, config: text(AppKitPolicy.configPath), callerRef: caller, callerKitRef: kitRef)
     }
 }
 
@@ -290,7 +293,12 @@ enum AppKitDrift {
 
     static func problems(release: AppKitRelease, observed: AppKitObserved, build: RepositoryFile.Build?) -> [String] {
         var problems: [String] = []
-        guard let config = observed.config else { return ["\(AppKitPolicy.configPath) が無い"] }
+        if let caller = observed.callerRef, observed.callerKitRef != caller {
+            let path = ".github/workflows/build.yml"
+            problems.append(observed.callerKitRef.map { "\(path) の app-kit-ref（\($0.prefix(7))）が、uses: のコミット（\(caller.prefix(7))）と違う" }
+                ?? "\(path) に app-kit-ref が無い")
+        }
+        guard let config = observed.config else { return problems + ["\(AppKitPolicy.configPath) が無い"] }
         let unmanaged = Set(AppKitAdoptionPlanner.existingUnmanaged(config))
         let version = release.pin.version
         for path in release.manifest.managed where !unmanaged.contains(path) {

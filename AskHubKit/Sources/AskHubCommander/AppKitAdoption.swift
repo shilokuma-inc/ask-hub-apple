@@ -196,4 +196,16 @@ enum AppKitCaller {
         }
         return nil
     }
+
+    /// 呼ぶ側のワークフローが再利用ワークフローに渡す app-kit のコミット（`app-kit-ref: '<コミット>'`）。無ければ nil
+    static func kitRef(in text: String) -> String? {
+        for line in text.components(separatedBy: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix("app-kit-ref:") else { continue }
+            let value = trimmed.dropFirst("app-kit-ref:".count).trimmingCharacters(in: CharacterSet(charactersIn: " '\""))
+            let ref = String(value.prefix(40))
+            if AttemptFile.isCommitSHA(ref) { return ref }
+        }
+        return nil
+    }
 }

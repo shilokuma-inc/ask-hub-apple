@@ -292,7 +292,7 @@ struct AppKitRolloutTests {
     static func observed(_ release: AppKitRelease, config: String? = config) -> AppKitObserved {
         var files = Dictionary(uniqueKeysWithValues: release.managed.map { ($0.key, GitBlob.sha(of: $0.value)) })
         files[AppKitPolicy.configPath] = String(repeating: "f", count: 40)
-        return AppKitObserved(files: files, config: config, callerRef: release.pin.ref)
+        return AppKitObserved(files: files, config: config, callerRef: release.pin.ref, callerKitRef: release.pin.ref)
     }
 
     @Test func findsDriftOfManagedFilesAndConfig() throws {
