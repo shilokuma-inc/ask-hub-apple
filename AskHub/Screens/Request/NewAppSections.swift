@@ -15,6 +15,8 @@ struct NewAppSections: View {
     @Binding var edits: Edits
     /// 管理用のトークンを入れた持ち主
     let owners: [String]
+    /// 親の入力欄のフォーカス。キーボードの「完了」で、この欄のキーボードも閉じる
+    let isEditing: FocusState<Bool>.Binding
 
     var body: some View {
         Section {
@@ -79,6 +81,7 @@ struct NewAppSections: View {
             TextField(title, text: text, prompt: Text(prompt))
                 .labelsHidden()
                 .multilineTextAlignment(.trailing)
+                .focused(isEditing)
                 .autocorrectionDisabled()
                 #if os(iOS)
                 .textInputAutocapitalization(.never)

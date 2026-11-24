@@ -113,7 +113,7 @@ struct NewRequestSheet: View {
                     .disabled(sending.isSending)
                 }
                 if kind == .newApp {
-                    NewAppSections(request: $newApp, edits: $newAppEdits, owners: store.snapshot?.adminOwners ?? [])
+                    NewAppSections(request: $newApp, edits: $newAppEdits, owners: store.snapshot?.adminOwners ?? [], isEditing: $isEditing)
                         .disabled(sending.isSending)
                 } else {
                     featureSections(groups: groups)
