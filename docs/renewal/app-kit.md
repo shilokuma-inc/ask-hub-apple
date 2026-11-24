@@ -277,6 +277,7 @@ v1.6.0 は、App Extension の entitlements（v1.5.0。app-kit#24・#1255）の�
 
 - 保護のずれの点検（[operations.md](operations.md) の「保護の設定」）と同じく、6 時間ごとに毎日のトークンで読む（管理用のトークンは自動では使わない）
 - 見るもの: 写すファイルが `appKit` の版の中身と同じか、呼ぶ側の `uses:` のコミットと `app-kit-ref` が `appKit` のコミットと同じか、`.github/app-kit.json` の `project`・`scheme` がビルドの設定と合うか
+- `appKit` の記録が無いリポジトリも読み、`build.yml` が app-kit を呼んでいれば、呼んでいる版を `appKit` に書く（手で入れ替えたリポジトリ。tm-family/shinkeisuijaku-app-ios は v1.2.0 を手で入れ、記録が無かった。#1299）
 - ずれは `appKit.drift` に書き、クライアントに出す。直すのは、人が版を広げ直したとき（同じ版を広げると、置き換える PR を出す）
 
 ## テンプレート
