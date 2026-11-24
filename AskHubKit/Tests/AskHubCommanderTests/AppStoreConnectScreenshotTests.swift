@@ -135,10 +135,17 @@ struct AppStoreConnectScreenshotTests {
             + #"{"placementProfileGroupId":"IPAD_13_PROFILE","platform":"IPAD_APP_STORE"},"#
             + #"{"placementProfileGroupId":"MAC_PROFILE","platform":"MAC_APP_STORE","displayClassId":"DEFAULT"},"#
             + #"{"placementProfileGroupId":"FUTURE_PROFILE","platform":"FUTURE_APP_STORE"}]}}]}"#
-        let transport = StubTransport([.json(200, body)])
+        let transport = StubTransport([.json(200, body), .json(200, body)])
         let platforms = try await base.client(transport).displayTypePlatforms()
         #expect(platforms == ["IPHONE_DUO_PROFILE": .iOS, "IPAD_13_PROFILE": .iOS, "MAC_PROFILE": .macOS])
         #expect(query(transport.requests.first)["fields[appAssetLibraryRefData]"] == "placementProfileGroups")
+        // 撮影の設定を組み立てるときは、配置のプラットフォームと表示クラスも読む（知らないプラットフォームも、そのまま返す）
+        #expect(try await base.client(transport).placementProfileGroups() == [
+            .init(id: "IPHONE_DUO_PROFILE", platform: "IPHONE_APP_STORE", displayClass: "IPHONE_DUO"),
+            .init(id: "IPAD_13_PROFILE", platform: "IPAD_APP_STORE"),
+            .init(id: "MAC_PROFILE", platform: "MAC_APP_STORE", displayClass: "DEFAULT"),
+            .init(id: "FUTURE_PROFILE", platform: "FUTURE_APP_STORE")
+        ])
     }
 
     @Test func findsLibraryImagesByExactReferenceName() async throws {

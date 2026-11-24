@@ -167,6 +167,12 @@ final class FakeAppStore: AppStoreConnecting {
         state.withLock { $0.displayTypePlatforms }
     }
 
+    func placementProfileGroups() async throws(AppStoreConnectError) -> [AppStorePlacementProfileGroup] {
+        state.withLock { $0.displayTypePlatforms }.sorted { $0.key < $1.key }.map { id, platform in
+            AppStorePlacementProfileGroup(id: id, platform: platform == .macOS ? "MAC_APP_STORE" : "IPHONE_APP_STORE")
+        }
+    }
+
     func assetLibrary(of appID: String) async throws(AppStoreConnectError) -> String {
         "library-\(appID)"
     }
