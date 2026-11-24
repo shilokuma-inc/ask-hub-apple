@@ -26,7 +26,7 @@ final class ClientUITests: XCTestCase {
 
     /// デモの場面で起動する。機械の反応は既定ではすぐ起こす。スマホを持つ手は既定で右手
     @MainActor
-    private func launch(_ arguments: [String], reactionDelay: Int = 0, hand: String = "right") -> XCUIApplication {
+    func launch(_ arguments: [String], reactionDelay: Int = 0, hand: String = "right") -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-demoReactionDelay", "\(reactionDelay)", "-swipeHand", hand] + arguments
         app.launch()
