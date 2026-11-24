@@ -185,7 +185,7 @@ public actor AppKitWatch {
         )
         let created = next == nil ? nil : screenshots?.created
         guard next != installed || created != nil else { return }
-        try await record(next, for: repo, isTemplate: isTemplate, previous: installed, created: created)
+        try await record(next, for: repo, isTemplate: isTemplate, previous: installed, created: created, readBuild: build)
     }
 
     // MARK: - 撮影の設定
@@ -222,11 +222,11 @@ public actor AppKitWatch {
         installed?.drift?.problems.filter { $0.hasPrefix(StoreScreenshotSettingsBuilder.problemPrefix) } ?? []
     }
 
-    /// App Store Connect のリファレンスデータの配置グループ（アプリによらない）。1 日覚える。読めなければ前に読んだもの（無ければ nil）。
+    /// App Store Connect のリファレンスデータの配置グループ（アプリによらない）。1 日覚える。読み直せなければ nil（古いものでは作らない）。
     /// 初めて読んだときに、配置グループをログに出す（文書に無い id を確かめるため）
     func referenceGroups() async -> [AppStorePlacementProfileGroup]? {
         if let cached = groupsCache, context.now().timeIntervalSince(cached.at) < Self.placementGroupsInterval { return cached.groups }
-        guard let placementGroups else { return groupsCache?.groups }
+        guard let placementGroups else { return nil }
         do {
             let groups = try await placementGroups()
             groupsCache = (context.now(), groups)
@@ -238,7 +238,7 @@ public actor AppKitWatch {
             return groups
         } catch {
             log("App Store Connect のリファレンスデータを読めない（\(error)）。撮影の設定は次の点検で作る・確かめる")
-            return groupsCache?.groups
+            return nil
         }
     }
 
@@ -284,13 +284,15 @@ public actor AppKitWatch {
     }
 
     /// 読み始めた後に、入れた版が変わっていたら（広げた・準備の PR をマージした）書かない。作った撮影の設定は、
-    /// ビルドの設定があって撮影の設定がまだ無いときだけ書く（人が書いた設定は書き換えない）
+    /// ビルドの設定が読んだとき（`readBuild`）のままで、撮影の設定がまだ無いときだけ書く（人が書いた設定は書き換えない。
+    /// 読んだ後にビルドの設定が置き換わっていたら、別の base のファイルから作ったかもしれないので書かず、次の点検で作り直す）
     private func record(
         _ next: RepositoryFile.AppKit?,
         for repo: RepositoryFullName,
         isTemplate: Bool,
         previous: RepositoryFile.AppKit?,
-        created: StoreScreenshotCapture? = nil
+        created: StoreScreenshotCapture? = nil,
+        readBuild: RepositoryFile.Build? = nil
     ) async throws {
         let message = "\(repo) の app-kit のずれを書く"
         if isTemplate {
@@ -311,7 +313,7 @@ public actor AppKitWatch {
                         $0.appKit = next
                         changed = true
                     }
-                    if let created, $0.build != nil, $0.build?.storeScreenshots == nil {
+                    if let created, let build = $0.build, build == readBuild, build.storeScreenshots == nil {
                         $0.build?.storeScreenshots = created
                         changed = true
                     }

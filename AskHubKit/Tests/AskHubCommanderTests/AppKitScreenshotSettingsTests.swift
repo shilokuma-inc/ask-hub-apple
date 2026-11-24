@@ -62,10 +62,11 @@ struct AppKitScreenshotSettingsTests {
         _ store: InMemoryStateStore,
         transport: StubTransport,
         groups: (@Sendable () async throws -> [AppStorePlacementProfileGroup])?,
+        clock: TestClock = TestClock(AppKitRolloutTests.now),
         log: @escaping @Sendable (String) -> Void = { _ in }
     ) -> AppKitWatch {
         AppKitWatch(
-            context: CommanderContext(store: store, mac: MacName(rawValue: "mac-mini")!) { AppKitRolloutTests.now },
+            context: CommanderContext(store: store, mac: MacName(rawValue: "mac-mini")!) { clock.now },
             source: FixedAppKitSource(releases: [AppKitRolloutTests.old, AppKitRolloutTests.new].map(AppKitRolloutTests.release)),
             github: { GitHubPullRequests(repository: $0, transport: transport) { _ in "github_pat_daily" } },
             admin: nil,
@@ -110,6 +111,27 @@ struct AppKitScreenshotSettingsTests {
         let file = try await Self.read(store)
         #expect(file.appKit?.ref == AppKitRolloutTests.new.ref)
         #expect(file.build?.storeScreenshots == nil)
+    }
+
+    /// リファレンスデータは 1 日覚え、それより古いものでは作らない（読み直せなければ作らずに次の点検で作る）
+    @Test func doesNotBuildSettingsFromExpiredReferenceData() async throws {
+        let reads = LogLines()
+        let groups: @Sendable () async throws -> [AppStorePlacementProfileGroup] = {
+            reads.append("read")
+            guard reads.lines.count == 1 else { throw AppStoreConnectError.unavailable("x") }
+            return StoreScreenshotSettingsBuilderTests.groups
+        }
+        let clock = TestClock(AppKitRolloutTests.now)
+        let store = InMemoryStateStore()
+        let watch = Self.watch(store, transport: StubTransport(try Self.replies() + Self.replies()), groups: groups, clock: clock)
+        #expect(await watch.referenceGroups() == StoreScreenshotSettingsBuilderTests.groups)
+        clock.advance(minutes: 60)
+        #expect(await watch.referenceGroups() == StoreScreenshotSettingsBuilderTests.groups && reads.lines.count == 1)
+        clock.advance(minutes: 24 * 60)
+        await store.put(StatePath.repository(Self.repo), data: try StateFileCoder.encode(try Self.repository()))
+        try await watch.check(Self.repo, releases: AppKitRolloutTests.releases())
+        #expect(reads.lines.count == 2)
+        #expect(try await Self.read(store).build?.storeScreenshots == nil)
     }
 
     /// 人が書いた設定は書き換えず、食い違いをずれに書く。app-kit の撮影を unmanaged にしたアプリは見ない
