@@ -12,8 +12,9 @@ struct InboxView: View {
         let whenFree = items.filter { $0.urgency == .whenFree }
         let deckCount = store.deckCards(.all).count
         RouteList(selection: selection) {
-            // Mac・iPad（選択で詳細を出す 3 列）では、接続の状態はサイドバーの下に出す
-            if selection == nil {
+            // Mac・iPad（選択で詳細を出す 3 列）では、接続の状態はサイドバーの下に出す。
+            // まだ一度も読めていないときは、真ん中の表示（読み込み中・読み込めない）と同じことになるので出さない
+            if selection == nil, store.snapshot != nil {
                 CardSection {
                     ConnectionStatusView()
                 }

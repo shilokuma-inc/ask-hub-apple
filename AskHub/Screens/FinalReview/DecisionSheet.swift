@@ -131,6 +131,7 @@ struct VerificationSection: View {
         case .ready: "iphone"
         case .confirmed: "checkmark.circle.fill"
         case .problem: "exclamationmark.bubble.fill"
+        case .skipped: "xmark.circle"
         }
     }
 
@@ -141,6 +142,7 @@ struct VerificationSection: View {
         case .ready(nil): "マージしました。TestFlight に上がった版で確かめてください"
         case .confirmed: "確認しました"
         case .problem(let note): "問題あり: \(note)"
+        case .skipped(let note): note.isEmpty ? "確かめずに閉じました" : "確かめずに閉じました: \(note)"
         }
     }
 }

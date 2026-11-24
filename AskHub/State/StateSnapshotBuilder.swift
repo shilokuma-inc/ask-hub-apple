@@ -230,7 +230,7 @@ struct StateSnapshotBuilder {
     // MARK: リポジトリ
 
     private func repository(_ file: RepositoryFile, epics: [Epic], index: inout StateIndex) -> TargetRepository {
-        var repository = Self.repository(file)
+        var repository = namedRepository(file)
         index.repositories[repository.id] = file.repo
         repository.icon = Self.appIcon(of: file)
         repository.build = file.build.map(Self.buildSettings)
@@ -245,7 +245,7 @@ struct StateSnapshotBuilder {
 
     /// 対象から外したリポジトリ。送るときは元の owner/name の書き方を使う
     private func removedRepository(_ file: RepositoryFile, index: inout StateIndex) -> TargetRepository {
-        var repository = Self.repository(file)
+        var repository = namedRepository(file)
         index.removedRepositories[repository.id] = file.repo
         repository.icon = Self.appIcon(of: file)
         return repository

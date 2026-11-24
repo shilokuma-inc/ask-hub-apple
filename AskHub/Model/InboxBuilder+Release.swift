@@ -154,7 +154,8 @@ extension InboxBuilder {
                 kind: .appStoreSetup,
                 repositoryID: setup.repositoryID,
                 title: title,
-                context: "\(appName) · App Store の準備",
+                // 題がどれも App Store の準備のことなので、2 行目はアプリ名だけにする
+                context: appName,
                 detail: detail,
                 since: since,
                 route: .appStoreSetup(setup.repositoryID),

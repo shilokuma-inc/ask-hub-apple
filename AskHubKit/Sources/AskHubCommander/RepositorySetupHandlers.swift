@@ -99,6 +99,8 @@ struct RepositorySetupRunner {
         var setup: WorkflowSetup
         var problems: [String] = []
         var installedAppKit: RepositoryFile.AppKit?
+        /// app-kit に入れ替えるはずが、版の中身を読めなかった（今の中身が分からないので、開いている PR を作り直さない）
+        var unreadAppKit = false
     }
 
     var github: GitHubPullRequests
@@ -153,20 +155,10 @@ struct RepositorySetupRunner {
         return Outcome(setup: setup, stoppedFor: stoppedFor, installedAppKit: installed)
     }
 
-    /// 直すところがあれば、決まった手順の PR を出す。前に出した PR が開いていれば、出し直さない。
+    /// 直すところがあれば、決まった手順の PR を出す。前に出した PR が開いていれば、今の中身に合わせる（`rebuild`）。
     /// どのワークフローにも見つからない待つチェックと、app-kit に入れ替えられないわけも返す
     func workflows(base: String, build: RepositoryFile.Build?, previous: WorkflowSetup?) async throws(PullRequestError) -> Checked {
-        if let open = try await github.openPullRequest(head: SetupPolicy.workflowBranch, base: base) {
-            let same = previous?.pullRequest == open.number
-            let setup = WorkflowSetup(
-                state: .open,
-                pullRequest: open.number,
-                head: open.headSHA,
-                changes: same ? previous?.changes ?? [] : [],
-                appKit: same ? previous?.appKit : nil
-            )
-            return Checked(setup: setup)
-        }
+        let open = try await github.openPullRequest(head: SetupPolicy.workflowBranch, base: base)
         // 読んだ中身と直しのコミットの親を、同じコミットにそろえる（読んだ後に base が進んでも、古い中身で上書きしない）
         guard let head = try await github.branchHead(base) else { throw .notFound }
         let files = try await github.workflowFiles(ref: head)
@@ -182,11 +174,13 @@ struct RepositorySetupRunner {
         }
         let changes = plan.changes.merging(adoption.changes) { _, adopted in adopted }
         let summary = adoption.summary + plan.summary
-        guard !changes.isEmpty else { return checked }
         let version = adoption.adoption?.version
-        _ = try await github.commitChanges(changes, onto: head, branch: SetupPolicy.workflowBranch, message: Self.commitMessage(version))
         let body = Self.body(summary, adoption: adoption.adoption)
         let draft = PullRequestDraft(base: base, head: SetupPolicy.workflowBranch, title: Self.title(version), body: body)
+        let planned = Planned(changes: changes, parent: head, summary: summary, adoption: adoption.adoption, draft: draft)
+        if let open { return try await rebuild(open, to: planned, previous: previous, checked: checked) }
+        guard !changes.isEmpty else { return checked }
+        _ = try await github.commitChanges(changes, onto: head, branch: SetupPolicy.workflowBranch, message: Self.commitMessage(version))
         let opened = try await github.openPullRequest(draft).pullRequest
         checked.setup = WorkflowSetup(
             state: .open, pullRequest: opened.number, head: opened.headSHA, changes: summary, appKit: adoption.adoption
@@ -208,6 +202,7 @@ struct RepositorySetupRunner {
         }
         guard let release = appKit.release else {
             checked.problems += appKit.problem.map { [$0] } ?? []
+            checked.unreadAppKit = true
             return .init()
         }
         let tree = try await github.files(at: head)
@@ -256,6 +251,7 @@ struct RepositorySetupRunner {
 
             ワーカーのトークンはワークフローのファイルを書けないので、司令塔の管理用のトークンで出しています。
             AskHub のアプリのリポジトリの画面で承認すると、司令塔がこの head のままマージします（承認の後に push された変更はマージしません）。
+            アプリで「準備をやり直す」と、司令塔がこのブランチを今の base とビルドの設定から作り直すことがあります（中身が変わったら、承認し直します）。
             """
     }
 

@@ -44,6 +44,14 @@ struct DeckCard: Identifiable, Hashable {
             }
             return false
         }
+
+        /// 判断の確認の別案か。名前は別案の中身にし、「別案」の札を付ける（別案が 2 つあっても見分けられるように）
+        var isAlternative: Bool {
+            if case .send(.respondToDecision(_, _, _, .alternative)) = action {
+                return true
+            }
+            return false
+        }
     }
 
     enum Action: Hashable {
@@ -206,8 +214,8 @@ enum DeckBuilder {
         for (index, alternative) in decision.alternatives.prefix(2).enumerated() {
             choices.append(DeckCard.Choice(
                 id: "alternative-\(index)",
-                label: "別案にする",
-                detail: alternative,
+                label: alternative,
+                detail: "この案に直してループに戻す",
                 note: nil,
                 isRecommended: false,
                 action: .send(.respondToDecision(

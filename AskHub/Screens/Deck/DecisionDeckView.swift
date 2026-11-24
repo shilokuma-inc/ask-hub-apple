@@ -7,7 +7,7 @@ struct DecisionDeckView: View {
     let scope: DeckScope
 
     @Environment(ClientStore.self) private var store
-    @AppStorage(SwipePreferences.handKey) private var hand: Handedness = .right
+    @AppStorage(SwipePreferences.handKey) private var storedHand: Handedness = .right
     @State private var drag = Self.initialDrag
     /// 「あとで」にしたカード（このデッキの中だけで後ろに回す）
     @State private var skippedIDs: [DeckCard.ID] = []
@@ -27,6 +27,11 @@ struct DecisionDeckView: View {
     @State private var deckAreaBeforeSheet: CGSize?
     /// 文を書くシートを開いてから閉じ終わるまで（閉じたあとキーボードが下がる間も含む）、札を開く前の大きさのまま置く
     @State private var keepsDeckArea = false
+
+    /// 持ち手を選べない Mac は、前に保存した値によらず右手の並びにする
+    private var hand: Handedness {
+        SwipePreferences.choosesHand ? storedHand : .right
+    }
 
     private var cards: [DeckCard] {
         let all = store.deckCards(scope)
@@ -357,6 +362,15 @@ private extension DeckScope {
 /// スワイプの設定（持ち手）
 enum SwipePreferences {
     static let handKey = "swipeHand"
+
+    /// スマホを持つ手を選べるか。Mac は片手で持たないので、設定に出さず、いつも右手の並びにする
+    static var choosesHand: Bool {
+        #if os(iOS)
+        true
+        #else
+        false
+        #endif
+    }
 }
 
 /// 質問のときは、質問ごとの状態の帯を上に出す

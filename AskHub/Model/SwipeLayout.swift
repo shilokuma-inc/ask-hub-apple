@@ -46,6 +46,16 @@ enum SwipeDirection: Hashable, CaseIterable {
         }
     }
 
+    /// 文の中に書く矢印。iOS は ↗ などを絵文字（青い四角）で描くので、異体字セレクタ（U+FE0E）を付けて文字の形で出す
+    var arrow: String {
+        switch self {
+        case .upRight: "↗\u{FE0E}"
+        case .upLeft: "↖\u{FE0E}"
+        case .downLeft: "↙\u{FE0E}"
+        case .downRight: "↘\u{FE0E}"
+        }
+    }
+
     var accessibilityName: String {
         switch self {
         case .upRight: "右上"
@@ -98,6 +108,14 @@ enum SwipeLayout {
             right = [.upRight, .upLeft, .downLeft, .downRight]
         }
         return hand == .right ? right : right.map(\.mirrored)
+    }
+
+    /// 設定の「スワイプ」の説明。選択肢の数ごとの割り当て（`directions`）から作る
+    static func summary(hand: Handedness) -> String {
+        let arrows = { (count: Int) in directions(count: count, hand: hand).map(\.arrow).joined() }
+        let recommended = directions(count: 1, hand: hand)[0]
+        return "推奨はいつも \(recommended.arrow)。2 択は \(arrows(2))、3 択は \(arrows(3))、4 択は \(arrows(4)) に割り当てます。"
+            + "自由回答の選択肢は、推奨の対角の \(recommended.opposite.arrow) に置きます"
     }
 
     /// 自由回答の選択肢（送る前に文を書くもの）を、推奨（先頭）の対角の位置へ並べ替える（ユーザーの決定。2026-11-04）。

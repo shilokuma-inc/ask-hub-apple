@@ -152,6 +152,40 @@ extension ClientSnapshot {
     }
 }
 
+extension AppKitOverview {
+    /// 変更点（Markdown）の最初の 1 行を、一覧の 2 行目に出す平文にする。箇条書き・見出し・番号・引用の記号（後ろに空白が続くものだけ）と、
+    /// コード・強調の記号を外す。中身のある行が無ければ nil
+    static func plainSummary(of changes: String) -> String? {
+        for line in changes.split(separator: "\n") {
+            var text = line.trimmingCharacters(in: .whitespaces)
+            // 「- -1 を返す」の負の符号のように、記号の後ろに空白が無いものは中身として残す
+            while let range = text.range(of: #"^([-*+>]|#{1,6}|\d+[.)])\s+"#, options: .regularExpression) {
+                text.removeSubrange(range)
+            }
+            // 記号だけの行（空の箇条書き）は中身が無い
+            if text.range(of: #"^([-*+>]|#{1,6}|\d+[.)])$"#, options: .regularExpression) != nil {
+                continue
+            }
+            for pattern in emphasisPatterns {
+                text = text.replacingOccurrences(of: pattern, with: "$2", options: .regularExpression)
+            }
+            text = text.replacingOccurrences(of: #"`([^`]*)`"#, with: "$1", options: .regularExpression)
+            text = text.trimmingCharacters(in: .whitespaces)
+            if !text.isEmpty {
+                return text
+            }
+        }
+        return nil
+    }
+
+    /// 強調（`**太字**`・`__太字__`・`*斜体*`・`_斜体_`）。語の途中の記号（`snake_case`・`a*b`）は強調とみなさない
+    private static let emphasisPatterns = [
+        #"(\*\*|__)(?!\s)(.+?)(?<!\s)\1"#,
+        #"(?<![\p{L}\p{N}*])(\*)(?![\s*])(.+?)(?<![\s*])\*(?![\p{L}\p{N}*])"#,
+        #"(?<![\p{L}\p{N}_])(_)(?![\s_])(.+?)(?<![\s_])_(?![\p{L}\p{N}_])"#
+    ]
+}
+
 // MARK: - あなたの番
 
 extension InboxBuilder {
@@ -168,7 +202,7 @@ extension InboxBuilder {
         }
         // 入れた相手がまだ無い（入れ替える前）なら、広げる相手がいないので知らせない
         if let release = appKit.newRelease, appKit.canRollOut(release), snapshot.appKitRolloutCount(release) > 0 {
-            let detail = release.changes.map { $0.split(separator: "\n").prefix(2).joined(separator: " ") } ?? "変更点を見て広げる"
+            let detail = release.changes.flatMap { AppKitOverview.plainSummary(of: $0) } ?? "変更点を見て広げる"
             let title = "app-kit \(release.version) を広げる"
             let id = "release/\(release.version)"
             items.append(appKitItem(id: id, urgency: .whenFree, title: title, detail: detail, since: release.foundAt))

@@ -89,9 +89,35 @@ extension SheetSendState {
     }
 }
 
+/// シートの左上のキャンセル。閉じると消える入力があれば、閉じる前に破棄するかを確かめる（何も入れていなければ、すぐ閉じる）
+struct SheetCancelButton: View {
+    /// 閉じると消える入力があるか
+    let hasInput: Bool
+    let action: () -> Void
+    @State private var isConfirming = false
+
+    var body: some View {
+        Button("キャンセル") {
+            if hasInput {
+                isConfirming = true
+            } else {
+                action()
+            }
+        }
+        // iOS 26 では押したボタンから出る吹き出しになるので、ボタンに付ける
+        .confirmationDialog("入力した内容を破棄しますか？", isPresented: $isConfirming, titleVisibility: .visible) {
+            Button("破棄する", role: .destructive, action: action)
+            Button("入力を続ける", role: .cancel) {}
+        } message: {
+            Text("閉じると、入力した内容は残りません")
+        }
+    }
+}
+
 extension View {
-    /// 送っている間は、シートを下へ払って閉じられないようにする
-    func sheetSending(_ state: SheetSendState) -> some View {
-        interactiveDismissDisabled(state.isSending)
+    /// 送っている間は、シートを下へ払って閉じられないようにする。
+    /// `hasInput` なら、送っていなくても下へ払って閉じさせない（入れた内容が黙って消えないように。閉じるのは `SheetCancelButton` で確かめてから）
+    func sheetSending(_ state: SheetSendState, hasInput: Bool = false) -> some View {
+        interactiveDismissDisabled(state.isSending || hasInput)
     }
 }

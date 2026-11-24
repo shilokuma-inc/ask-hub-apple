@@ -167,6 +167,8 @@ struct VerificationItem: Identifiable, Hashable {
         case ready(build: String?)
         case confirmed
         case problem(note: String)
+        /// 確かめずに閉じた（まとめて閉じたもの）。`note` は理由（空でもよい）
+        case skipped(note: String)
     }
 
     var isReady: Bool {

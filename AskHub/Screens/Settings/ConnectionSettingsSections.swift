@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 設定の、データの選択・GitHub のトークン・この端末の鍵・通知・送った意図の節
+/// 設定の、データの選択・GitHub のトークン・この端末の鍵・通知・送った操作の節
 struct ConnectionSettingsSections: View {
     @AppStorage(DataSource.preferenceKey) private var dataSource: DataSource = .stateRepository
     @AppStorage(DemoScenario.preferenceKey) private var scenario: DemoScenario = .standard
@@ -17,7 +17,7 @@ struct ConnectionSettingsSections: View {
             tokenSection
             keySection
             NotificationSettingsSection()
-            sentSection
+            SentIntentsSection(intents: store.snapshot?.sentIntents ?? [])
         }
     }
 
@@ -112,7 +112,7 @@ struct ConnectionSettingsSections: View {
         } header: {
             Text("この端末の鍵")
         } footer: {
-            Text("上のコマンドを、非常口の鍵を入れた Mac のターミナルで流して、この端末の鍵を登録します。登録されるまで、送った意図は司令塔に断られます。名前はほかの端末と見分けるために鍵の記録に残り、登録した後に変えても記録の名前は変わりません")
+            Text("上のコマンドを、非常口の鍵を入れた Mac のターミナルで流して、この端末の鍵を登録します。登録されるまで、送った操作は司令塔に断られます。名前はほかの端末と見分けるために鍵の記録に残り、登録した後に変えても記録の名前は変わりません")
         }
         .task { await model.load() }
         // 鍵の登録を確かめられたら、通知の許可を求める（まだ求めていなければ）
@@ -137,39 +137,5 @@ struct ConnectionSettingsSections: View {
         case .unreadable(let message)?:
             message
         }
-    }
-
-    @ViewBuilder private var sentSection: some View {
-        let sent = store.snapshot?.sentIntents ?? []
-        if !sent.isEmpty {
-            Section("送った意図") {
-                ForEach(sent) { intent in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(intent.title)
-                        Text(stateLabel(intent.state)).appFont(.caption).foregroundStyle(isRejected(intent.state) ? .red : .secondary)
-                    }
-                }
-            }
-        }
-    }
-
-    private func stateLabel(_ state: SentIntentStatus.State) -> String {
-        switch state {
-        case .waiting:
-            "司令塔が受け取るのを待っています"
-
-        case .accepted(let date):
-            "受け付けました · \(date.formatted(date: .abbreviated, time: .shortened))"
-
-        case let .rejected(_, reason):
-            "受け付けませんでした: \(reason)"
-        }
-    }
-
-    private func isRejected(_ state: SentIntentStatus.State) -> Bool {
-        if case .rejected = state {
-            return true
-        }
-        return false
     }
 }

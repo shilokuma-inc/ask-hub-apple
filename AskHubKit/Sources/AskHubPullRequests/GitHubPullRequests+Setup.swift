@@ -51,6 +51,35 @@ extension GitHubPullRequests {
         message: String
     ) async throws(PullRequestError) -> String {
         try GitNames.checkBranch(branch)
+        let tree = try await tree(changes, onto: base)
+        return try await commit(tree: tree, onto: base, branch: branch, message: message)
+    }
+
+    /// `commitChanges` と同じく作り直す。ただし、できる tree が `current`（今のブランチの先頭のコミット）の tree と同じなら、
+    /// コミットを作らず、ブランチも向け直さずに nil を返す（中身が同じなら、承認を結びつけた head を変えない）。違えば、作ったコミットを返す
+    public func recommitChanges(
+        _ changes: [String: String?],
+        onto base: String,
+        branch: String,
+        replacing current: String,
+        message: String
+    ) async throws(PullRequestError) -> String? {
+        try GitNames.checkBranch(branch)
+        try GitNames.checkSHA(current)
+        let tree = try await tree(changes, onto: base)
+        let existing = try await api.get("git/commits/\(current)", as: CommitTreePayload.self)
+        if existing.tree.sha == tree { return nil }
+        return try await commit(tree: tree, onto: base, branch: branch, message: message)
+    }
+
+    /// PR の題と本文を書き換える
+    public func updatePullRequest(number: Int, title: String, body: String) async throws(PullRequestError) {
+        try GitNames.checkNumber(number)
+        _ = try await api.send("PATCH", api.url("pulls/\(number)"), body: SetupPullRequestUpdate(title: title, body: body))
+    }
+
+    /// `base` のコミットの tree に、ファイルを書き換え（中身）・消す（nil）変更を当てた tree を作り、その sha を返す
+    private func tree(_ changes: [String: String?], onto base: String) async throws(PullRequestError) -> String {
         try GitNames.checkSHA(base)
         guard !changes.isEmpty else { throw .invalidArgument("書き換えるファイルが無い") }
         let parent = try await api.get("git/commits/\(base)", as: CommitTreePayload.self)
@@ -59,8 +88,13 @@ extension GitHubPullRequests {
         let (treeData, _) = try await api.send("POST", api.url("git/trees"), body: SetupTreeBody(baseTree: parent.tree.sha, tree: entries))
         let tree = try GitHubAPI.decode(SetupShaPayload.self, from: treeData, what: "git/trees")
         try GitNames.checkSHA(tree.sha)
+        return tree.sha
+    }
+
+    /// `tree` を `base` の上のコミットにし、ブランチ `branch` を向ける（無ければ作り、あれば向け直す）
+    private func commit(tree: String, onto base: String, branch: String, message: String) async throws(PullRequestError) -> String {
         let (commitData, _) = try await api.send(
-            "POST", api.url("git/commits"), body: SetupCommitBody(message: message, tree: tree.sha, parents: [base])
+            "POST", api.url("git/commits"), body: SetupCommitBody(message: message, tree: tree, parents: [base])
         )
         let commit = try GitHubAPI.decode(SetupShaPayload.self, from: commitData, what: "git/commits")
         try GitNames.checkSHA(commit.sha)
@@ -214,4 +248,9 @@ private struct SetupRefBody: Encodable, Sendable {
 private struct SetupRefUpdate: Encodable, Sendable {
     let sha: String
     let force: Bool
+}
+
+private struct SetupPullRequestUpdate: Encodable, Sendable {
+    let title: String
+    let body: String
 }
