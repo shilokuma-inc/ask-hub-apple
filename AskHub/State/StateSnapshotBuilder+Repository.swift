@@ -28,7 +28,11 @@ extension StateSnapshotBuilder {
         }
         var restored = removed.first { $0.id == id } ?? Self.repository(repo)
         // テンプレートから作るものは、司令塔が作る前から、選んだアプリ名で出す
-        if let create = try? CreateRepositoryIntent(envelope: envelope) { restored.appName = create.appName }
+        if let create = try? CreateRepositoryIntent(envelope: envelope) {
+            restored.appName = create.appName
+        } else if restored.appName == repo.name, let name = appStoreName(of: repo) {
+            restored.appName = name
+        }
         removed.removeAll { $0.id == id }
         repositories.append(restored)
         index.repositories[id] = index.removedRepositories.removeValue(forKey: id) ?? repo
@@ -38,11 +42,20 @@ extension StateSnapshotBuilder {
     /// App Store の準備の記録（`app-store.json`）にある App Store Connect のアプリ名を使う（どちらも無ければリポジトリ名）
     func namedRepository(_ file: RepositoryFile) -> TargetRepository {
         var repository = Self.repository(file)
-        let setup = documents.appStoreSetups.first { $0.repo.rawValue.lowercased() == file.repo.rawValue.lowercased() }
-        if file.created?.appName == nil, let name = setup?.app?.name, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if file.created?.appName == nil, let name = appStoreName(of: file.repo) {
             repository.appName = name
         }
         return repository
+    }
+
+    /// App Store の準備の記録にある App Store Connect のアプリ名。記録が無い・アプリがまだ無い・名前が空なら nil。
+    /// 記録の `repo` は司令塔が書いた書き方のままなので、大文字小文字をそろえて照らし合わせる
+    func appStoreName(of repo: RepositoryFullName) -> String? {
+        let setup = documents.appStoreSetups.first { $0.repo.rawValue.lowercased() == repo.rawValue.lowercased() }
+        guard let name = setup?.app?.name, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        return name
     }
 
     /// 画面に出すビルドの設定と、直すときの元の JSON
