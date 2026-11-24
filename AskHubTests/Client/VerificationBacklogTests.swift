@@ -79,7 +79,7 @@ struct VerificationBacklogTests {
         #expect(branched == nil)
     }
 
-    /// hotfix の版はタグから切るので develop の epic を含まない。epic が入った版にも、次の版にも数えない
+    /// hotfix の版はタグから切るので develop の epic を含まない。マージの後に切っても epic が入った版にはしないが、元の版の中身を含むので次の版には数える
     @Test
     func hotfixReleasesAreNotCounted() {
         let releases = [
@@ -93,11 +93,28 @@ struct VerificationBacklogTests {
             mergedAt: date(hours: -25), repositoryID: Self.repo, releases: releases, submissions: hotfix
         )
         #expect(afterCut == nil)
-        // 1.3.0 に入った epic は、hotfix の 1.3.1 ではなく 1.4.0 で畳む
+        // 1.3.0 に入った epic は、1.3.0 から切った hotfix の 1.3.1 にも入っているので、1.3.1 で畳む
         let beforeCut = VerificationFold.foldingRelease(
             mergedAt: date(hours: -40), repositoryID: Self.repo, releases: releases, submissions: hotfix
         )
-        #expect(beforeCut?.version == "1.4.0")
+        #expect(beforeCut?.version == "1.3.1")
+    }
+
+    /// 「このリリースを直す」依頼の epic は、直す版（hotfix の版でも）に入った epic として、その次の版で畳む
+    @Test
+    func fixEpicsBelongToTheReleaseTheyFix() {
+        let releases = [
+            release("1.3.1", detectedHours: -15, uploadedHours: [-20]),
+            release("1.3.0", detectedHours: -25, uploadedHours: [-30])
+        ]
+        let hotfix = [submission("1.3.1", branchHours: -20, hotfixFrom: "1.3.0")]
+        func folding(_ extra: [Release]) -> String? {
+            VerificationFold.foldingRelease(
+                mergedAt: date(hours: -18), fixedVersion: "1.3.1", repositoryID: Self.repo, releases: releases + extra, submissions: hotfix
+            )?.version
+        }
+        #expect(folding([]) == nil)
+        #expect(folding([release("1.4.0", detectedHours: -1, uploadedHours: [-5])]) == "1.4.0")
     }
 
     /// デモでは、献立メモの 2.0.0（材料の epic が入った版）の次の 2.0.1 を配信したので材料の epic を畳み、雨雲チェックと習慣ログの epic は確かめるものに残す（新しくマージした順）
