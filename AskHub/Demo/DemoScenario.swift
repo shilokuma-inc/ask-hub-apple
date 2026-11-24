@@ -139,7 +139,7 @@ struct DemoData {
                 tsundokuEpic(),
                 kajiEpic(),
                 habitDoneEpic()
-            ],
+            ] + verificationEpics(),
             macs: macs(),
             fetchedAt: now,
             sourceFailures: [],

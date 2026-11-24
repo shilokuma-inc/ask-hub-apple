@@ -3,7 +3,9 @@ import Foundation
 // MARK: - App Store で配信した版
 
 extension DemoData {
-    /// 配信した版（リポジトリの順、その中は新しい版から）。習慣ログの 1.2.0 はリリース文の確認を待ち、ほかは後作業が済んでいる
+    /// 配信した版（リポジトリの順、その中は新しい版から）。習慣ログの 1.2.0 はリリース文の確認を待ち、ほかは後作業が済んでいる。
+    /// 献立メモの 2.0.1 は、材料を買い物リストに送る epic をマージした後にビルドを上げたので、その epic の残りの実機確認を畳む。
+    /// 習慣ログの 1.2.0 は、振り返りの epic をマージする前にビルドを上げたので畳まない
     func releases() -> [Release] {
         let habit = Self.repositoryID("habit-ios")
         let recipe = Self.repositoryID("recipe-apple")
@@ -11,7 +13,10 @@ extension DemoData {
             Release(
                 repositoryID: recipe,
                 version: "2.0.1",
-                platforms: [.init(name: "iOS", build: "120"), .init(name: "macOS", build: "121")],
+                platforms: [
+                    .init(name: "iOS", build: "120", uploadedAt: ago(minutes: 60 * 24 * 10)),
+                    .init(name: "macOS", build: "121", uploadedAt: ago(minutes: 60 * 24 * 10 - 30))
+                ],
                 detectedAt: ago(minutes: 60 * 24 * 9),
                 updatedAt: ago(minutes: 60 * 24 * 9 - 40),
                 commit: .init(sha: "7d2e91b04c5a6f3e8d1b2a9c0e4f5d6a7b8c9d0e", fromExistingTag: false),
@@ -27,7 +32,7 @@ extension DemoData {
             Release(
                 repositoryID: habit,
                 version: "1.2.0",
-                platforms: [.init(name: "iOS", build: "58")],
+                platforms: [.init(name: "iOS", build: "58", uploadedAt: ago(minutes: 60 * 24 * 3))],
                 detectedAt: ago(minutes: 60 * 26),
                 updatedAt: ago(minutes: 60 * 25),
                 commit: .init(sha: "4f1c2a9e8b7d6c5f4e3d2c1b0a9f8e7d6c5b4a39", fromExistingTag: false),
