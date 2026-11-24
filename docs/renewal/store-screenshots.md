@@ -448,6 +448,8 @@ develop（311b4312）と、状態リポジトリ（読むだけ）・shinkeisuij
 
 - 組み立てるのは、`.github/workflows/app-store-screenshots.yml` があって `.github/app-kit.json` の `unmanaged` に入っていない（app-kit の撮影を使う）とき。撮らないアプリは、mullion-macos と同じく `unmanaged` に入れる
 - 作れないとき（`AppStore/` のファイルが無い・読めない・言語が App Store Connect の言語でない・配置グループが 1 つも引けない）は、わけを人が読む文で返す
+- 一部の名前だけ配置グループを引けなかったときは、引けたものだけで作り、引けなかった名前とわけも返す（下の「いつ作るか」で `appKit.drift` に書く）
+- 読むのは、いつも base（`build.baseBranch`。無ければ既定のブランチ）の先頭のファイル。設定はリリースをまたいで使うので、hotfix の release ブランチ（配信中の版のタグから作る。古い言語の並びのことがある）からは作らない
 - 参照データは司令塔の鍵のどれかで読み（アプリによらない）、1 日メモリーに覚える。読めなければ組み立てない（次の機会にやり直す）
 
 ### いつ作るか（決めたこと 1）
@@ -458,17 +460,18 @@ develop（311b4312）と、状態リポジトリ（読むだけ）・shinkeisuij
   - 入れ替えの PR をマージして `appKit` を書いたリポジトリは、次の生きている印（10 分ごと）で点検する（6 時間を待たない）
   - 作れなければ、わけを `appKit.drift` に書く（クライアントの「ずれ」と「あなたの番」の「時間のあるときに」に出る）
 - 人が書いた設定は書き換えない。ただし、`capture: actions` の `artifacts` の配置グループが参照データに無ければ、`appKit.drift` に書く（shinkeisuijaku の推測の値を、審査に出す前に見つける）
+- 設定があってもなくても、`screenshots.json` にあるのに設定の `artifacts` に無い名前（配置グループを引けなかった・人の設定に無い）は、わけと一緒に `appKit.drift` に書く（クライアントの「ずれ」に出る。例: 「AppStore/screenshots.json の APP_IPHONE_61 が撮影の設定に無い（参照データに 6.3 inch の配置グループが無い）」）。直すのは、人が設定を直すか、組み立ての表を直す PR
 
 ### リリースを始めるとき（決めたこと 2）
 
 **始めるシートで知らせ、既定は「設定を作って撮る」、選べば「撮らずに進む」**。
 
-- クライアント: `appKit` があり `build.storeScreenshots` が無いリポジトリでは、「リリースを始める」のシートに「スクショ」の節を出す
-  - 「撮影の設定がまだありません。始めると、司令塔が release ブランチの `AppStore/screenshots.json`・`languages.json` から作って撮ります」と、作れなかったわけ（`appKit.drift` にあれば）
+- クライアント: `build.storeScreenshots` が無いリポジトリでは（`appKit` の記録の有無によらない。手で入れ替えて、ずれの点検がまだ記録していないリポジトリもあるため）、「リリースを始める」のシートに「スクショ」の節を出す
+  - 「撮影の設定がまだありません。始めると、司令塔が app-kit の撮影のワークフローと `AppStore/screenshots.json`・`languages.json` から作って撮ります（app-kit の撮影を使わないアプリは撮りません）」と、作れなかったわけ（`appKit.drift` にあれば）
   - 「撮らずに進む」を選ぶと、`startRelease` に `skipScreenshots: true` を付ける（選ばなければ送らない。古い司令塔も今どおり受け付ける）
+- 司令塔: `skipScreenshots` を受け付けたら、記録を作るときにスクショを `notConfigured`（わけ「撮らずに進むを選んだ」）にしておく。スクショの段取りは決着したものを撮らないので、始めた後にずれの点検が設定を作っても、この版は撮らない（撮りたくなったら「スクショを撮る」）
 - 司令塔: スクショの段取りで設定が無ければ
-  - `start.skipScreenshots` があれば `notConfigured`（わけ「撮らずに進むを選んだ」）
-  - 無ければ、release ブランチの先頭のファイルから組み立てる。作れたら `build.storeScreenshots` に書いてから撮影を起動する。app-kit の撮影を使わないリポジトリは `notConfigured`（わけ「撮影の設定が無く、app-kit の撮影のワークフローも無い」）、使うのに作れなければ `failed`（わけを書く。直してから「スクショを撮る」）
+  - 上の組み立て（base の先頭のファイル）で作る。作れたら `build.storeScreenshots` に書いてから撮影を起動する。app-kit の撮影を使わないリポジトリは `notConfigured`（わけ「撮影の設定が無く、app-kit の撮影のワークフローも無い」）、使うのに作れなければ `failed`（わけを書く。直してから「スクショを撮る」）
   - 古いクライアントからの、選んでいない `startRelease` も同じ扱い（黙って飛ばさない）
 - `notConfigured`・`failed` のわけは、記録の `screenshots.failure` に書き、クライアントの「スクショ」の節に出す
 
@@ -497,7 +500,6 @@ develop（311b4312）と、状態リポジトリ（読むだけ）・shinkeisuij
 | どこ | 変える所 |
 | --- | --- |
 | `startRelease` の `payload` | `skipScreenshots`（true だけ。撮らずに進むときだけ書く） |
-| `submissions/<版>.json` の `start` | `skipScreenshots`（true だけ） |
 | `screenshots.failure` | `notConfigured` でも書ける（わけ） |
 | `retakeScreenshots` の受け付け | `notConfigured` でも、リポジトリに設定がある・作れるなら受け付ける |
 | `repo.json` | 足す欄は無い（作った設定は `build.storeScreenshots`、作れないわけは `appKit.drift`） |
@@ -510,9 +512,9 @@ develop（311b4312）と、状態リポジトリ（読むだけ）・shinkeisuij
 | --- | --- |
 | 0 | この設計 |
 | 1 | 司令塔: `appKit` が `null` のリポジトリの呼んでいる版を書く（ずれの点検）とテスト |
-| 2 | プロトコル: 上の表（Swift の型・スキーマ・ベクタ・protocol.md）。`retakeProblem` の呼び出しは今の動きのまま渡す |
+| 2 | プロトコル: 上の表（Swift の型・スキーマ・ベクタ・protocol.md）と、司令塔の受け付け（`skipScreenshots` で `notConfigured` にして始める・設定のあるリポジトリの `notConfigured` の版の撮り直し）。後から撮れるのは、この PR では設定（`build.storeScreenshots`）のあるリポジトリだけ（shinkeisuijaku 1.0.0 はこれで撮れる） |
 | 3 | 司令塔: 設定の組み立て（参照データの表示クラス）と、ずれの点検での自動の作成・配置グループの確かめ、参照データのログ。テストは shinkeisuijaku と template の本物のファイルで |
-| 4 | 司令塔: リリースを始めたときの組み立て・`skipScreenshots`・`notConfigured` から撮る・取り込むときの配置グループの確かめ |
+| 4 | 司令塔: リリースを始めたとき・後から撮るときの組み立て（`appKit` があれば設定が無くても後から撮れる）・取り込むときの配置グループの確かめ |
 | 5 | クライアント: 始めるシートの「スクショ」の節・「スクショを撮る」・わけの表示（スクショを PR に付ける） |
 
 文書（この節・release.md・protocol.md・app-kit.md の「ずれの点検」・operations.md）と LEARNINGS.md は、各 PR で変えた所を直す。
