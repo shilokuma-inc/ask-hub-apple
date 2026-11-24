@@ -122,6 +122,9 @@ struct SwipeChoiceRow: View {
                     if choice.asksText {
                         ChoiceBadge.freeText(tint: direction.tint)
                     }
+                    if choice.isAlternative {
+                        ChoiceBadge.alternative(tint: direction.tint)
+                    }
                 }
                 Text(choice.detail)
                     .appFont(.caption)
@@ -165,6 +168,11 @@ struct ChoiceBadge: View {
     /// 選ぶと文を書くシートが出る選択肢
     static func freeText(tint: Color) -> Self {
         Self(title: "自由回答", systemImage: "square.and.pencil", tint: tint)
+    }
+
+    /// 判断の確認の別案（名前は別案の中身）
+    static func alternative(tint: Color) -> Self {
+        Self(title: "別案", systemImage: "arrow.triangle.branch", tint: tint)
     }
 
     var body: some View {
