@@ -162,6 +162,12 @@ struct AppStoreSetup: Identifiable, Hashable {
         return firstRelease ? pending : pending.filter { $0.kind.isNeededForApp }
     }
 
+    /// 残りの数と、先頭の 3 つの名前（例: 残り 5 個（カテゴリ・価格・年齢制限 など））。あなたの番とリポジトリの画面のやることに出す
+    static func remainingSummary(_ pending: [Item]) -> String {
+        let names = pending.prefix(3).map(\.kind.title).joined(separator: "・") + (pending.count > 3 ? " など" : "")
+        return "残り \(pending.count) 個（\(names)）"
+    }
+
     /// AskHub から書ける、まだ決めていない項目
     var writableItems: [Item] {
         items.filter { ItemKind.settingKinds.contains($0.kind) && !$0.isDone }

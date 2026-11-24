@@ -87,14 +87,19 @@ private struct RepositoryRow: View {
     }
 }
 
-/// リポジトリの詳細（進めている epic・リリース）。外したリポジトリは、加え直すボタンを出す
+/// リポジトリの詳細。やること・リリース・epic を上に、ビルドの設定・保護・app-kit を下の「設定」にまとめる（ユーザーの決定。2026-11-24）。
+/// 外したリポジトリは、加え直すボタンを出す
 struct RepositoryDetailView: View {
     let repositoryID: TargetRepository.ID
 
     @Environment(ClientStore.self) private var store
     @State private var isConfirmingRemoval = false
     @State private var isEditingBuild = false
+    @State private var isEditingProtection = false
     @State private var isStartingRelease = Self.initialStartingRelease
+
+    /// やることから送る、同じ画面の「加えるときの準備」の節
+    private static let setupSectionID = "repository-setup"
 
     /// 撮影では、起動引数でリリースを始めるシートを開いておく
     private static var initialStartingRelease: Bool {
@@ -106,53 +111,40 @@ struct RepositoryDetailView: View {
     }
 
     var body: some View {
-        if let repository = store.repository(repositoryID) {
-            let epics = store.snapshot?.epics.filter { $0.repositoryID == repositoryID } ?? []
-            let isRemoved = store.snapshot?.isRemoved(repositoryID) == true
-            List {
-                CardSection {
-                    HStack(spacing: 14) {
-                        AppIconView(repository: repository, size: 60)
-                        VStack(alignment: .leading) {
-                            Text(repository.appName).appFont(.title2, weight: .semibold)
-                            OwnerLabel(repository: repository, avatarSize: 18)
-                                .appFont(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
+        if let repository = store.repository(repositoryID), let snapshot = store.snapshot {
+            let isRemoved = snapshot.isRemoved(repositoryID)
+            let todos = RepositoryTodo.items(for: repository, inbox: store.inboxItems, snapshot: snapshot)
+            ScrollViewReader { proxy in
+                List {
+                    RepositoryHeaderSection(repository: repository)
+                    if isRemoved {
+                        RemovedRepositorySection(repositoryID: repositoryID)
                     }
-                }
-                if isRemoved {
-                    RemovedRepositorySection(repositoryID: repositoryID)
-                } else {
-                    BuildSettingsSection(repository: repository, isEditing: $isEditingBuild)
-                }
-                CardSection("epic") {
-                    ForEach(epics) { epic in
-                        NavigationLink(value: AppRoute.epic(epic.id)) { EpicRow(epic: epic) }
+                    RepositoryTodoSection(items: todos) { perform($0, proxy: proxy) }
+                    // App Store の準備の残りはやることに出すので、リリースには残りの無いとき（済み・出さない）だけ出す
+                    ReleaseSection(
+                        repository: repository,
+                        isRemoved: isRemoved,
+                        showsAppStoreSetup: !todos.contains { $0.action == .route(.appStoreSetup(repositoryID)) },
+                        isStarting: $isStartingRelease
+                    )
+                    EpicSection(epics: snapshot.epics.filter { $0.repositoryID == repositoryID })
+                    if !isRemoved {
+                        CreativeRepositorySection(repository: repository)
                     }
-                    if epics.isEmpty {
-                        Text("ありません").foregroundStyle(.secondary)
-                    }
+                    settings(repository, isRemoved: isRemoved)
                 }
-                if let setup = repository.setup {
-                    RepositorySetupSection(repository: repository, setup: setup)
-                }
-                if let protection = repository.protection {
-                    ProtectionSection(repository: repository, protection: protection)
-                }
-                if let appKit = repository.appKit, !isRemoved {
-                    AppKitRepositorySection(repository: repository, appKit: appKit)
-                }
-                if !isRemoved {
-                    CreativeRepositorySection(repository: repository)
-                }
-                ReleaseSection(repository: repository, isRemoved: isRemoved, isStarting: $isStartingRelease)
             }
             .pastelBackground()
             .compactList()
             .navigationTitle(repository.appName)
             .sheet(isPresented: $isEditingBuild) {
                 BuildSettingsSheet(repository: repository)
+            }
+            .sheet(isPresented: $isEditingProtection) {
+                if let protection = repository.protection {
+                    ProtectionSheet(repository: repository, protection: protection)
+                }
             }
             .sheet(isPresented: $isStartingRelease) {
                 StartReleaseSheet(repository: repository) { isStartingRelease = false }
@@ -171,6 +163,78 @@ struct RepositoryDetailView: View {
             }
         } else {
             ContentUnavailableView("このリポジトリは見つかりません", systemImage: "questionmark.folder")
+        }
+    }
+
+    /// 下の「設定」。ビルドの設定・加えるときの準備・保護・app-kit（外したリポジトリは、残っている準備と保護の様子だけ）
+    @ViewBuilder private func settings(_ repository: TargetRepository, isRemoved: Bool) -> some View {
+        let appKit = isRemoved ? nil : repository.appKit
+        if !isRemoved || repository.setup != nil || repository.protection != nil {
+            // 下の節をまとめる見出し。見出しだけの節なので、次の節との間を詰める（Mac の一覧にはセクションの間が無い）
+            CardSection {} header: {
+                Text("設定").appFont(.title3, weight: .bold).foregroundStyle(.primary)
+            }
+            #if os(iOS)
+            .listSectionSpacing(4)
+            #endif
+        }
+        if !isRemoved {
+            BuildSettingsSection(repository: repository, isEditing: $isEditingBuild)
+        }
+        if let setup = repository.setup {
+            RepositorySetupSection(repository: repository, setup: setup)
+                .id(Self.setupSectionID)
+        }
+        if let protection = repository.protection {
+            ProtectionSection(repository: repository, protection: protection, showsSheet: $isEditingProtection)
+        }
+        if let appKit {
+            AppKitRepositorySection(repository: repository, appKit: appKit)
+        }
+    }
+
+    /// やることの、画面を開かない行き先
+    private func perform(_ action: RepositoryTodo.Action, proxy: ScrollViewProxy) {
+        switch action {
+        case .buildSettings: isEditingBuild = true
+        case .protection: isEditingProtection = true
+        case .setup: withAnimation { proxy.scrollTo(Self.setupSectionID, anchor: .top) }
+        case .route: break
+        }
+    }
+}
+
+/// リポジトリの画面の一番上（アイコン・アプリ名・持ち主）。Mac・iPad の 3 列では画面の見出しが出ないので、アプリ名をここにも出す
+private struct RepositoryHeaderSection: View {
+    let repository: TargetRepository
+
+    var body: some View {
+        CardSection {
+            HStack(spacing: 14) {
+                AppIconView(repository: repository, size: 60)
+                VStack(alignment: .leading) {
+                    Text(repository.appName).appFont(.title2, weight: .semibold)
+                    OwnerLabel(repository: repository, avatarSize: 18)
+                        .appFont(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+}
+
+/// リポジトリの epic（進めているものと終わったもの）
+private struct EpicSection: View {
+    let epics: [Epic]
+
+    var body: some View {
+        CardSection("epic") {
+            ForEach(epics) { epic in
+                NavigationLink(value: AppRoute.epic(epic.id)) { EpicRow(epic: epic) }
+            }
+            if epics.isEmpty {
+                Text("ありません").foregroundStyle(.secondary)
+            }
         }
     }
 }
@@ -223,6 +287,8 @@ private struct RemovedRepositorySection: View {
 private struct ReleaseSection: View {
     let repository: TargetRepository
     let isRemoved: Bool
+    /// App Store に載せる準備の行を出す（残りがあるときは、上のやることに出す）
+    let showsAppStoreSetup: Bool
     @Binding var isStarting: Bool
 
     @Environment(ClientStore.self) private var store
@@ -233,7 +299,7 @@ private struct ReleaseSection: View {
         let suggested = store.snapshot?.suggestedReleaseVersion(of: repository.id) ?? "1.0.0"
         CardSection {
             // App Store に載せる準備（アプリが無い・初めての版の残りがある）。出さないリポジトリは、出すに戻せるように行を残す
-            if let setup = store.snapshot?.appStoreSetup(of: repository.id), setup.releasedAt == nil, !isRemoved {
+            if showsAppStoreSetup, let setup = store.snapshot?.appStoreSetup(of: repository.id), setup.releasedAt == nil, !isRemoved {
                 NavigationLink(value: AppRoute.appStoreSetup(repository.id)) {
                     AppStoreSetupRow(setup: setup)
                 }

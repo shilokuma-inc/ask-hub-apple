@@ -48,7 +48,7 @@ struct AppKitRow: View {
     }
 }
 
-/// 「app-kit」の画面。新しい版の変更点と「広げる」、広げている進み具合（もう一度試す・やめる）、リポジトリとテンプレートごとの版、前の版
+/// 「app-kit」の画面。新しい版の「広げる」と変更点、広げている進み具合（もう一度試す・やめる）、リポジトリとテンプレートごとの版、前の版
 struct AppKitView: View {
     @Environment(ClientStore.self) private var store
     @Environment(\.openURL) private var openURL
@@ -111,7 +111,8 @@ struct AppKitView: View {
     }
 }
 
-/// 新しい版（無ければ一番新しい版）の変更点と「広げる」
+/// 新しい版（無ければ一番新しい版）の「広げる」と変更点。広げる操作と PR を出す相手の数を先に出し、長い変更点は閉じておく
+/// （変更点が 2 画面あると、広げる操作がその下に隠れた。ユーザーの決定。2026-11-24）
 private struct ReleaseSection: View {
     let release: AppKitOverview.Release
     let appKit: AppKitOverview
@@ -119,6 +120,8 @@ private struct ReleaseSection: View {
     @Binding var confirming: AppKitOverview.Release?
 
     @Environment(ClientStore.self) private var store
+    /// 変更点を開いているか。nil なら変更点の長さで決める（長ければ閉じておく）
+    @State private var showsChanges: Bool?
 
     var body: some View {
         let intent = HumanIntent.rolloutAppKit(version: release.version, ref: release.ref)
@@ -126,25 +129,51 @@ private struct ReleaseSection: View {
             LabeledContent(release.version) {
                 Text(RelativeTime.string(release.foundAt, now: store.currentDate()) + "に出ました").foregroundStyle(.secondary)
             }
-            if let changes = release.changes {
-                RenderedBodyView(content: RenderedBody(body: changes))
-                    .appFont(.callout)
-            } else {
-                Text("CHANGELOG に変更点がありません").foregroundStyle(.secondary)
-            }
             if isNew || appKit.rollout?.version != release.version {
                 if store.supports(intent) {
-                    Button("\(release.version) を広げる…", systemImage: "shippingbox.and.arrow.backward") { confirming = release }
-                        .disabled(store.isReflecting([.appKit]))
+                    Button { confirming = release } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("\(release.version) を広げる…")
+                                // ボタンの色を付けず、注記の灰色にする
+                                Text(rolloutSummary).appFont(.caption).foregroundStyle(Color.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "shippingbox.and.arrow.backward")
+                        }
+                    }
+                    .disabled(store.isReflecting([.appKit]))
                 } else if !appKit.canRollOut(release) {
                     Text("ほかの版を広げている途中です。やめてから広げます").appFont(.caption).foregroundStyle(.secondary)
                 }
+            }
+            if let changes = release.changes {
+                let isExpanded = Binding { showsChanges ?? !Self.isLong(changes) } set: { showsChanges = $0 }
+                DisclosureGroup("変更点", isExpanded: isExpanded) {
+                    RenderedBodyView(content: RenderedBody(body: changes))
+                        .appFont(.callout)
+                }
+            } else {
+                Text("CHANGELOG に変更点がありません").foregroundStyle(.secondary)
             }
         } header: {
             Text(isNew ? "新しい版" : "一番新しい版")
         } footer: {
             footer
         }
+    }
+
+    /// 広げると PR を出す相手の数
+    private var rolloutSummary: String {
+        let count = store.snapshot?.appKitRolloutCount(release) ?? 0
+        return count > 0
+            ? "入れ替え済みの \(count) 本（古い版・ずれのあるもの）に、1 本ずつ PR を出します。major の違う相手には出しません"
+            : "PR を出す相手はありません（入れ替え済みの相手は、この版が入っているか major が違います）"
+    }
+
+    /// 変更点が長い（7 行から。閉じておく）
+    static func isLong(_ changes: String) -> Bool {
+        changes.split(whereSeparator: \.isNewline).count > 6
     }
 
     private var footer: Text {

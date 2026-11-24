@@ -127,6 +127,26 @@ struct AppKitInstallation: Hashable {
 
     /// 画面に出す版の名前（タグが無ければコミットの先頭）
     var versionLabel: String { version ?? String(ref.prefix(7)) }
+
+    /// 入っている版が、ほかの版より古い（タグの無いコミットは古いとみなす）
+    func isOlder(than other: String) -> Bool {
+        version.map { AppKitOverview.isNewer(other, than: $0) } ?? true
+    }
+
+    /// その版を広げたとき、司令塔が PR を出す相手か（`AppKitRollout` と同じ決まり）。入っている版の major が違えば出さない
+    /// （major を上げる入れ替えは人が手で行う）。同じコミットでずれも無ければ、入っているので出さない。
+    /// それ以外（古い版・タグの無いコミット・同じ版のずれ）には出す
+    func receivesRollout(of release: AppKitOverview.Release) -> Bool {
+        if let version, Self.major(of: version) != Self.major(of: release.version) {
+            return false
+        }
+        return !(ref == release.ref && drift.isEmpty)
+    }
+
+    /// 版（`v1.2.0`）の major
+    static func major(of version: String) -> Int {
+        Int(version.dropFirst().split(separator: ".").first ?? "") ?? 0
+    }
 }
 
 /// 対象のリポジトリの app-kit の様子（入っている版と、広げている版のこのリポジトリの PR）
@@ -137,6 +157,14 @@ struct RepositoryAppKit: Hashable {
     var rolloutVersion: String?
     /// その版の、このリポジトリの様子。まだ確かめていなければ nil
     var rolloutTarget: AppKitOverview.Target?
+}
+
+extension ClientSnapshot {
+    /// 版を広げると PR を出す相手の数（入れ替え済みのリポジトリとテンプレートのうち、司令塔が PR を出す相手。`receivesRollout(of:)`）
+    func appKitRolloutCount(_ release: AppKitOverview.Release) -> Int {
+        let installed = repositories.compactMap { $0.appKit?.installed } + (appKit?.templates.compactMap(\.installed) ?? [])
+        return installed.count { $0.receivesRollout(of: release) }
+    }
 }
 
 extension AppKitOverview {
@@ -188,9 +216,7 @@ extension InboxBuilder {
             items.append(appKitItem(id: "rollout", urgency: .blocking, title: title, detail: detail, since: rollout.updatedAt))
         }
         // 入れた相手がまだ無い（入れ替える前）なら、広げる相手がいないので知らせない
-        let installed = snapshot.repositories.compactMap { $0.appKit?.installed } + appKit.templates.compactMap(\.installed)
-        if let release = appKit.newRelease, appKit.canRollOut(release),
-           installed.contains(where: { $0.version.map { AppKitOverview.isNewer(release.version, than: $0) } ?? true }) {
+        if let release = appKit.newRelease, appKit.canRollOut(release), snapshot.appKitRolloutCount(release) > 0 {
             let detail = release.changes.flatMap { AppKitOverview.plainSummary(of: $0) } ?? "変更点を見て広げる"
             let title = "app-kit \(release.version) を広げる"
             let id = "release/\(release.version)"
