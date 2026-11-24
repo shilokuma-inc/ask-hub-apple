@@ -10,8 +10,8 @@ extension Submission {
         case captured
         /// 撮れなかった（スクショを変えずに審査に出せる）
         case failed(String)
-        /// 撮り方が無い（撮らない）
-        case notConfigured
+        /// 撮らなかった（撮り方が無い・人が撮らずに進むを選んだ）。わけが書かれていれば、そのわけ
+        case notConfigured(String?)
     }
 
     /// App Store Connect にあるが撮らなかった表示サイズと、そのわけ

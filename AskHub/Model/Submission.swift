@@ -405,8 +405,8 @@ extension Submission {
             detail = changed == 0 ? "前回の App Store から変わっていません" : "\(changed) 組に差があります"
         case .failed(let reason):
             detail = "撮れませんでした（\(reason)）。スクショは変えずに出せます"
-        case .notConfigured:
-            detail = "撮り方が設定に無いので撮りません"
+        case .notConfigured(let reason):
+            detail = reason.map { "撮りませんでした（\($0)）" } ?? "撮り方が設定に無いので撮りません"
         }
         return StepStatus(id: "screenshots", title: title, detail: detail, state: .done)
     }
