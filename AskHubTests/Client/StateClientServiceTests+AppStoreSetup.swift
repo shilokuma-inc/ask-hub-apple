@@ -39,6 +39,16 @@ extension StateClientServiceTests {
     private var setupRepositoryID: TargetRepository.ID { Self.repo.lowercased() }
 
     @Test
+    func namesRepositoryAfterAppStoreApp() async throws {
+        // App Store Connect のアプリが見つかったら、その名前で出す（一覧・カード・あなたの番の名前）。まだ無ければリポジトリ名のまま
+        let named = try await makeService(files: Self.firstReleaseFiles()).service.fetchSnapshot()
+        #expect(named.repository(setupRepositoryID)?.appName == "サンプル")
+        #expect(named.repository(setupRepositoryID)?.name == "sample-ios")
+        let missing = try await makeService(files: Self.missingAppFiles()).service.fetchSnapshot()
+        #expect(missing.repository(setupRepositoryID)?.appName == "sample-ios")
+    }
+
+    @Test
     func showsCreateAppWhenAppIsMissing() async throws {
         let fixture = try makeService(files: Self.missingAppFiles())
         let snapshot = try await fixture.service.fetchSnapshot()
