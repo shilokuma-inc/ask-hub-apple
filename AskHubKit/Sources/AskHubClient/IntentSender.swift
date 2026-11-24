@@ -313,6 +313,14 @@ public struct IntentDraft: Equatable, Sendable {
         )
     }
 
+    /// 実機確認をまとめて答える（「まとめて確認した」「確かめずに閉じる」）。epic のまだ答えていない項目すべてに、同じ答えを付ける。
+    /// `target.version` は確かめたゴールの版。`note` は確かめずに閉じた理由（任意。まとめて確認したは空）
+    public static func closeVerifications(_ target: EpicTarget, result: CloseVerificationsIntent.Result, note: String = "") -> Self {
+        var payload: [String: JSONValue] = ["result": .string(result.rawValue)]
+        if !note.isEmpty { payload["note"] = .string(note) }
+        return epic(CloseVerificationsIntent.kind, target, payload: payload)
+    }
+
     /// 配信した版のリリース文を確かめて、GitHub Release を公開する（`notes` は公開する本文。下書きのままでも、直したものでもよい）
     public static func publishGitHubRelease(_ target: ReleaseTarget, notes: String) -> Self {
         Self(

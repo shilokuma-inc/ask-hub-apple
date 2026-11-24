@@ -55,7 +55,7 @@ struct PushTargetTests {
         #expect(navigator.selection == .mac("macbook-a"))
     }
 
-    /// いくつもの epic の実機確認のまとめは、あなたの番からアプリをまたいだ実機確認のカードを開く
+    /// いくつもの epic の実機確認のまとめは、あなたの番から実機確認の一覧を開く（まとめて答える・スワイプで流すを選べる）
     @Test
     func opensAllVerificationsFromVerificationDigest() throws {
         let target = try #require(PushTarget(userInfo: userInfo(["verification": "all"])))
@@ -65,8 +65,8 @@ struct PushTargetTests {
         navigator.section = .progress
         navigator.open(target)
         #expect(navigator.section == .inbox)
-        #expect(navigator.selection == .deck(.allVerifications))
-        #expect(navigator.paths[.inbox] == [.deck(.allVerifications)])
+        #expect(navigator.selection == .verifications)
+        #expect(navigator.paths[.inbox] == [.verifications])
         // 知らない値では開かない
         #expect(PushTarget(userInfo: userInfo(["verification": "today"])) == nil)
     }

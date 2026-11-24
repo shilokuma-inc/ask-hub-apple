@@ -38,7 +38,7 @@ extension DemoClientService {
         case .applyProtection, .approveSetup, .createRepository, .readSecretsKey, .rolloutAppKit, .stopAppKitRollout:
             applyAdministrationIntent(intent)
 
-        case .respondToDecision, .acceptAllDecisions, .merge, .instructFinal, .verify:
+        case .respondToDecision, .acceptAllDecisions, .merge, .instructFinal, .verify, .closeVerifications:
             applyReviewIntent(intent)
 
         case .resolveBlocker, .skipTask, .handOver, .pause, .resume, .discard, .completeHumanTask, .handOverSecret, .cleanUp,

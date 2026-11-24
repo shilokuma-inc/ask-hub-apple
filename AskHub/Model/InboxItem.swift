@@ -80,7 +80,9 @@ enum InboxBuilder {
             if epic.isActive {
                 items += epicItems(epic, context: context)
             }
-            items += verificationItems(epic, context: context)
+        }
+        if let item = verificationItem(snapshot) {
+            items.append(item)
         }
         items += snapshot.macs.compactMap { offlineItem($0, now: now) }
         items += snapshot.macs.flatMap { tokenItems($0, now: now) }
@@ -209,16 +211,37 @@ enum InboxBuilder {
         return item
     }
 
-    private static func verificationItems(_ epic: Epic, context: String) -> [InboxItem] {
-        let ready = epic.finalReview?.verifications.filter(\.isReady) ?? []
-        guard let first = ready.first, case .ready(let build) = first.state else {
-            return []
+    /// 実機確認は epic をまたいで 1 行にまとめ、実機確認の一覧を開く（「実機で確かめる · N 件の epic · M 項目」）。
+    /// 配信した版の確認（畳んだもの）は数えず、畳んだものだけなら出さない。アイコンは最も新しくマージした epic のアプリ
+    private static func verificationItem(_ snapshot: ClientSnapshot) -> InboxItem? {
+        let backlog = VerificationBacklog(snapshot: snapshot)
+        guard let latest = backlog.open.first else {
+            return nil
         }
-        var item = InboxItem(epic: epic, kind: .verification, context: context, route: .deck(.verifications(epic.id)))
-        item.urgency = .whenFree
-        item.title = "実機で確かめる"
-        item.detail = "\(VerificationItem.buildLabel(build)) · \(ready.count) 項目"
-        return [item]
+        var detail = "\(backlog.open.count) 件の epic · \(backlog.openItemCount) 項目"
+        if !backlog.folded.isEmpty {
+            // 1 行に収まらず語の途中で折り返すので、畳んだ数は次の行に出す
+            detail += "\nほかに配信した版の確認 \(backlog.folded.count) 件"
+        }
+        var apps: [String] = []
+        for entry in backlog.open {
+            let name = snapshot.repository(entry.epic.repositoryID)?.appName ?? entry.epic.repositoryID
+            if !apps.contains(name) {
+                apps.append(name)
+            }
+        }
+        return InboxItem(
+            id: "verifications",
+            urgency: .whenFree,
+            kind: .verification,
+            repositoryID: latest.epic.repositoryID,
+            title: "実機で確かめる",
+            context: apps.count > 3 ? apps.prefix(3).joined(separator: "・") + " ほか" : apps.joined(separator: "・"),
+            detail: detail,
+            since: latest.mergedAt ?? latest.epic.updatedAt,
+            route: .verifications,
+            targets: backlog.open.flatMap(\.targets)
+        )
     }
 
     private static func offlineItem(_ mac: Mac, now: Date) -> InboxItem? {

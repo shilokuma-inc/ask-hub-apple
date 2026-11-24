@@ -123,6 +123,32 @@ struct AskHubClientTests {
         #expect(try read(.verify(verification, result: .confirmed)).result == .confirmed)
     }
 
+    /// まとめての答えは、epic とゴールの版に結びつけ、確かめずに閉じた理由だけを payload に書く
+    @Test func closeVerificationsDraftIsReadAsCloseVerificationsIntent() throws {
+        let key = try key()
+        let target = EpicTarget(repo: Self.repo, epic: ULID.generate(at: Self.now), version: 3)
+        func read(_ draft: IntentDraft) throws -> CloseVerificationsIntent {
+            try CloseVerificationsIntent(envelope: IntentEnvelope(
+                kind: draft.kind,
+                repo: draft.repo,
+                target: draft.target,
+                targetVersion: draft.targetVersion,
+                payload: draft.payload,
+                issuedAt: Timestamp(Self.now),
+                nonce: ULID.generate(at: Self.now),
+                keyId: key.keyID
+            ))
+        }
+        let confirmed = IntentDraft.closeVerifications(target, result: .confirmed)
+        #expect(confirmed.payload == ["result": .string("confirmed")])
+        let answer = try read(confirmed)
+        #expect(answer.target == target && answer.result == .confirmed && answer.note.isEmpty)
+        let skipped = try read(.closeVerifications(target, result: .skipped, note: "次の版で見る"))
+        #expect(skipped.result == .skipped && skipped.note == "次の版で見る")
+        // 理由を書かずに閉じたときは、note を持たない
+        #expect(IntentDraft.closeVerifications(target, result: .skipped).payload == ["result": .string("skipped")])
+    }
+
     @Test func sendsAttachmentsBeforeIntent() async throws {
         let store = InMemoryStateStore()
         let key = try key()

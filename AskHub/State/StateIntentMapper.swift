@@ -14,7 +14,7 @@ struct StateIntentMapper {
     /// 最終 PR への操作（判断のカードへの答え・マージの承認・指示）は最終 PR を出した epic だけ、
     /// 人がする作業を終えたことは、ゴールの確認の待ちと実装の間の、終えていない作業だけ送れる。
     /// 一時停止・再開・引き継ぎは開始した後の epic だけで、引き継ぎは、一時停止していなければ epic の Mac でジョブが動いていないときだけ送れる。
-    /// 実機確認への答えは、マージした epic の、まだ答えていない項目だけ送れる
+    /// 実機確認への答えは、マージした epic の、まだ答えていない項目だけ（まとめての答えは、答えていない項目が残っている epic だけ）送れる
     func supports(_ intent: HumanIntent) -> Bool {
         switch intent {
         case .answer, .requestExplanation, .reviseGoal, .start, .decideSplit, .request, .addRepository, .createRepository, .readSecretsKey:
@@ -42,7 +42,7 @@ struct StateIntentMapper {
         case let .handOver(epicID, _):
             index.epics[epicID]?.canHandOver == true
 
-        case .publishRelease, .updatePromotionalText, .verify:
+        case .publishRelease, .updatePromotionalText, .verify, .closeVerifications:
             supportsAfterMerge(intent)
 
         case .removeRepository, .configureRepository, .applyProtection, .approveSetup, .cleanUp, .findCleanupCandidates, .startRelease,
@@ -77,6 +77,9 @@ struct StateIntentMapper {
     func drafts(for intent: HumanIntent) throws(ClientServiceError) -> [IntentDraft] {
         if case let .verify(epicID, itemID, reply) = intent {
             return try verifyDrafts(epicID: epicID, itemID: itemID, reply: reply)
+        }
+        if case .closeVerifications = intent {
+            return [try closeVerificationsDraft(intent)]
         }
         guard case let .acceptAllDecisions(epicID, headCommit, shownIDs) = intent else {
             return [try draft(for: intent)]
@@ -126,8 +129,8 @@ struct StateIntentMapper {
              .reportRejection, .resolveRejection, .registerBundleId, .applyAppStoreSettings, .confirmAppStoreItem, .excludeFromAppStore:
             return try releaseFlowDraft(intent)
 
-        case .acceptAllDecisions, .verify:
-            // まとめて OK と実機確認は、いくつかの意図になることがあるので `drafts(for:)` で作る
+        case .acceptAllDecisions, .verify, .closeVerifications:
+            // まとめて OK と実機確認は、いくつかの意図になることがあるので `drafts(for:)` で作る（まとめての答えも実機確認と並べて作る）
             throw Self.unsupported
         }
     }

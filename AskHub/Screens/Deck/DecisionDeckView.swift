@@ -93,7 +93,7 @@ struct DecisionDeckView: View {
             // 何について書いているか（止めた札・説明を求める札）を、シートの上にも出す
             TextRequestSheet(
                 request: request,
-                subject: current.map { textSubject($0) },
+                subject: current.map { textSubject($0, request: request) },
                 focusesOnAppear: Self.focusesTextOnAppear
             ) { text in
                 textRequest = nil
@@ -265,12 +265,33 @@ struct DecisionDeckView: View {
                         skippedIDs.append(card.id)
                     }
                 }
+                verificationBatchMenu(card)
             }
             Button("詳しく", systemImage: "doc.text.magnifyingglass") { detailCard = card }
         }
         .buttonStyle(.glass)
         .appFont(.subheadline)
         .padding(.horizontal)
+    }
+
+    /// 実機確認の札の epic の残りを、まとめて答える（まとめて確認した・確かめずに閉じる）。送れないときは出さない
+    @ViewBuilder private func verificationBatchMenu(_ card: DeckCard) -> some View {
+        let confirm = HumanIntent.closeVerifications(epicID: card.epicID, reply: .confirmed)
+        // 山札の、この epic の札（「あとで」にした札を含む）。司令塔はまだ答えていない項目すべてに付ける
+        let remaining = cards.filter { $0.epicID == card.epicID }.count
+        let epicName = [store.repository(card.repositoryID)?.appName, store.epic(card.epicID)?.title].compactMap(\.self)
+        if store.supports(confirm) {
+            Menu("まとめて", systemImage: "checklist") {
+                // アプリをまたいで流しているときも、どの epic の残りに答えるかが分かるよう、先頭に epic を出す
+                Text(epicName.joined(separator: " · "))
+                Button("残り \(remaining) 件をまとめて確認した", systemImage: "checkmark.circle") {
+                    send(confirm, card: card, label: "残り \(remaining) 件をまとめて確認した")
+                }
+                Button("確かめずに閉じる…", systemImage: "xmark.circle") {
+                    textRequest = .closingVerifications(epicID: card.epicID)
+                }
+            }
+        }
     }
 
     private func choose(_ card: DeckCard, index: Int) {
@@ -301,8 +322,13 @@ struct DecisionDeckView: View {
         textRequest = request
     }
 
-    private func textSubject(_ card: DeckCard) -> TextRequestSheet.Subject {
-        TextRequestSheet.Subject(card: card, appName: store.repository(card.repositoryID)?.appName)
+    /// 何について書いているか。確かめずに閉じるときは、札ではなく epic（残りの数）を出す
+    private func textSubject(_ card: DeckCard, request: TextRequest) -> TextRequestSheet.Subject {
+        let appName = store.repository(card.repositoryID)?.appName
+        if case .closingVerifications(let epicID) = request.purpose, let epic = store.epic(epicID) {
+            return TextRequestSheet.Subject(closing: epic, count: cards.filter { $0.epicID == epicID }.count, appName: appName)
+        }
+        return TextRequestSheet.Subject(card: card, appName: appName)
     }
 
     /// 文を書くシートが閉じたとき。送ったなら止めたカードを飛ばし、送らずに閉じたなら（下へ払って閉じたときも）元の位置に戻す
@@ -346,8 +372,12 @@ private extension DeckScope {
         }
     }
 
+    /// 実機確認の対象（まとめての答えと、項目ごとの答え）
     static func verificationTargets(_ epic: Epic) -> [IntentTarget] {
-        epic.finalReview?.verifications.map { .verification(epicID: epic.id, itemID: $0.id) } ?? []
+        guard let items = epic.finalReview?.verifications, !items.isEmpty else {
+            return []
+        }
+        return [.verifications(epicID: epic.id)] + items.map { .verification(epicID: epic.id, itemID: $0.id) }
     }
 
     static func questionTargets(_ epic: Epic) -> [IntentTarget] {

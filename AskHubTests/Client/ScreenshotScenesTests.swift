@@ -59,7 +59,7 @@ struct ScreenshotScenesTests {
             return snapshot.appStoreSetup(of: id) == nil ? "App Store の準備 \(id) が無い" : nil
         case .creative(let id):
             return snapshot.creative(of: id) == nil ? "クリエイティブアセットの案 \(id) が無い" : nil
-        case .deck(.all), .deck(.allVerifications), .finishedEpics, .appKit:
+        case .deck(.all), .deck(.allVerifications), .verifications, .finishedEpics, .appKit:
             return listProblem(of: route, in: snapshot)
         }
     }
@@ -71,6 +71,8 @@ struct ScreenshotScenesTests {
             return snapshot.epics.contains { !$0.isActive } ? nil : "終わった epic が無い"
         case .appKit:
             return snapshot.appKit == nil ? "app-kit の様子が無い" : nil
+        case .verifications:
+            return VerificationBacklog(snapshot: snapshot).isEmpty ? "実機確認が無い" : nil
         default:
             return nil
         }

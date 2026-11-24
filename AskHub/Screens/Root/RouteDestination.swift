@@ -22,6 +22,9 @@ struct RouteDestination: View {
             case .deck(let scope):
                 DecisionDeckView(scope: scope)
 
+            case .verifications:
+                VerificationListView()
+
             case .goal(let id):
                 GoalReviewView(epicID: id)
 

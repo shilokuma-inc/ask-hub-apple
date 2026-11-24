@@ -36,6 +36,8 @@ enum HumanIntent: Hashable {
     /// リポジトリの Secrets の公開鍵を、司令塔に読ませる（管理用のトークンで読む）
     case readSecretsKey(repositoryID: TargetRepository.ID)
     case verify(epicID: Epic.ID, itemID: VerificationItem.ID, reply: VerificationReply)
+    /// 実機確認をまとめて答える（「まとめて確認した」「確かめずに閉じる」）。epic のまだ答えていない項目すべてに同じ答えを付ける（答えた項目は答え直さない）
+    case closeVerifications(epicID: Epic.ID, reply: VerificationBatchReply)
     /// 選んだ片付けの候補を消す（clone と DerivedData はゴミ箱に移し、Simulator は消す）
     case cleanUp(macID: Mac.ID, candidateIDs: [CleanupCandidate.ID])
     /// Mac の片付けの候補を探す（その Mac のワーカーが探す）
@@ -129,6 +131,22 @@ enum VerificationReply: Hashable {
     case confirmed
     /// 問題あり。`release` があれば「このリリースで直す」（直しの依頼をその版の release ブランチに向ける）、nil なら次のリリースで直す
     case problem(note: String, release: String? = nil)
+}
+
+/// 実機確認のまとめての答え
+enum VerificationBatchReply: Hashable {
+    /// 残りをすべて確認した
+    case confirmed
+    /// 残りを確かめずに閉じる。`note` は理由（空でもよい）
+    case skipped(note: String)
+
+    /// 送ったことを知らせるときの呼び名
+    var label: String {
+        switch self {
+        case .confirmed: "まとめて確認した"
+        case .skipped: "確かめずに閉じる"
+        }
+    }
 }
 
 extension HumanIntent {
@@ -276,6 +294,9 @@ extension HumanIntent {
 
         case .verify:
             "確かめた結果"
+
+        case .closeVerifications(_, let reply):
+            reply.label
 
         case .cleanUp:
             "片付け"

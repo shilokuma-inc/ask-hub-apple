@@ -78,6 +78,8 @@ struct TextRequest: Hashable {
         case finalInstruction(epicID: Epic.ID, headCommit: String)
         /// 実機確認の「問題あり」。`release` があれば「このリリースで直す」、nil なら次のリリースで直す
         case verificationProblem(epicID: Epic.ID, itemID: VerificationItem.ID, release: String? = nil)
+        /// 実機確認の「確かめずに閉じる」（epic の残りの項目をまとめて閉じる理由。空でもよい）
+        case closingVerifications(epicID: Epic.ID)
         case blockerInstruction(epicID: Epic.ID)
         case goalRevision(epicID: Epic.ID)
     }
@@ -99,6 +101,9 @@ struct TextRequest: Hashable {
         case let .verificationProblem(epicID, itemID, release):
             .verify(epicID: epicID, itemID: itemID, reply: .problem(note: text, release: release))
 
+        case .closingVerifications(let epicID):
+            .closeVerifications(epicID: epicID, reply: .skipped(note: text))
+
         case .blockerInstruction(let epicID):
             .resolveBlocker(epicID: epicID, action: .fixWithInstruction, instruction: text)
 
@@ -108,15 +113,21 @@ struct TextRequest: Hashable {
     }
 }
 
+extension TextRequest {
+    /// 実機確認の「確かめずに閉じる」の理由を書いてもらう（書かずに閉じてもよい）
+    static func closingVerifications(epicID: Epic.ID) -> Self {
+        TextRequest(title: "確かめずに閉じる", prompt: "閉じる理由（任意）", purpose: .closingVerifications(epicID: epicID), allowsEmpty: true)
+    }
+}
+
 /// 状態から判断のカードを組み立てる
 enum DeckBuilder {
     static func cards(from snapshot: ClientSnapshot, scope: DeckScope) -> [DeckCard] {
         switch scope {
         case .all:
+            // 実機確認は入れない（手元に端末が要るので、あなたの番の「実機で確かめる」から一覧を開いて答える。2026-11-24 のユーザーの決定）
             let epics = snapshot.activeEpics.sorted { $0.updatedAt > $1.updatedAt }
-            return epics.flatMap(questionCards)
-                + epics.flatMap(decisionCards)
-                + snapshot.epics.flatMap { verificationCards($0, release: snapshot.fixableRelease(of: $0.repositoryID)) }
+            return epics.flatMap(questionCards) + epics.flatMap(decisionCards)
 
         case .questions(let id):
             return snapshot.epic(id).map(questionCards) ?? []
@@ -128,7 +139,10 @@ enum DeckBuilder {
             return snapshot.epic(id).map { verificationCards($0, release: snapshot.fixableRelease(of: $0.repositoryID)) } ?? []
 
         case .allVerifications:
-            return snapshot.epics.flatMap { verificationCards($0, release: snapshot.fixableRelease(of: $0.repositoryID)) }
+            // 配信した版の確認（畳んだもの）は流さない。一覧から epic ごとに開けば答えられる
+            return VerificationBacklog(snapshot: snapshot).open.flatMap { entry in
+                verificationCards(entry.epic, release: snapshot.fixableRelease(of: entry.epic.repositoryID))
+            }
         }
     }
 

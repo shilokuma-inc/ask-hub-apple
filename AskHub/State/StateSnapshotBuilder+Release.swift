@@ -90,7 +90,9 @@ extension StateSnapshotBuilder {
         Release(
             repositoryID: repository(file.repo).id,
             version: file.version.rawValue,
-            platforms: file.platforms.map { Release.Platform(name: $0.platform.rawValue, build: $0.build) },
+            platforms: file.platforms.map {
+                Release.Platform(name: $0.platform.rawValue, build: $0.build, uploadedAt: $0.uploadedAt?.date)
+            },
             detectedAt: file.detectedAt.date,
             updatedAt: file.updatedAt.date,
             commit: file.commit.map { Release.Commit(sha: $0.sha, fromExistingTag: $0.source == .existingTag) },

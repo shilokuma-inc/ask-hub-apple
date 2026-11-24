@@ -833,6 +833,10 @@
 - PR のスクショを `NSHostingView` の `cacheDisplay(in:to:)` で撮ると、`safeAreaBar(edge: .bottom)` にガラスのボタンを置いた画面は、中身ごと白く描かれる。
   iOS のテスト（Simulator）で、`UIWindow(windowScene:)`（シーンに付けないと白くなる）に `UIHostingController` を載せ、`drawHierarchy(in:afterScreenUpdates:)` で PNG にすれば描ける。
   状態リポジトリの組み立て（`StateClientService` + `InMemoryStateStore`）を通したデータを、develop とブランチの両方で同じテストから撮れば、同じ条件の Before / After になる（2026-11-18、片付けの候補）
+- 日本語の文は字と字の間のどこでも折り返すので、数と単位を折り返さない空白（U+00A0）でつないでも、その前の語の途中で折り返す（「…配信した版の確\n認 1 件」）。
+  行の補足が 1 行に収まらないときは、`\n` で次の行に分けて出す（2026-11-24、#1277 のあなたの番の「実機で確かめる」の行）
+- Simulator を操作できない（iOS Simulator の道具の許可が無い）ときに、あなたの番の下のほうの行を撮るには、撮影のビルドだけ一時的に「進行が止まっています」を隠し、
+  撮りたい行を「時間のあるときに」の先頭に並べる（Before と After の両方に同じ変更を当てる。コミットしない）。grouped の `List` に `.defaultScrollAnchor(.bottom)` を付けても、下の端からは出なかった（iOS 26.5）（2026-11-24、#1277）
 
 ## App Store Connect
 

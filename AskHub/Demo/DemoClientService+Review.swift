@@ -27,6 +27,9 @@ extension DemoClientService {
         case let .verify(epicID, itemID, reply):
             verify(epicID: epicID, itemID: itemID, reply: reply)
 
+        case let .closeVerifications(epicID, reply):
+            closeVerifications(epicID: epicID, reply: reply)
+
         default:
             break
         }
@@ -335,6 +338,25 @@ extension DemoClientService {
                 review.verifications[index].state = .problem(note: note)
                 let target = release.map { "リリース \($0) を直す" } ?? "新しい"
                 epic.log("実機確認で問題を見つけ、\(target)依頼にしました", at: date)
+            }
+            epic.finalReview = review
+        }
+    }
+
+    /// まだ答えていない（確かめられる）項目すべてに、同じ答えを付ける（状態リポジトリでは司令塔が付ける）
+    private func closeVerifications(epicID: Epic.ID, reply: VerificationBatchReply) {
+        state.updateEpic(epicID) { epic in
+            guard var review = epic.finalReview else {
+                return
+            }
+            for index in review.verifications.indices where review.verifications[index].isReady {
+                switch reply {
+                case .confirmed:
+                    review.verifications[index].state = .confirmed
+
+                case .skipped(let note):
+                    review.verifications[index].state = .skipped(note: note)
+                }
             }
             epic.finalReview = review
         }

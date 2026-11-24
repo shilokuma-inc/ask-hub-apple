@@ -33,6 +33,8 @@ enum AppRoute: Hashable {
     case epic(Epic.ID)
     /// 判断のカード（スワイプで選ぶ）
     case deck(DeckScope)
+    /// 実機確認の一覧（epic ごとの残りの数・まとめての操作・配信した版の確認）
+    case verifications
     case goal(Epic.ID)
     case humanTask(epicID: Epic.ID, taskID: HumanTask.ID)
     case finalReview(Epic.ID)
@@ -55,7 +57,7 @@ enum AppRoute: Hashable {
 
 /// 判断のカードを、どの範囲で流すか
 enum DeckScope: Hashable {
-    /// アプリをまたいで、選択肢のある判断をすべて
+    /// アプリをまたいで、質問と最終 PR の判断をすべて（実機確認は入れない。実機確認の一覧から流す）
     case all
     /// その epic の質問
     case questions(Epic.ID)
@@ -63,6 +65,6 @@ enum DeckScope: Hashable {
     case decisions(Epic.ID)
     /// その epic の実機確認
     case verifications(Epic.ID)
-    /// アプリをまたいで、マージした epic の実機確認をすべて（実機確認のまとめの通知から開く）
+    /// アプリをまたいで、マージした epic の実機確認をすべて（実機確認の一覧から開く）。配信した版の確認（畳んだもの）は入れない
     case allVerifications
 }

@@ -57,13 +57,14 @@ nonisolated enum PushTarget: Equatable, Sendable {
         case let .release(repo, version): .release(repositoryID: repo.rawValue.lowercased(), version: version.rawValue)
         case let .submission(repo, version): .submission(repositoryID: repo.rawValue.lowercased(), version: version.rawValue)
         case .appStore(let repo): .appStoreSetup(repo.rawValue.lowercased())
-        case .verifications: .deck(.allVerifications)
+        // まとめて答える・確かめずに閉じることもできるよう、山札ではなく実機確認の一覧を開く（一覧からスワイプで流せる）
+        case .verifications: .verifications
         }
     }
 }
 
 extension AppNavigator {
-    /// 通知から、該当の epic・Mac・版の画面や、実機確認のカードを開く
+    /// 通知から、該当の epic・Mac・版の画面や、実機確認の一覧を開く
     func open(_ target: PushTarget) {
         open(target.route, in: target.section)
     }
