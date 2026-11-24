@@ -117,10 +117,9 @@ enum DeckBuilder {
     static func cards(from snapshot: ClientSnapshot, scope: DeckScope) -> [DeckCard] {
         switch scope {
         case .all:
+            // 実機確認は入れない（手元に端末が要るので、あなたの番の「実機で確かめる」から一覧を開いて答える。2026-11-24 のユーザーの決定）
             let epics = snapshot.activeEpics.sorted { $0.updatedAt > $1.updatedAt }
-            return epics.flatMap(questionCards)
-                + epics.flatMap(decisionCards)
-                + snapshot.epics.flatMap { verificationCards($0, release: snapshot.fixableRelease(of: $0.repositoryID)) }
+            return epics.flatMap(questionCards) + epics.flatMap(decisionCards)
 
         case .questions(let id):
             return snapshot.epic(id).map(questionCards) ?? []
@@ -132,7 +131,10 @@ enum DeckBuilder {
             return snapshot.epic(id).map { verificationCards($0, release: snapshot.fixableRelease(of: $0.repositoryID)) } ?? []
 
         case .allVerifications:
-            return snapshot.epics.flatMap { verificationCards($0, release: snapshot.fixableRelease(of: $0.repositoryID)) }
+            // 配信した版の確認（畳んだもの）は流さない。一覧から epic ごとに開けば答えられる
+            return VerificationBacklog(snapshot: snapshot).open.flatMap { entry in
+                verificationCards(entry.epic, release: snapshot.fixableRelease(of: entry.epic.repositoryID))
+            }
         }
     }
 
