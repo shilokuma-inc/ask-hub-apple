@@ -25,11 +25,12 @@ struct VerificationBacklogTests {
         )
     }
 
-    private func submission(_ version: String, branchHours: Double?) -> Submission {
+    private func submission(_ version: String, branchHours: Double?, hotfixFrom: String? = nil) -> Submission {
         var submission = Submission(
             repositoryID: Self.repo, version: version, startedInAskHub: true, revision: 1, createdAt: now, updatedAt: now
         )
         submission.branchCreatedAt = branchHours.map(date(hours:))
+        submission.hotfixFrom = hotfixFrom
         return submission
     }
 
@@ -46,9 +47,9 @@ struct VerificationBacklogTests {
         #expect(VerificationFold.cutAt(of: release("1.3.0", detectedHours: -1, uploadedHours: [nil]), submissions: []) == date(hours: -1))
     }
 
-    /// マージした時刻と同じか後に切った版があれば畳む。いくつもあれば、最も早く切った版を畳んだわけにする。ほかのリポジトリの版では畳まない
+    /// epic が入った版（マージした時刻と同じか後に最初に切った版）の、次の版を配信したら畳む。ほかのリポジトリの版では畳まない
     @Test
-    func foldsWhenReleaseWasCutAfterMerge() {
+    func foldsWhenNextReleaseAfterTheEpicsReleaseShips() {
         let releases = [
             release("1.4.0", detectedHours: -1, uploadedHours: [-5]),
             release("1.3.0", detectedHours: -20, uploadedHours: [-30]),
@@ -60,23 +61,46 @@ struct VerificationBacklogTests {
                 mergedAt: mergedHours.map(date(hours:)), repositoryID: Self.repo, releases: releases, submissions: []
             )?.version
         }
-        #expect(folding(mergedHours: -40) == "1.3.0")
-        #expect(folding(mergedHours: -30) == "1.3.0")
-        #expect(folding(mergedHours: -10) == "1.4.0")
-        // マージした後に切った版が無い・マージした時刻が分からない
+        // 1.2.0 に入った epic は 1.3.0 で、1.3.0 に入った epic は 1.4.0 で畳む
+        #expect(folding(mergedHours: -90) == "1.3.0")
+        #expect(folding(mergedHours: -40) == "1.4.0")
+        #expect(folding(mergedHours: -30) == "1.4.0")
+        // 1.4.0 に入った epic は、次の版が出るまで畳まない。マージした後に切った版が無い・マージした時刻が分からないときも畳まない
+        #expect(folding(mergedHours: -10) == nil)
         #expect(folding(mergedHours: -3) == nil)
         #expect(folding(mergedHours: nil) == nil)
-        // 配信を見つけたのがマージの後でも、ブランチをマージの前に作った版では畳まない
+        // 配信を見つけたのがマージの後でも、ブランチをマージの前に作った版には入っていない
         let branched = VerificationFold.foldingRelease(
             mergedAt: date(hours: -10),
             repositoryID: Self.repo,
-            releases: [release("1.4.0", detectedHours: -1, uploadedHours: [-5])],
+            releases: [release("1.4.0", detectedHours: -1, uploadedHours: [-5]), release("1.5.0", detectedHours: 0, uploadedHours: [-1])],
             submissions: [submission("1.4.0", branchHours: -12)]
         )
         #expect(branched == nil)
     }
 
-    /// デモでは、献立メモの 2.0.1 を配信したので材料の epic を畳み、雨雲チェックと習慣ログの epic は確かめるものに残す（新しくマージした順）
+    /// hotfix の版はタグから切るので develop の epic を含まない。epic が入った版にも、次の版にも数えない
+    @Test
+    func hotfixReleasesAreNotCounted() {
+        let releases = [
+            release("1.4.0", detectedHours: -1, uploadedHours: [-5]),
+            release("1.3.1", detectedHours: -15, uploadedHours: [-20]),
+            release("1.3.0", detectedHours: -25, uploadedHours: [-30])
+        ]
+        let hotfix = [submission("1.3.1", branchHours: -20, hotfixFrom: "1.3.0")]
+        // 1.3.0 の後にマージした epic は 1.4.0 に入る（1.3.1 には入らない）ので、まだ畳まない
+        let afterCut = VerificationFold.foldingRelease(
+            mergedAt: date(hours: -25), repositoryID: Self.repo, releases: releases, submissions: hotfix
+        )
+        #expect(afterCut == nil)
+        // 1.3.0 に入った epic は、hotfix の 1.3.1 ではなく 1.4.0 で畳む
+        let beforeCut = VerificationFold.foldingRelease(
+            mergedAt: date(hours: -40), repositoryID: Self.repo, releases: releases, submissions: hotfix
+        )
+        #expect(beforeCut?.version == "1.4.0")
+    }
+
+    /// デモでは、献立メモの 2.0.0（材料の epic が入った版）の次の 2.0.1 を配信したので材料の epic を畳み、雨雲チェックと習慣ログの epic は確かめるものに残す（新しくマージした順）
     @Test
     func demoBacklogSplitsOpenAndFolded() {
         let backlog = VerificationBacklog(snapshot: snapshot)
