@@ -147,7 +147,7 @@ archive/attachments/<device>/<intent>/             畳んだ epic の依頼の�
 - `setup`: 対象に加えるときの GitHub 側の準備の結果（[operations.md](operations.md) の「対象に加えるときの GitHub 側の準備」）。司令塔が `addRepository` を処理したとき（加え直したときも）に、管理用のトークンで流して書く。まだ流していなければ `null`
   - `updatedAt`: 流した時刻。`problems`: 準備を止めた・できなかった理由（人が読む文。管理用のトークンが無い など）。無ければ `null`
   - `discussions`: `ready`（Discussions が有効でカテゴリ「Ideas」がある）・`missingCategory`（「Ideas」が無い。人が作る）・`unknown`（有効にできない・確かめられない）
-  - `workflows`: ワークフローを直す決まった手順の PR（`{ "state": "notNeeded" | "open" | "merged" | "closed", "pullRequest", "head", "changes": [{ "kind", "path", "lines", "steps" }], "appKit" }`）。`open` の PR は、人の `approveSetupPullRequest` でマージする
+  - `workflows`: ワークフローを直す決まった手順の PR（`{ "state": "notNeeded" | "open" | "merged" | "closed", "pullRequest", "head", "changes": [{ "kind", "path", "lines", "steps" }], "appKit" }`）。`open` の PR は、人の `approveSetupPullRequest` でマージする。準備をやり直したときに中身が変わっていれば、同じ番号の PR のまま作り直し、`head`・`changes`・`appKit` を書き直す（前の `head` への承認ではマージしない）
     - `changes[].kind`: `removeLegacy`（今の仕組みのワークフローを外す）・`removePathFilters`（待つチェックのワークフローの `paths`・`paths-ignore` を外す）・`adoptAppKit`（app-kit の写すファイルを版の中身にする・`.github/app-kit.json` を足す）・`removeReplaced`（app-kit に置き換わるファイルを外す）
     - `changes[].lines`: 外すファイルの行の数。`changes[].steps`: 外すワークフローにしか無い手順の名前（app-kit の再利用ワークフローに同じ名前の手順が無いもの）。人が、消える手順を承認の前に確かめる
     - `appKit`: app-kit に入れ替える PR の、入れる版（`version`・`ref`）と、名前が変わる待つチェック（`renamedChecks`: `[{ "from", "to" }]`）。`changes` に `adoptAppKit` があるときだけ書く。承認されたら、司令塔がマージの前にルールセットの必須のチェックとビルドの設定の `childChecks`・`finalChecks` を新しい名前に替え、マージしたら `repo.json` の `appKit` を書く

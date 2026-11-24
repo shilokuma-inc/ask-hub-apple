@@ -2,7 +2,7 @@ import Foundation
 
 /// 対象に加えるときの GitHub 側の準備（`docs/renewal/operations.md` の「対象に加えるときの GitHub 側の準備」）の決まり
 public enum SetupPolicy {
-    /// ワークフローを直す PR のブランチ（毎回同じ。開いた PR があれば作り直さない）
+    /// ワークフローを直す PR のブランチ（毎回同じ。準備をやり直したとき、開いた PR の中身が今と違えば、このブランチだけを作り直す）
     public static let workflowBranch = "askhub/setup-workflows"
     /// Discussion の写しに使うカテゴリ（Discussions を有効にすると GitHub が作る既定のカテゴリ）
     public static let discussionCategory = "Ideas"
