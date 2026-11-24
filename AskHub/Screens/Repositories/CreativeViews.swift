@@ -5,7 +5,6 @@ struct CreativeRepositorySection: View {
     let repository: TargetRepository
 
     @Environment(ClientStore.self) private var store
-    @State private var confirmsFirst = false
 
     var body: some View {
         let creative = store.snapshot?.creative(of: repository.id)
@@ -18,24 +17,40 @@ struct CreativeRepositorySection: View {
                 }
                 ReflectionStatusView(.creative(repository.id))
             } else {
-                let intent = HumanIntent.draftCreativeAssets(repositoryID: repository.id, revision: 0, comment: nil)
-                Button("ヘッダーと検索結果の画像を作る…", systemImage: "photo.on.rectangle.angled") { confirmsFirst = true }
-                    .disabled(!store.supports(intent) || store.isReflecting(intent))
+                CreativeDraftButton(repositoryID: repository.id)
                 ReflectionStatusView(.creative(repository.id))
             }
         } header: {
             Text("App Store のヘッダーと検索結果")
         } footer: {
-            Text("iOS 27 以降の App Store に出る、プロダクトページのヘッダーと検索結果の画像です。Claude が案を作り、GitHub Actions で書き出します")
+            Text(CreativeDraftButton.summary)
         }
-        .confirmationDialog("ヘッダーと検索結果の案を作りますか？", isPresented: $confirmsFirst, titleVisibility: .visible) {
-            Button("案を作る") {
-                Task { await store.send(.draftCreativeAssets(repositoryID: repository.id, revision: 0, comment: nil)) }
+    }
+}
+
+/// 最初の案を Claude に頼むボタン。確かめてから送る。リポジトリの画面の節と、案がまだ無いときの案の画面に置く
+struct CreativeDraftButton: View {
+    let repositoryID: TargetRepository.ID
+    var title: LocalizedStringKey = "ヘッダーと検索結果の画像を作る…"
+
+    @Environment(ClientStore.self) private var store
+    @State private var confirms = false
+
+    /// 何の画像か（リポジトリの画面の節の説明と、案が無いときの画面の説明）
+    static let summary = "iOS 27 以降の App Store に出る、プロダクトページのヘッダーと検索結果の画像です。Claude が案を作り、GitHub Actions で書き出します"
+
+    var body: some View {
+        let intent = HumanIntent.draftCreativeAssets(repositoryID: repositoryID, revision: 0, comment: nil)
+        Button(title, systemImage: "photo.on.rectangle.angled") { confirms = true }
+            .disabled(!store.supports(intent) || store.isReflecting(intent))
+            .confirmationDialog("ヘッダーと検索結果の案を作りますか？", isPresented: $confirms, titleVisibility: .visible) {
+                Button("案を作る") {
+                    Task { await store.send(intent) }
+                }
+            } message: {
+                Text("Claude がアプリと掲載文を読んで文言・色・使う画面を決め、GitHub Actions で 6.9 インチの画面を撮って書き出します（30 分ほど）。"
+                    + "App Store には、承認して次のリリースで審査に出すまで出ません")
             }
-        } message: {
-            Text("Claude がアプリと掲載文を読んで文言・色・使う画面を決め、GitHub Actions で 6.9 インチの画面を撮って書き出します（30 分ほど）。"
-                + "App Store には、承認して次のリリースで審査に出すまで出ません")
-        }
     }
 }
 
