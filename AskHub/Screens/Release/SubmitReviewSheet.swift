@@ -412,7 +412,8 @@ struct StartReleaseSheet: View {
             Text("スクショ")
         } footer: {
             Text(skipsScreenshots
-                ? "この版ではスクショを撮りません。撮りたくなったら、リリースの画面の「スクショを撮る」で後から撮れます"
+                ? "この版ではスクショを撮りません。app-kit の撮影を使うアプリ（か、撮り方の設定 build.storeScreenshots を入れたアプリ）なら、"
+                    + "リリースの画面の「スクショを撮る」で後から撮れます"
                 : "司令塔が app-kit の撮影のワークフローと AppStore/screenshots.json・languages.json から撮り方を作り、release ブランチで撮ります。"
                     + "app-kit の撮影を使っていないアプリは撮りません")
         }
