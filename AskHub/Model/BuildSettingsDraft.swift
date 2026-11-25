@@ -10,6 +10,8 @@ struct RepositoryBuildSettings: Hashable {
     var finalChecks: [String]
     /// 直すときの元（字下げした JSON）
     var json: String
+    /// App Store のスクショの撮り方（`build.storeScreenshots`）がある。無ければ、リリースを始めるときに知らせる
+    var hasStoreScreenshots = false
 }
 
 /// ビルドの設定を直す下書き。主な欄はフォームで直し、ほかの欄（テストの絞り込み・スクショなど）は JSON で直す。

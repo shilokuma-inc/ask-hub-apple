@@ -58,10 +58,12 @@ struct SubmissionDetailView: View {
     }
 
     /// 取り消しにくい操作の確かめ
-    private enum Confirmation: String, Identifiable {
+    fileprivate enum Confirmation: String, Identifiable {
         case distribute
         case withdraw
         case abandon
+        /// 撮らなかった・撮れなかった版のスクショを、すべての表示サイズ・言語で撮る
+        case capture
 
         var id: String { rawValue }
     }
@@ -154,9 +156,12 @@ struct SubmissionDetailView: View {
             && store.supports(.withdrawSubmission(repositoryID: id, version: submission.version))
         let canAbandon = submission.canAbandon && submission.sending == nil
             && store.supports(.abandonRelease(repositoryID: id, version: submission.version))
-        let canRetake = submission.canRetakeScreenshots && submission.sending == nil && submission.screenshots?.sets.isEmpty == false
+        let canAskRetake = submission.canRetakeScreenshots && submission.sending == nil
             && store.supports(.retakeScreenshots(repositoryID: id, version: submission.version, displayTypes: [], locales: []))
-        if canSubmit || canDistribute || canWithdraw || canAbandon || canRetake {
+        // 撮った組があれば選んで撮り直し、無ければ（撮らなかった・撮れなかった）すべてを撮る
+        let canRetake = canAskRetake && submission.screenshots?.sets.isEmpty == false
+        let canCapture = canAskRetake && submission.screenshots?.sets.isEmpty != false
+        if canSubmit || canDistribute || canWithdraw || canAbandon || canRetake || canCapture {
             CardSection {
                 if canSubmit {
                     Button("確かめて審査に出す…", systemImage: "paperplane") { isSubmitting = true }
@@ -173,6 +178,10 @@ struct SubmissionDetailView: View {
                 if canRetake {
                     Button("スクショを撮り直す…", systemImage: "camera.rotate") { isRetaking = true }
                         .accessibilityIdentifier("submission-retake-screenshots")
+                }
+                if canCapture {
+                    Button("スクショを撮る…", systemImage: "camera") { confirming = .capture }
+                        .accessibilityIdentifier("submission-capture-screenshots")
                 }
                 if canAbandon {
                     Button("このリリースをやめる…", systemImage: "xmark.circle", role: .destructive) { confirming = .abandon }
@@ -215,39 +224,6 @@ struct SubmissionDetailView: View {
                     Text("TestFlight で見つかった不具合などを、release/\(submission.version) に直しを入れる依頼にします。配信した後に develop にも取り込みます")
                 }
             }
-        }
-    }
-
-    private var isConfirming: Binding<Bool> {
-        Binding { confirming != nil } set: { if !$0 { confirming = nil } }
-    }
-
-    private var confirmationTitle: String {
-        switch confirming {
-        case .distribute: "App Store で配信しますか？"
-        case .withdraw: "審査を取り下げますか？"
-        case .abandon: "このリリースをやめますか？"
-        case nil: ""
-        }
-    }
-
-    private func confirmationMessage(_ action: Confirmation) -> String {
-        switch action {
-        case .distribute: "配信すると取り消せません。24 時間ほどで App Store に出ます"
-        case .withdraw: "審査の待ちの順番は失われます。取り下げた後は、ビルドや What's New を直して審査に出し直せます"
-        case .abandon: "記録を終わりにするだけで、release ブランチと App Store Connect の版は残します。次のリリースを始められるようになります"
-        }
-    }
-
-    @ViewBuilder private func confirmationButton(_ action: Confirmation, submission: Submission) -> some View {
-        let id = submission.repositoryID
-        switch action {
-        case .distribute:
-            Button("配信する") { send(.distributeRelease(repositoryID: id, version: submission.version)) }
-        case .withdraw:
-            Button("取り下げる", role: .destructive) { send(.withdrawSubmission(repositoryID: id, version: submission.version)) }
-        case .abandon:
-            Button("やめる", role: .destructive) { send(.abandonRelease(repositoryID: id, version: submission.version)) }
         }
     }
 
@@ -338,6 +314,48 @@ struct SubmissionDetailView: View {
                     Link(destination: pullURL) { Label("版を上げる PR #\(pull) を開く", systemImage: "arrow.triangle.pull") }
                 }
             }
+        }
+    }
+}
+
+// MARK: - 取り消しにくい操作の確かめ
+
+private extension SubmissionDetailView {
+    var isConfirming: Binding<Bool> {
+        Binding { confirming != nil } set: { if !$0 { confirming = nil } }
+    }
+
+    var confirmationTitle: String {
+        switch confirming {
+        case .distribute: "App Store で配信しますか？"
+        case .withdraw: "審査を取り下げますか？"
+        case .abandon: "このリリースをやめますか？"
+        case .capture: "スクショを撮りますか？"
+        case nil: ""
+        }
+    }
+
+    func confirmationMessage(_ action: Confirmation) -> String {
+        switch action {
+        case .distribute: "配信すると取り消せません。24 時間ほどで App Store に出ます"
+        case .withdraw: "審査の待ちの順番は失われます。取り下げた後は、ビルドや What's New を直して審査に出し直せます"
+        case .abandon: "記録を終わりにするだけで、release ブランチと App Store Connect の版は残します。次のリリースを始められるようになります"
+        case .capture: "今の release ブランチの先頭で、すべての表示サイズと言語を撮ります。撮り方の設定が無ければ、司令塔が app-kit の撮影の設定から作ります。"
+            + "撮り終えるまで、審査には出せません"
+        }
+    }
+
+    @ViewBuilder func confirmationButton(_ action: Confirmation, submission: Submission) -> some View {
+        let id = submission.repositoryID
+        switch action {
+        case .distribute:
+            Button("配信する") { send(.distributeRelease(repositoryID: id, version: submission.version)) }
+        case .withdraw:
+            Button("取り下げる", role: .destructive) { send(.withdrawSubmission(repositoryID: id, version: submission.version)) }
+        case .abandon:
+            Button("やめる", role: .destructive) { send(.abandonRelease(repositoryID: id, version: submission.version)) }
+        case .capture:
+            Button("撮る") { send(.retakeScreenshots(repositoryID: id, version: submission.version, displayTypes: [], locales: [])) }
         }
     }
 }

@@ -65,7 +65,8 @@ extension StateSnapshotBuilder {
             destinations: build.xcode.destinations.map(Self.destinationName),
             childChecks: build.childChecks,
             finalChecks: build.finalChecks,
-            json: ConfigureRepositoryIntent.payload(for: build)["build"].map(BuildSettingsDraft.pretty) ?? ""
+            json: ConfigureRepositoryIntent.payload(for: build)["build"].map(BuildSettingsDraft.pretty) ?? "",
+            hasStoreScreenshots: build.storeScreenshots != nil
         )
     }
 

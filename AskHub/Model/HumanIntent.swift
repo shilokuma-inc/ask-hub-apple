@@ -56,7 +56,8 @@ enum HumanIntent: Hashable {
     /// 配信中の版のプロモーションテキストを直して、すぐ反映する（変える言語だけ。空の文は空にする）
     case updatePromotionalText(repositoryID: TargetRepository.ID, version: String, texts: [Submission.Localized])
     /// リリースを始める（`version` は始める版）
-    case startRelease(repositoryID: TargetRepository.ID, version: String)
+    /// `skipScreenshots` は、撮影の設定の無いアプリで「撮らずに進む」を選んだとき
+    case startRelease(repositoryID: TargetRepository.ID, version: String, skipScreenshots: Bool = false)
     /// 配信中の版だけを直す hotfix を始める（`version` は配信中の版の次のパッチ）。`suspend` は一時停止する進行中のリリースの版
     case startHotfix(repositoryID: TargetRepository.ID, version: String, suspend: String?)
     /// 審査に出す（`revision` は見たときの準備の版。ビルドか What's New が変わっていれば司令塔が断る）
@@ -193,7 +194,7 @@ extension HumanIntent {
         case let .startHotfix(_, version, _):
             "hotfix を始める（\(version)）"
 
-        case let .startRelease(_, version):
+        case let .startRelease(_, version, _):
             "リリースを始める（\(version)）"
 
         case let .submitForReview(_, version, _):

@@ -192,7 +192,7 @@ extension StateSnapshotBuilder {
         case .capturing: .capturing
         case .captured: .captured
         case .failed: .failed(file.failure ?? "理由は書かれていません")
-        case .notConfigured: .notConfigured
+        case .notConfigured: .notConfigured(file.failure)
         }
         let sets = file.sets.map { set in
             Submission.ScreenshotSet(

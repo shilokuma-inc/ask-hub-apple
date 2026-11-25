@@ -51,7 +51,7 @@ extension DemoClientService {
     /// リリースの操作。司令塔が受け付けて、App Store Connect に出す・配信する・取り下げるのをまねる（審査の結果までは進めない）
     func applySubmissionIntent(_ intent: HumanIntent) {
         switch intent {
-        case let .startRelease(repositoryID, version):
+        case let .startRelease(repositoryID, version, _):
             startRelease(repositoryID: repositoryID, version: version)
 
         case let .startHotfix(repositoryID, version, suspend):
