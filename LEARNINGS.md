@@ -900,6 +900,9 @@
   一方、要素の表示クラス（`displayClassId`。`AppAssetLibraryDisplayClass`）の値は文書にある（`IPHONE_DUO`・`IPHONE_DYNAMIC_ISLAND_LARGE_DISPLAY`・`IPHONE_DYNAMIC_ISLAND_MEDIUM_DISPLAY`・`IPAD_13_DISPLAY` など 20 個。Vision Pro・Mac の表示クラスは無い）。
   型の名前は `AppAssetLibraryRefDatum`（`…refdata.json` の DocC は 404）。同じ表示クラスでも iMessage など別のプラットフォームの配置グループがあるので、配置のプラットフォーム（`IPHONE_APP_STORE` など）と表示クラスの両方で引く。
   `IPAD_13_PROFILE`・`IPHONE_DUO_PROFILE` は表示クラスの名前から当てた値で、本物で確かめていない（2026-11-25、#1303）
+- App Asset Library のリファレンスデータの配置グループの本物の id（2026-11-25 に司令塔のログで読んだ）: 6.9 inch `IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE`・6.3 inch `IPHONE_DYNAMIC_ISLAND_MEDIUM_PROFILE`・iPhone Duo `IPHONE_DUO_PROFILE`（以上 `IPHONE_APP_STORE`）・iPad 13 inch `IPAD_13_PROFILE`（`IPAD_APP_STORE`）・
+  Apple Vision Pro `VISION_PRO_PROFILE`（`VISION_PRO_APP_STORE`）・Mac `MAC_PROFILE`（`MAC_APP_STORE`）。Vision Pro・Mac の表示クラスは `DEFAULT`。iPhone・iPad は表示クラスの `_DISPLAY` を `_PROFILE` に替えた id で、同じ表示クラスの iMessage（`IMESSAGE_…`）もある。
+  shinkeisuijaku の手書きの設定の `IPAD_13_PROFILE`・`IPHONE_DUO_PROFILE` は本物だった（2026-11-25、#1313）
 
 ## ワーカー・司令塔の運用
 

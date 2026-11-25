@@ -409,7 +409,7 @@ app-kit の撮影の再利用ワークフローは、表示サイズを 1 本ず
 人が後から設定を書き、撮影のワークフローを手で起動したが、司令塔は自分で起動した実行しか取り込まない（上の「安全」）ので使われず、リリースが手作業になった。
 この節は、設定が漏れたままリリースが進むのを防ぐ設計。
 
-状態: 2026-11-25 にユーザーが決めた（下の「決めたこと」。どれも推奨の案）。実装は「PR の分け方」の順に進める。
+状態: 2026-11-25 にユーザーが決め（下の「決めたこと」。どれも推奨の案）、実装した（#1300・#1302・#1305・#1309・#1310・#1312）。同じ日に司令塔を更新し、本物で確かめた（下の「確かめた結果」）。
 
 ### 分かったこと（2026-11-25）
 
@@ -422,7 +422,7 @@ develop（311b4312）と、状態リポジトリ（読むだけ）・shinkeisuij
 | `notConfigured` の版 | 撮り直せない。`SubmissionFile.retakeProblem` が「撮り方の設定が無い」で断り、クライアントも撮った組が無いので「撮り直す」を出さない。**後から設定を書いても、shinkeisuijaku の 1.0.0 は今のままでは撮れない** |
 | `repo.json` の `appKit` | ずれの点検（`AppKitWatch.check`）は `appKit` の無いリポジトリを読まない。呼んでいる版を書くのは「準備をやり直す」（`RepositorySetupStep`）だけで、shinkeisuijaku は準備を流していない（`setup` も `null`）。shinkeisuijaku の develop は v1.2.0（`0cba55e`）を呼んでいる |
 | 配置グループの id | Apple の文書にあるのは 6.9 inch の `IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE`・`MAC_PROFILE`・`IMESSAGE_IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE` だけで、「参照データの id は決め打ちしない」と書かれている（Discovering asset specifications）。表示クラス（参照データの `placementProfileGroups[].displayClassId`）の値は文書にある（`IPHONE_DYNAMIC_ISLAND_LARGE_DISPLAY`・`IPHONE_DYNAMIC_ISLAND_MEDIUM_DISPLAY`・`IPHONE_DUO`・`IPAD_13_DISPLAY` など 20 個。Vision Pro・Mac の表示クラスは無い） |
-| shinkeisuijaku の今の設定 | `IPAD_13_PROFILE`・`IPHONE_DUO_PROFILE` は表示クラスの名前から当てた値で、参照データで確かめていない。違っていると、審査に出すときにその組は黙って置かれない（`AppStoreSubmission.writeScreenshots` が参照データのプラットフォームで組を絞る） |
+| shinkeisuijaku の今の設定 | `IPAD_13_PROFILE`・`IPHONE_DUO_PROFILE` は表示クラスの名前から当てた値で、参照データで確かめていない。違っていると、審査に出すときにその組は黙って置かれない（`AppStoreSubmission.writeScreenshots` が参照データのプラットフォームで組を絞る）。司令塔を更新した後のログで、どちらも本物の値と分かった（下の「確かめた結果」） |
 | template の `AppStore/` | `screenshots.json` の `displayTypes` は `APP_IPHONE_61`（6.3 inch。6.9 inch から縮めて作る `deriveFrom`）・`APP_IPHONE_DUO`・`APP_IPHONE_67`・`APP_IPAD_PRO_3GEN_129`。`languages.json` は `language`（artifact のフォルダ）・`storeLocale`（App Store Connect の言語）。app-kit v1.7.0 から、`assetsFrom` を書いた言語は撮らずに流用元の画像を使い、App Store Connect の言語との読み替えは司令塔の設定（`languages`）が持つ |
 | 古い司令塔 | `startRelease` の知らない欄を断る（`PayloadReader` の `allowed`）。新しい欄は、送るときだけ要る形にする |
 
@@ -493,7 +493,7 @@ develop（311b4312）と、状態リポジトリ（読むだけ）・shinkeisuij
 ### 配置グループの確かめ
 
 - 撮った artifact を取り込むとき、`artifacts` の配置グループが参照データに無ければ、その組を取り込まずに `skipped` に「配置グループ <id> が App Store Connect に無い。build.storeScreenshots.artifacts を直す」と書く（審査に出すときに黙って落ちないように）
-- 司令塔が参照データを初めて読んだとき、配置グループ（id・プラットフォーム・表示クラス）を 1 行ログに出す。司令塔を更新した後にログを読み、6.3 inch・iPad 13 inch・iPhone Duo・Vision Pro の本当の id を LEARNINGS.md とこの文書に書く
+- 司令塔が参照データを初めて読んだとき、配置グループ（id・プラットフォーム・表示クラス）を 1 行ログに出す。2026-11-25 に読んだ本当の id は、下の「確かめた結果」と LEARNINGS.md に書いた
 
 ### プロトコル
 
@@ -524,6 +524,27 @@ develop（311b4312）と、状態リポジトリ（読むだけ）・shinkeisuij
 1. ユニットテスト: 組み立て（shinkeisuijaku・template・askhub-create-check の `AppStore/` の本物のファイルと、参照データの偽物）、ずれの点検（`appKit` が無い・版の分かる/分からないコミット・中身のずれ・`app-kit-ref` の食い違い・設定の自動の作成）、リリースの段取り（作れる・作れない・撮らずに進む・`notConfigured` から撮る）
 2. 状態リポジトリと本物のリポジトリを読むだけで、shinkeisuijaku の `appKit`（v1.2.0 と、そのずれ）と、組み立てた設定が今の手書きの設定と同じになるか（手書きに無い 6.3 inch を除く。配置グループの値は、司令塔を更新した後のログで確かめる）
 3. 司令塔の更新（ユーザーの承認のうえ）の後に、ログで参照データの配置グループと、shinkeisuijaku の `appKit` が書かれたことを確かめる
+
+### 確かめた結果（2026-11-25）
+
+司令塔を e86dae6（#1309 まで）に更新し、ログと状態リポジトリ（読むだけ）で確かめた。
+
+- リファレンスデータの配置グループ（スクショの表示サイズに関わるもの）
+
+| 配置グループ | 配置のプラットフォーム | 表示クラス |
+| --- | --- | --- |
+| `IPHONE_DYNAMIC_ISLAND_LARGE_PROFILE`（6.9 inch） | `IPHONE_APP_STORE` | `IPHONE_DYNAMIC_ISLAND_LARGE_DISPLAY` |
+| `IPHONE_DYNAMIC_ISLAND_MEDIUM_PROFILE`（6.3 inch） | `IPHONE_APP_STORE` | `IPHONE_DYNAMIC_ISLAND_MEDIUM_DISPLAY` |
+| `IPHONE_DUO_PROFILE` | `IPHONE_APP_STORE` | `IPHONE_DUO` |
+| `IPAD_13_PROFILE` | `IPAD_APP_STORE` | `IPAD_13_DISPLAY` |
+| `VISION_PRO_PROFILE` | `VISION_PRO_APP_STORE` | `DEFAULT` |
+| `MAC_PROFILE` | `MAC_APP_STORE` | `DEFAULT` |
+
+  - ほかに、6.5・6.1 inch（`IPHONE_FACE_ID_LARGE_PROFILE`・`IPHONE_FACE_ID_MEDIUM_PROFILE`）、ホームボタンの機種（`IPHONE_HOME_BUTTON_LARGE_PROFILE`・`_MEDIUM_`・`_40_`・`_35_`）、iPad 12.9・11・10.5・9.7 inch（`IPAD_129_PROFILE`・`IPAD_11_PROFILE`・`IPAD_105_PROFILE`・`IPAD_97_PROFILE`）、iMessage の同じ表示クラスのもの（`IMESSAGE_…`）、Apple Watch・Apple TV、`DEFAULT_PROFILE`（`ANY`・`DEFAULT`）がある
+  - 表示クラスの値は文書のとおりで、配置グループの id は「表示クラスの名前の `_DISPLAY` を `_PROFILE` に替えたもの」になっていた（iPhone Duo は `IPHONE_DUO` → `IPHONE_DUO_PROFILE`）。それでも組み立ては決め打ちせず、リファレンスデータから引く
+- tm-family/shinkeisuijaku-app-ios: `appKit` に v1.2.0（`0cba55e`）が書かれた。ずれは「`AppStore/screenshots.json` の `APP_IPHONE_61`（iPhone 6.3 inch）が `build.storeScreenshots.artifacts` に無い（足すなら `IPHONE_DYNAMIC_ISLAND_MEDIUM_PROFILE`）」だけ（手書きの設定の 3 つの配置グループは本物の値だった）
+- shilokuma-inc/askhub-create-check（app-kit v1.1.1・撮影の設定なし）: 司令塔が撮影の設定を作った（4 つの表示サイズ × ja・en-US）
+- shinkeisuijaku の 1.0.0（審査の前）は `notConfigured` のまま。アプリの「スクショを撮る」（#1310）で撮れる
 
 ### 決めたこと
 
