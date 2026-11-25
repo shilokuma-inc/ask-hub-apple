@@ -44,6 +44,33 @@ extension ReleaseWatchTests {
         #expect(Set(shots.skipped.map(\.displayType)) == ["IPAD_13_PROFILE", "IPHONE_DYNAMIC_ISLAND_MEDIUM_PROFILE", Self.duo])
     }
 
+    /// 読んだ後に人がビルドの設定（base）を替えていたら、古い base のファイルから作った撮り方は書かず、次の見回りで作り直す
+    @Test func rebuildsSettingsWhenTheBuildChangedWhileReading() async throws {
+        try await startRelease()
+        useAppKitScreenshots()
+        let store = store
+        hosting.observing.withLock { hook in
+            hook = {
+                guard let data = await store.data(at: StatePath.repository(Self.repo)),
+                      var file = try? StateFileCoder.decode(RepositoryFile.self, from: data) else { return }
+                file.build?.baseBranch = "main"
+                if let encoded = try? StateFileCoder.encode(file) { await store.put(StatePath.repository(Self.repo), data: encoded) }
+            }
+        }
+        let watch = watch(screenshots: FakeStoreScreenshots())
+        await watch.refresh()
+        #expect(try await repositoryFile().build?.storeScreenshots == nil)
+        #expect(try await repositoryFile().build?.baseBranch == "main")
+        #expect(hosting.workflows.withLock { $0.dispatches.isEmpty })
+        #expect(try await submission().screenshots == nil)
+
+        hosting.observing.withLock { $0 = nil }
+        clock.advance(minutes: 1)
+        await watch.refresh()
+        #expect(try await repositoryFile().build?.storeScreenshots == .actions(Self.madeSettings))
+        #expect(hosting.workflows.withLock { $0.dispatches.count } == 1)
+    }
+
     /// app-kit の撮影を使わないアプリは撮らず、わけを書く。使うのに作れなければ、わけを書いて撮れなかったことにする
     @Test func explainsWhyNoScreenshotsWereCapturedWithoutSettings() async throws {
         try await startRelease()
