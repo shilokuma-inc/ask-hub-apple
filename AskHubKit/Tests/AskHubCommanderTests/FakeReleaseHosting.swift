@@ -39,6 +39,8 @@ final class FakeReleaseHosting: ReleaseHosting {
     }
 
     let state = OSAllocatedUnfairLock(initialState: State())
+    /// base の様子を読んでいる間にすること（読んでから書くまでの間に、人が設定を替えたとき）
+    let observing = OSAllocatedUnfairLock<(@Sendable () async -> Void)?>(initialState: nil)
     let workflows = OSAllocatedUnfairLock(initialState: FakeWorkflows())
 
     private func call<Value: Sendable>(_ body: @Sendable (inout State) -> Value) -> Value {
@@ -49,7 +51,8 @@ final class FakeReleaseHosting: ReleaseHosting {
     }
 
     func appKitObserved(_ repo: RepositoryFullName, base: String?) async throws -> AppKitObserved {
-        call { $0.observed } ?? AppKitObserved(files: [:], config: nil, callerRef: nil)
+        if let hook = observing.withLock({ $0 }) { await hook() }
+        return call { $0.observed } ?? AppKitObserved(files: [:], config: nil, callerRef: nil)
     }
 
     func workflowRuns(_ repo: RepositoryFullName, createdFrom from: Date, to: Date) async throws(PullRequestError) -> [ActionsRun] {

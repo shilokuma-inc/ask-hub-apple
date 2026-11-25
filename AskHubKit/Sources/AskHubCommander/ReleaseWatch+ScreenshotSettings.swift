@@ -40,7 +40,8 @@ extension ReleaseWatch {
         do {
             let message = "\(file.repo) の撮影の設定を作る"
             saved = try await context.files.update(RepositoryFile.self, at: StatePath.repository(file.repo), message: message) {
-                guard $0.build != nil, $0.build?.storeScreenshots == nil else { return false }
+                // 読んだ後にビルドの設定（base）が替わっていたら、別の base のファイルから作ったかもしれないので書かない（次の見回りで読み直す）
+                guard let build = $0.build, build == settings.build, build.storeScreenshots == nil else { return false }
                 $0.build?.storeScreenshots = .actions(workflow)
                 return true
             }.file
